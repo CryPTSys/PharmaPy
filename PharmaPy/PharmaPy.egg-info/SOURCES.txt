@@ -1,0 +1,8 @@
+README.md
+setup.py
+source/PharmaPy.egg-info/PKG-INFO
+source/PharmaPy.egg-info/SOURCES.txt
+source/PharmaPy.egg-info/dependency_links.txt
+source/PharmaPy.egg-info/not-zip-safe
+source/PharmaPy.egg-info/requires.txt
+source/PharmaPy.egg-info/top_level.txt

@@ -1,0 +1,6 @@
+pyomo
+coverage
+numpy
+scipy
+pandas
+assimulo

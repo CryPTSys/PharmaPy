@@ -8,7 +8,7 @@ This is a temporary script file.
 
 import numpy as np
 # import jax.numpy as jnp
-import autograd.numpy as jnp
+# import autograd.numpy as jnp
 from numpy.linalg import norm
 
 eps = np.sqrt(np.finfo(float).eps)

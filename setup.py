@@ -15,5 +15,8 @@ setuptools_kwargs = {
 setup(name='PharmaPy',
       version='0.0.0',
       packages=find_packages(),
-      author='',
+      author='Daniel Casas-Orozco',
+      author_email='dcasasor@purdue.edu',
+      license='',
+      url='',
       **setuptools_kwargs)
