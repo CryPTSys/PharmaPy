@@ -1,0 +1,29 @@
+Step 1: Create a conda environment named <env_name> (optional)
+
+conda create --name <env_name> python=3.7
+
+Step 1.1: If making a virtual environment
+
+conda activate <env_name>
+
+This activates the environment. You may deactivate the environment using
+the command:
+
+conda deactivate
+
+All the packages installed will be frozen on this environment, and will be
+separate from those installed on your base environment. Using this virtual
+environment structure allows us to have only the packages we need to do
+the analysis we need to do! If you want to use base, you may continue to step
+2 without doing steps 1 and 1.1.
+
+Step 2: Install the package requirements in requirements.txt
+
+conda install -c conda-forge --file requirements.txt
+
+Step 3: Install PharmaPy; navigate to the source directory
+
+python setup.py develop
+
+Step 4: Check to see if the package is working by running a test in tests/
+

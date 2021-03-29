@@ -1,0 +1,84 @@
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+*.python-version
+*.pyc
+
+# celery beat schedule file
+celerybeat-schedule
+
+# dotenv
+.env
+
+# virtualenv
+.venv/
+venv/
+ENV/
+
+# Spyder project settings
+.spyderproject
+
+# Rope project settings
+.ropeproject
+
+# Vim files
+*.swp
+*.swa
+
+# Latex auxiliary files
+*.aux
+*._aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.ilg
+*.log
+*._log
+*.nlo
+*.nls
+*.synctex.gz
+*.project.vim
+*.run.xml
+# *.pdf
+*.bib
+*.nlg
+.~lock*
+*.upa
+*.upb
+*.out
+*.backup
+*.spl
+*.synctex
+*.bcf
+*.nav
+*.snm
+*.toc
+*.vrb
+
+# Some output files
+*.pdf
+*.png
+*.wav
+*.jpg
+*.mp4
+
+# MS Office files
+#*.doc
+#*.docx
+*.ppt
+*.pptx
+
+# Compressed files
+*.zip
+*.tar.gz
+*.rar
+
+source/crystallization/
