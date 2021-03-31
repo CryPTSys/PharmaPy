@@ -38,12 +38,15 @@ def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None):
     else:
         dx = np.ones_like(x) * dx
 
-    dim = len(x)
     f_eval = func(x, *args)
-    jac = np.zeros((dim, dim))
+
+    num_x = len(x)
+    num_f = len(f_eval)
+
+    jac = np.zeros((num_f, num_x))
     delx = np.zeros_like(x)
 
-    for i in range(dim):
+    for i in range(num_x):
         delx[i] = dx[i]
         jac[:, i] = (func(x + delx, *args) - f_eval)/dx[i]
         delx[i] = 0
@@ -60,16 +63,16 @@ def numerical_jac_central(func, x, rel_tol, abs_tol, dx=None, args=()):
     else:
         dx = dx * np.ones_like(x)
 
-    dim = len(x)
-    jac = np.zeros((dim, dim))
+    num_x = len(x)
+    jac = []
     delx = np.zeros_like(x)
 
-    for j in range(dim):
+    for j in range(num_x):
         delx[j] = dx[j]
-        jac[:, j] = (func(x + delx, *args) - func(x - delx, *args)) /2. / dx[j]
+        jac.append((func(x + delx, *args) - func(x - delx, *args)) /2. / dx[j])
         delx[j] = 0
 
-    return jac
+    return np.column_stack(jac)
 
 
 def numerical_jac_data(func, x, args=(), dx=None):

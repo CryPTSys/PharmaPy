@@ -35,10 +35,11 @@ try:
     # from autograd import jacobian as autojac
     # from autograd import make_jvp
 except:
+    print()
     print(
-        'JAX is not available to perform automatic differentiation.'
-        'Install JAX if supported by your operating system.'
-        'JAX is available for UNIX-type operating systems (Linux, Mac).')
+        'JAX is not available to perform automatic differentiation. '
+        'Install JAX if supported by your operating system (Linux, Mac).')
+    print()
 
 import numpy as np
 
@@ -52,7 +53,7 @@ class _BaseCryst:
 
     def __init__(self, mask_params,
                  method, target_ind, scale,
-                 isothermal, temp_control, adiabatic,
+                 isothermal, controls, adiabatic,
                  rad_zero,
                  reset_states, name_species,
                  u_ht, vol_ht, ht_media, basis, jac_type):
@@ -87,15 +88,19 @@ class _BaseCryst:
         self.scale = scale
         self.scale_flag = True
 
+        # Controls
+        if controls is None:
+            self.controls = {}
+        else:
+            self.controls = controls
+
+        self.params_control = None
+
         self.isothermal = isothermal
-        if temp_control is not None:
+        if 'temp' in self.controls.keys():
             self.isothermal = False
 
         self.ht_media = ht_media
-
-        # Control
-        self.temp_control = temp_control
-        self.params_control = None
 
         self.method = method
         self.rad = rad_zero
@@ -134,7 +139,7 @@ class _BaseCryst:
         self.states_uo = ['mass_conc']
         self.names_states_in = ['mass_conc']
 
-        if not self.isothermal and self.temp_control is None:
+        if not self.isothermal and 'temp' not in self.controls.keys():
             self.states_uo.append('temp')
 
         self.names_upstream = None
@@ -145,6 +150,10 @@ class _BaseCryst:
 
         # Slurry phase
         self.Slurry = None
+
+        # Parameters for optimization
+        self.params_iter = None
+
 
     @property
     def Phases(self):
@@ -354,10 +363,10 @@ class _BaseCryst:
         elif 'temp' in self.states_uo:
             temp = states[ind_bces]
             temp_ht = None
-        elif self.temp_control is not None:
-            temp = self.temp_control(time, self.temp,
-                                     *self.params_control['temp'],
-                                     t_zero=self.elapsed_time)
+        elif 'temp' in self.controls.keys():
+            temp = self.controls['temp'](time, self.temp,
+                                         *self.params_control['temp'],
+                                         t_zero=self.elapsed_time)
         else:
             temp = self.Liquid_1.temp
 
@@ -647,7 +656,10 @@ class _BaseCryst:
         elif 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
 
-        merged_params = self.KinInstance.merge_params()[self.mask_params]
+        if self.params_iter is None:
+            merged_params = self.KinInstance.merge_params()[self.mask_params]
+        else:
+            merged_params = self.params_iter
 
         # ---------- Create problem
         problem = self.set_ode_problem(eval_sens, states_init,
@@ -696,29 +708,38 @@ class _BaseCryst:
             return time, states
 
     def paramest_wrapper(self, params, t_vals, kwargs_solve={}):
+        self.params_iter = params
 
-        self.KinInstance.params = params
         self.elapsed_time = 0
 
         t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                **kwargs_solve)
 
-        sens_sep = reorder_sens(sens, separate_sens=True)
+        sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
         if self.method == 'moments':
-            mu = states[:, :self.num_species]
+            mu = states[:, :self.num_distr]
             mu_zero = mu[:, 0][..., np.newaxis]
 
             sens_zero = sens_sep[0]
-            for ind, sens_j in enumerate(sens_sep[1:-1]):
+            for ind, sens_j in enumerate(sens_sep[1:self.num_distr]): 
                 mu_j = mu[:, ind + 1][..., np.newaxis]
-                sens_sep[ind + 1] = (sens_j * mu_zero - sens_zero * mu_j) / \
-                    (mu_zero**2 + eps)
+                div_rule = (sens_j * mu_zero - sens_zero * mu_j) \
+                    / (mu_zero**2 + eps)
 
-            states[:, 1:-1] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+                sens_sep[ind + 1] = div_rule
 
-        sens_ordered = np.vstack(sens_sep)
+            mu_over = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+            mu_over *= (1e-3)**np.arange(1, self.num_distr)  # mm 
 
-        return states, sens_ordered
+            states_out = np.column_stack((mu_over, states[:, self.target_ind]))
+
+            sens_out = np.vstack(sens_sep)
+        else:
+            states_out = states
+            sens_out = np.vstack(sens_sep)
+
+
+        return states, sens_out
 
     def flatten_states(self):
         if type(self.timeProf) is list:
@@ -1116,13 +1137,13 @@ class _BaseCryst:
 class BatchCryst(_BaseCryst):
     def __init__(self, target_ind, mask_params=None,
                  method='1D-FVM', scale=1,
-                 isothermal=False, temp_control=None, adiabatic=False,
+                 isothermal=False, controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False, name_species=None,
                  u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, temp_control, adiabatic,
+                         scale, isothermal, controls, adiabatic,
                          rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
                          basis, jac_type)
@@ -1141,7 +1162,7 @@ class BatchCryst(_BaseCryst):
 
     def nomenclature(self):
         if not self.isothermal:
-            if self.temp_control is None:
+            if 'temp' not in self.controls.keys():
                 self.states_uo.append('temp')
 
         self.names_states_out = ['mass_conc']
@@ -1172,9 +1193,9 @@ class BatchCryst(_BaseCryst):
             num_material = self.num_distr + self.num_species
             w_conc = states[self.num_distr:num_material]
 
-            temp = self.temp_control(time, self.temp,
-                                    *self.params_control['temp'],
-                                    t_zero=self.elapsed_time)
+            temp = self.controls['temp'](time, self.temp,
+                                         *self.params_control['temp'],
+                                         t_zero=self.elapsed_time)
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
@@ -1208,14 +1229,16 @@ class BatchCryst(_BaseCryst):
             jacobian[rng + 1, rng] = wrt_mu
 
             # dfu0_du3
-            jacobian[0, self.num_distr - 1] = vol_liq * bs2_exp * b_sec / moms[3]
+            jacobian[0, self.num_distr - 1] = vol_liq * \
+                bs2_exp * b_sec / moms[3]
 
             # Second moment column (concentration eqns)
-            dtr_mu2 = 3 * kv * gr * rho_c * (1e-6)**3  # factor from material bce
+            dtr_mu2 = 3 * kv * gr * rho_c * \
+                (1e-6)**3  # factor from material bce
 
             dfconc_dmu2 = -1/vol_liq * dtr_mu2 * (self.kron_jtg - w_conc/rho_l)
             jacobian[self.num_distr:self.num_distr + dfconc_dmu2.shape[0],
-                    2] = dfconc_dmu2
+                     2] = dfconc_dmu2
 
             # Volume eqn
             jacobian[-1, 2] = -dtr_mu2 / rho_l  # dfvol/dmu2
@@ -1226,7 +1249,7 @@ class BatchCryst(_BaseCryst):
             dg_dconc = idx_moms * g_exp * gr * moms[:-1]
 
             jacobian[0, self.num_distr +
-                    self.target_ind] = db_dconc  # dfmu_0/dC_tg
+                     self.target_ind] = db_dconc  # dfmu_0/dC_tg
 
             jacobian[
                 1:1 + dg_dconc.shape[0],
@@ -1241,7 +1264,8 @@ class BatchCryst(_BaseCryst):
             first_conc = np.outer(self.kron_jtg - w_conc/rho_l, self.kron_jtg)
             second_conc = tr/rho_l * np.eye(len(w_conc))
 
-            dfconc_dconc = -1/vol_liq * (dtr_dconc_tg * first_conc + second_conc)
+            dfconc_dconc = -1/vol_liq * \
+                (dtr_dconc_tg * first_conc + second_conc)
 
             jacobian[self.num_distr:-1, self.num_distr:-1] = dfconc_dconc
 
@@ -1256,15 +1280,15 @@ class BatchCryst(_BaseCryst):
             # Concentration eqn
             dfconc_dvol = 1/vol_liq**2 * (self.kron_jtg*tr - w_conc/rho_l * tr)
             jacobian[self.num_distr:self.num_distr + dfconc_dvol.shape[0],
-                    -1] = dfconc_dvol
+                     -1] = dfconc_dvol
 
             return jacobian
 
     def jac_params(self, time, states, params):
 
-        temp = self.temp_control(time, self.temp,
-                                 *self.params_control['temp'],
-                                 t_zero=self.elapsed_time)
+        temp = self.controls['temp'](time, self.temp,
+                                     *self.params_control['temp'],
+                                     t_zero=self.elapsed_time)
 
         num_states = len(states)
 
@@ -1281,7 +1305,7 @@ class BatchCryst(_BaseCryst):
         b_sec = self.KinInstance.sec_nucl
 
         dbp, dbs, dg, _, _ = self.KinInstance.deriv_cryst(conc_tg, temp)
-        dbs = np.append(dbs, b_sec*np.log(kv * moms[3]))
+        dbs = np.append(dbs, b_sec*np.log(kv * moms[3]*1e-18))
 
         # dg *= 1e-6  # to m/s
 
@@ -1300,7 +1324,7 @@ class BatchCryst(_BaseCryst):
         jacobian = np.zeros((num_states, num_params))
 
         # Zeroth moment eqn
-        jacobian[0, :num_bp] = dbp
+        jacobian[0, :num_bp] = vol_liq * dbp
         jacobian[0, num_bp:num_bp + num_bs] = vol_liq * dbs
 
         jacobian[0] *= vol_liq
@@ -1310,7 +1334,8 @@ class BatchCryst(_BaseCryst):
                  num_nucl:num_nucl + g_section.shape[1]] = g_section
 
         # ----- Concentration eqns
-        dtr_g = 3 * kv * rho_c * moms[2] * dg * (1e-6)**3  # factor from material bce
+        dtr_g = 3 * kv * rho_c * moms[2] * dg * \
+            (1e-6)**3  # factor from material bce
         dconc_dg = -1/vol_liq * np.outer(self.kron_jtg - w_conc/rho_l, dtr_g)
 
         jacobian[self.num_distr:self.num_distr + dconc_dg.shape[0],
@@ -1437,19 +1462,19 @@ class BatchCryst(_BaseCryst):
             self.tempProf.append(
                 np.ones_like(time_profile) * self.Liquid_1.temp)
 
-        elif self.temp_control is None:
-            self.tempProf.append(states[:, -2])
-            self.tempProfHt.append(states[:, -1])
-
-            self.Liquid_1.temp = self.tempProf[-1][-1]
-        else:
-            temp_controlled = self.temp_control(
+        elif 'temp' in self.controls.keys():
+            temp_controlled = self.controls['temp'](
                 time_profile, self.temp, *self.params_control['temp'],
                 t_zero=self.elapsed_time)
             self.tempProf.append(temp_controlled)
 
             self.Liquid_1.temp = self.tempProf[-1][-1]
             # self.Liquid_1.tempProf = self.tempProf[-1]
+        else:
+            self.tempProf.append(states[:, -2])
+            self.tempProfHt.append(states[:, -1])
+
+            self.Liquid_1.temp = self.tempProf[-1][-1]
 
         wConcProf = states[:, self.num_distr:self.num_distr + self.num_species]
 
@@ -1498,14 +1523,14 @@ class MSMPR(_BaseCryst):
     def __init__(self, target_ind,
                  mask_params=None,
                  method='1D-FVM', scale=1,
-                 isothermal=False, temp_control=None, adiabatic=False,
+                 isothermal=False, controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False,
                  name_species=None,
                  u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(KinInstance, Phases, mask_params, method, target_ind,
-                         scale, isothermal, temp_control, adiabatic, rad_zero,
+                         scale, isothermal, controls, adiabatic, rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
                          basis, jac_type)
         """ Construct a MSMPR object
@@ -1773,7 +1798,7 @@ class MSMPR(_BaseCryst):
             y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
 
         else:
-            temp_controlled = self.temp_control(
+            temp_controlled = self.controls['temp'](
                 time_profile, self.temp, *self.params_control['temp'],
                 t_zero=self.elapsed_time)
 

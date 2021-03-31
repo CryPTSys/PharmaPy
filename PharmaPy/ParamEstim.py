@@ -129,7 +129,7 @@ class ParameterEstimation:
 
         if args_fun is None:
             self.args_fun = [()] * self.num_datasets
-        elif not isinstance(args_fun, list) and not isinstance(args_fun, tuple):
+        elif self.num_datasets == 1:
             self.args_fun = [args_fun]
         else:
             self.args_fun = args_fun
