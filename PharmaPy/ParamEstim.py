@@ -307,8 +307,9 @@ class ParameterEstimation:
                     eye = np.eye(conc_target.shape[0])
                     proj_orthogonal = eye - np.dot(conc_target, conc_plus)
 
-                    sens_pick = sens_states[self.map_variable][:,
-                                                               :, self.measured_ind]
+                    sens_pick = sens_states[self.map_variable][
+                        :, :, self.measured_ind]
+
                     first_term = proj_orthogonal @ sens_pick @ conc_plus
                     second_term = first_term.transpose((0, 2, 1))
                     sens_an = (first_term + second_term) @ y_prof
@@ -318,11 +319,12 @@ class ParameterEstimation:
 
                 else:
                     args_merged = [self.x_data[ind], self.args_fun[ind]]
-                    sens = numerical_jac_data(func_aux, params,
-                                              args_merged,
-                                              dx=self.dx_fd)[:, self.map_variable]
+                    sens = numerical_jac_data(
+                        func_aux, params,
+                        args_merged,
+                        dx=self.dx_fd)[:, self.map_variable]
 
-            elif type(result) is tuple:  # the function also returns the jacobian
+            elif type(result) is tuple:  # func also returns the jacobian
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
@@ -488,6 +490,48 @@ class ParameterEstimation:
         self.correl_params = correlation
 
         return covar
+
+    def inspect_data(self, fig_size=None):
+        states_seed = []
+
+        if self.fit_spectra:
+            kwarg_sens = {'reorder': False}
+        else:
+            kwarg_sens = {}
+
+        for ind in range(self.num_datasets):
+            states_pred = self.function(self.param_seed, self.x_data[ind],
+                                        *self.args_fun[ind],
+                                        **kwarg_sens)
+
+            if isinstance(states_pred, tuple):
+                states_pred = states_pred[0]
+
+            states_seed.append(states_pred)
+
+        if len(states_seed) == 1:
+            y_seed = states_seed[0]
+
+            x_data = self.x_data[0]
+            y_data = self.y_orig[0]
+
+            fig, axes = plt.subplots(y_data.shape[1], figsize=fig_size)
+
+            for ind, experimental in enumerate(y_data.T):
+                axes[ind].plot(x_data, y_seed[:, self.measured_ind[ind]])
+                axes[ind].plot(x_data, experimental, 'o', mfc='None')
+
+                axes[ind].spines['right'].set_visible(False)
+                axes[ind].spines['top'].set_visible(False)
+
+                axes[ind].set_ylabel(self.name_states[ind])
+
+            axes[0].legend(
+                ('prediction with seed params', 'experimental data'))
+            axes[-1].set_xlabel('$x$')
+
+        else:
+            pass  # TODO what to do with multiple datasets, maybe a parity plot?
 
     def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None,
                         plot_initial=False, black_white=False, x_div=1):
