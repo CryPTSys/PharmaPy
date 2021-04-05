@@ -9,6 +9,7 @@ import numpy.matlib
 from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
+import scipy 
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Cake
