@@ -179,7 +179,8 @@ class SimulationExec:
 
     def SetParamEstimation(self, x_data,
                            param_seed=None, y_data=None, spectra=None,
-                           fit_spectra=False, args_fun=None,
+                           fit_spectra=False,
+                           phase_modifiers=None,
                            measured_ind=None, optimize_flags=None,
                            df_dtheta=None, df_dy=None,
                            covar_data=None,
@@ -197,26 +198,36 @@ class SimulationExec:
             else:
                 pass  # remember setting reset_states to True!!
 
+        if phase_modifiers is None:
+            phase_modifiers = {}
+
         # Get 1D array of parameters from the UO class
         if param_seed is None:
-            param_seed = target_unit.KinInstance.concat_params() # All UOs must have this attrib
+            # All UOs must have this attrib
+            param_seed = target_unit.Kinetics.concat_params()
+            param_seed = param_seed[target_unit.mask_params]
 
-        name_params = target_unit.KinInstance.name_params
+        name_params = []
+
+        for ind, logic in enumerate(target_unit.mask_params):
+            if logic:
+                name_params.append(target_unit.Kinetics.name_params[ind])
+
         name_states = target_unit.states_uo
 
         # Instantiate parameter estimation
         self.ParamInst = ParameterEstimation(
             target_unit.paramest_wrapper,
             param_seed, x_data, y_data, spectra, fit_spectra=fit_spectra,
-            args_fun=args_fun, measured_ind=measured_ind,
+            args_fun=phase_modifiers, measured_ind=measured_ind,
             optimize_flags=optimize_flags,
             df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
             name_params=name_params, name_states=name_states)
 
-    def EstimateParams(self, optim_opt=None, method='LM', bounds=None,
+    def EstimateParams(self, optim_options=None, method='LM', bounds=None,
                        verbose=True):
         tic = time.time()
-        results = self.ParamInst.optimize_fn(optim_options=optim_opt,
+        results = self.ParamInst.optimize_fn(optim_options=optim_options,
                                              method=method,
                                              bounds=bounds, verbose=verbose)
         toc = time.time()

@@ -29,8 +29,7 @@ gas_ct = 8.314  # J/mol/K
 
 
 class _BaseReactor:
-    def __init__(self, partic_species, name_species,
-                 KinInstance, Phases,
+    def __init__(self, partic_species, name_species, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
                  u_ht, ht_media, ht_mode):
@@ -71,16 +70,10 @@ class _BaseReactor:
 
         self.isothermal = isothermal
 
-        # ---------- Stoichiometry
-        self.KinInstance = KinInstance
-
-        # ---------- Phases
-        self._Phases = Phases
-        if len(self.Phases) == 0:
-            self.__original_phase__ = {}
-        else:
-            classify_phases(self)
-            self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        # ---------- Modeling objects
+        self._Phases = None
+        self._Kinetics = None
+        self.mask_params = mask_params
 
         self.sensit = None
 
@@ -99,7 +92,7 @@ class _BaseReactor:
             'tempProf': [], 'concProf': [], 'timeProf': [],
             'volProf': [],
             'elapsed_time': 0
-            }
+        }
 
         self.temp_control = None
         self.resid_time = None
@@ -124,6 +117,32 @@ class _BaseReactor:
                                'objects')
         classify_phases(self)
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+
+    @property
+    def Kinetics(self):
+        return self._Kinetics
+
+    @Kinetics.setter
+    def Kinetics(self, instance):
+        self._Kinetics = instance
+
+        name_params = self._Kinetics.name_params
+        if self.mask_params is None:
+            self.mask_params = [True] * self._Kinetics.num_params
+            self.name_params = name_params
+
+        else:
+            self.name_params = [name for ind, name in enumerate(name_params)
+                                if self.mask_params[ind]]
+
+        self.mask_params = np.array(self.mask_params)
+
+        ind_true = np.where(self.mask_params)[0]
+        ind_false = np.where(~self.mask_params)[0]
+
+        self.params_fixed = self.Kinetics.concat_params()[ind_false]
+
+        self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
 
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
@@ -211,22 +230,22 @@ class _BaseReactor:
         num_states = len(states)
 
         # ---------- w.r.t. states
-        num_species = self.KinInstance.num_species
+        num_species = self.Kinetics.num_species
         conc = states[:num_species]
         if self.isothermal:
             temp = self.Liquid_1.temp
-            jac_states = self.KinInstance.derivatives(conc, temp)
+            jac_states = self.Kinetics.derivatives(conc, temp)
         else:
             temp = states[num_species]
             jac_states = np.zeros((num_states, num_states))
 
-            jac_r_kin = self.KinInstance.derivatives(conc, temp)
+            jac_r_kin = self.Kinetics.derivatives(conc, temp)
             jac_states[:num_states - 1, :num_states - 1] = jac_r_kin
 
         if wrt_states:
             return jac_states
         else:  # ---------- w.r.t params
-            jac_theta_kin = self.KinInstance.derivatives(
+            jac_theta_kin = self.Kinetics.derivatives(
                 conc, temp, dstates=False)
 
             if self.isothermal:
@@ -263,19 +282,20 @@ class _BaseReactor:
         if isinstance(modify_phase, dict):
             self.Liquid_1.updatePhase(**modify_phase)
 
-        self.KinInstance.assign_params(params)
+        self.Kinetics.assign_params(params)
         self.elapsed_time = 0
 
         if evalsens:
             t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                    verbose=False,
                                                    eval_sens=True)
+
             if reorder:
                 sens = reorder_sens(sens)
             else:
                 sens = np.stack(sens)
 
-            c_prof = states[:, :self.KinInstance.num_species]
+            c_prof = states[:, :self.Kinetics.num_species]
 
             return c_prof, sens
         else:
@@ -283,7 +303,7 @@ class _BaseReactor:
                                              verbose=False,
                                              eval_sens=False)
 
-            c_prof = states[:, :self.KinInstance.num_species]
+            c_prof = states[:, :self.Kinetics.num_species]
 
             return c_prof
 
@@ -402,7 +422,7 @@ class _BaseReactor:
 
         fig, axis = plot_sens(self.timeProf, sens_data,
                               name_states=name_states,
-                              name_params=self.KinInstance.name_params,
+                              name_params=self.Kinetics.name_params,
                               mode=mode, black_white=black_white,
                               time_div=time_div)
 
@@ -410,14 +430,12 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
-    def __init__(self, partic_species,  name_species=None,
-                 KinInstance=None, Phases=(),
+    def __init__(self, partic_species, name_species=None, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
 
-        super().__init__(partic_species, name_species,
-                         KinInstance, Phases,
+        super().__init__(partic_species, name_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
@@ -441,18 +459,18 @@ class BatchReactor(_BaseReactor):
 
     def material_balances(self, time, conc, vol, temp, inputs):
 
-        if self.KinInstance.keq_params is None:
-            rate = self.KinInstance.get_rxn_rates(conc, temp)
+        if self.Kinetics.keq_params is None:
+            rate = self.Kinetics.get_rxn_rates(conc, temp)
         else:
             concentr = np.zeros(len(self.name_species))
             concentr[self.mask_species] = conc
             concentr[~self.mask_species] = self.conc_inert
             deltah_rxn = self.Liquid_1.getHeatOfRxn(
-                self.KinInstance.stoich_matrix, temp, self.mask_species,
-                self.KinInstance.delta_hrxn, self.KinInstance.tref_hrxn)
+                self.Kinetics.stoich_matrix, temp, self.mask_species,
+                self.Kinetics.delta_hrxn, self.Kinetics.tref_hrxn)
 
-            rate = self.KinInstance.get_rxn_rates(conc, temp,
-                                                  delta_hrxn=deltah_rxn)
+            rate = self.Kinetics.get_rxn_rates(conc, temp,
+                                               delta_hrxn=deltah_rxn)
 
         dmaterial_dt = rate
 
@@ -476,14 +494,14 @@ class BatchReactor(_BaseReactor):
         _, cp_j = self.Liquid_1.getCpPure(temp)  # J/mol
 
         # Heat of reaction
-        delta_href = self.KinInstance.delta_hrxn
-        stoich = self.KinInstance.stoich_matrix
-        tref_hrxn = self.KinInstance.tref_hrxn
+        delta_href = self.Kinetics.delta_hrxn
+        stoich = self.Kinetics.stoich_matrix
+        tref_hrxn = self.Kinetics.tref_hrxn
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rates = self.KinInstance.get_rxn_rates(conc, temp, overall_rates=False,
-                                               delta_hrxn=deltah_rxn)
+        rates = self.Kinetics.get_rxn_rates(conc, temp, overall_rates=False,
+                                            delta_hrxn=deltah_rxn)
 
         # Balance terms (W)
         source_term = -inner1d(deltah_rxn, rates) * vol*1000  # vol in L
@@ -491,7 +509,8 @@ class BatchReactor(_BaseReactor):
         if heat_prof:
             if 'temp' in self.controls.keys():
                 heat_profile = -np.column_stack((source_term, ))
-                capacitance = vol[0] * (conc_all * 1000 * cp_j).sum(axis=1)  # J/K (NCp)
+                capacitance = vol[0] * (conc_all *
+                                        1000 * cp_j).sum(axis=1)  # J/K (NCp)
                 self.capacitance = capacitance
             if self.isothermal:
                 heat_profile = -np.column_stack((source_term, ))
@@ -552,7 +571,7 @@ class BatchReactor(_BaseReactor):
                 states_init = np.append(states_init, tht_init)
 
         # Create problem
-        merged_params = self.KinInstance.concat_params()
+        merged_params = self.Kinetics.concat_params()
         if eval_sens:
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time,
@@ -565,7 +584,7 @@ class BatchReactor(_BaseReactor):
                 time, states, sens, params, wrt_states=False)
 
         else:
-            fobj = lambda time, states: self.unit_model(
+            def fobj(time, states): return self.unit_model(
                 time, states, merged_params)
 
             problem = Explicit_Problem(fobj, states_init,
@@ -658,14 +677,14 @@ class BatchReactor(_BaseReactor):
 
 
 class CSTR(_BaseReactor):
-    def __init__(self, partic_species, name_species=None,
-                 KinInstance=None, Phases=(), Inlet=None,
+    def __init__(self, partic_species, name_species=None, mask_params=None,
+                 Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
 
-        super().__init__(partic_species, name_species,
-                         KinInstance, Phases,
+        super().__init__(partic_species, name_species, mask_params,
+                         Kinetics, Phases,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
@@ -707,16 +726,16 @@ class CSTR(_BaseReactor):
         inlet_flow = u_inputs['vol_flow']
         inlet_conc = u_inputs['mole_conc']
 
-        if self.KinInstance.keq_params is None:
-            rate = self.KinInstance.get_rxn_rates(conc[self.mask_species],
-                                                  temp)
+        if self.Kinetics.keq_params is None:
+            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+                                               temp)
         else:
             deltah_rxn = self.Liquid_1.getHeatOfRxn(temp,
-                                                    self.KinInstance.tref_hrxn)
+                                                    self.Kinetics.tref_hrxn)
 
-            rate = self.KinInstance.get_rxn_rates(conc[self.mask_species],
-                                                  temp,
-                                                  deltah_rxn)
+            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+                                               temp,
+                                               deltah_rxn)
 
         rates = np.zeros_like(conc)
         rates[self.mask_species] = rate
@@ -741,16 +760,16 @@ class CSTR(_BaseReactor):
                                             basis='mole')
 
         # Heat of reaction
-        deltah_ref = self.KinInstance.delta_hrxn
-        tref_dh = self.KinInstance.tref_hrxn
+        deltah_ref = self.Kinetics.delta_hrxn
+        tref_dh = self.Kinetics.tref_hrxn
 
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
-            self.KinInstance.stoich_matrix, temp, self.mask_species,
+            self.Kinetics.stoich_matrix, temp, self.mask_species,
             deltah_ref, tref_dh)  # J/mol
 
-        rates = self.KinInstance.get_rxn_rates(conc.T[self.mask_species].T,
-                                               temp, overall_rates=False,
-                                               delta_hrxn=deltah_rxn)
+        rates = self.Kinetics.get_rxn_rates(conc.T[self.mask_species].T,
+                                            temp, overall_rates=False,
+                                            delta_hrxn=deltah_rxn)
 
         # Inlet stream
         stream = self.Inlet
@@ -830,11 +849,11 @@ class CSTR(_BaseReactor):
         self.resid_time = self.Liquid_1.vol / self.Inlet.vol_flow
 
         # Create problem
-        merged_params = self.KinInstance.concat_params()
+        merged_params = self.Kinetics.concat_params()
         if eval_sens:
             pass
         else:
-            fobj = lambda time, states: self.unit_model(
+            def fobj(time, states): return self.unit_model(
                 time, states, merged_params)
 
             problem = Explicit_Problem(fobj, states_init,
@@ -923,13 +942,13 @@ class CSTR(_BaseReactor):
 
 class SemibatchReactor(CSTR):
     def __init__(self, partic_species, vol_tank, name_species=None,
-                 KinInstance=None, Phases=(), Inlet=None,
+                 mask_params=None, Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
 
-        super().__init__(partic_species, name_species,
-                         KinInstance, Phases, Inlet,
+        super().__init__(partic_species, name_species, mask_params,
+                         Inlet,
                          base_units, temp_ref,
                          isothermal, reset_states,
                          u_ht, ht_media, ht_mode)
@@ -967,17 +986,17 @@ class SemibatchReactor(CSTR):
         self.names_states_out += ['temp', 'vol']
 
     def material_balances(self, time, conc, vol, temp):
-        if self.KinInstance.keq_params is None:
-            rate = self.KinInstance.get_rxn_rates(conc[self.mask_species],
-                                                  temp)
+        if self.Kinetics.keq_params is None:
+            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+                                               temp)
         else:
             deltah_rxn = self.Liquid_1.getHeatOfRxn(
-                self.KinInstance.stoich_matrix, temp, self.mask_species,
-                self.KinInstance.delta_hrxn, self.KinInstance.tref_hrxn)
+                self.Kinetics.stoich_matrix, temp, self.mask_species,
+                self.Kinetics.delta_hrxn, self.Kinetics.tref_hrxn)
 
-            rate = self.KinInstance.get_rxn_rates(conc[self.mask_species],
-                                                  temp,
-                                                  delta_hrxn=deltah_rxn)
+            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+                                               temp,
+                                               delta_hrxn=deltah_rxn)
 
         rates = np.zeros_like(conc)
         rates[self.mask_species] = rate
@@ -1024,11 +1043,11 @@ class SemibatchReactor(CSTR):
                 tht_init = self.ht_media.temp_in
                 states_init = np.append(states_init, tht_init)
 
-        merged_params = self.KinInstance.concat_params()
+        merged_params = self.Kinetics.concat_params()
         if eval_sens:
             pass
         else:
-            fobj = lambda time, states: self.unit_model(
+            def fobj(time, states): return self.unit_model(
                 time, states, merged_params)
 
             problem = Explicit_Problem(fobj, states_init,
@@ -1099,14 +1118,14 @@ class SemibatchReactor(CSTR):
 
 class PlugFlowReactor(_BaseReactor):
     def __init__(self, partic_species, diam_in, name_species=None,
-                 KinInstance=None, Phases=(), Inlet=None,
+                 mask_params=None, Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, adiabatic=False,
                  reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='bath'):
 
-        super().__init__(partic_species, name_species,
-                         KinInstance, Phases,
+        super().__init__(partic_species, name_species, mask_params,
+                         Kinetics, Phases,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
@@ -1130,18 +1149,18 @@ class PlugFlowReactor(_BaseReactor):
         self.names_states_in = self.names_states_out
 
     def material_steady(self, conc, temp):
-        if self.KinInstance.keq_params is None:
-            rate = self.KinInstance.get_rxn_rates(conc, temp)
+        if self.Kinetics.keq_params is None:
+            rate = self.Kinetics.get_rxn_rates(conc, temp)
         else:
             deltah_rxn = self.Liquid_1.getHeatOfRxn(
-                self.KinInstance.stoich_matrix,
+                self.Kinetics.stoich_matrix,
                 temp,
                 self.mask_species,
-                self.KinInstance.delta_hrxn,
-                self.KinInstance.tref_hrxn)
+                self.Kinetics.delta_hrxn,
+                self.Kinetics.tref_hrxn)
 
-            rate = self.KinInstance.get_rxn_rates(conc, temp,
-                                                  delta_hrxn=deltah_rxn)
+            rate = self.Kinetics.get_rxn_rates(conc, temp,
+                                               delta_hrxn=deltah_rxn)
 
         dconc_dv = rate / self.Inlet.vol_flow
 
@@ -1158,15 +1177,15 @@ class PlugFlowReactor(_BaseReactor):
         cp_vol = np.dot(cp_j, concentr) * 1000  # W/K
 
         # Heat of reaction
-        delta_href = self.KinInstance.delta_hrxn
-        stoich = self.KinInstance.stoich_matrix
-        tref_hrxn = self.KinInstance.tref_hrxn
+        delta_href = self.Kinetics.delta_hrxn
+        stoich = self.Kinetics.stoich_matrix
+        tref_hrxn = self.Kinetics.tref_hrxn
 
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rates = self.KinInstance.get_rxn_rates(conc, temp, overall_rates=False,
-                                               delta_hrxn=deltah_rxn)
+        rates = self.Kinetics.get_rxn_rates(conc, temp, overall_rates=False,
+                                            delta_hrxn=deltah_rxn)
 
         # ---------- Balance terms (W)
         source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
@@ -1264,9 +1283,9 @@ class PlugFlowReactor(_BaseReactor):
         cp_vol = inner1d(cp_j, conc) * 1000  # J/m**3/K
 
         # Heat of reaction
-        delta_href = self.KinInstance.delta_hrxn
-        stoich = self.KinInstance.stoich_matrix
-        tref_hrxn = self.KinInstance.tref_hrxn
+        delta_href = self.Kinetics.delta_hrxn
+        stoich = self.Kinetics.stoich_matrix
+        tref_hrxn = self.Kinetics.tref_hrxn
 
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
@@ -1337,23 +1356,23 @@ class PlugFlowReactor(_BaseReactor):
 
         # Reaction rates
         conc_partic = conc_all[:, self.mask_species]
-        if self.KinInstance.keq_params is None:
-            rates_i = self.KinInstance.get_rxn_rates(
+        if self.Kinetics.keq_params is None:
+            rates_i = self.Kinetics.get_rxn_rates(
                 conc_partic, temp_all, overall_rates=False)
         else:
             deltah_rxn = self.Liquid_1.getHeatOfRxn(
-                self.KinInstance.stoich_matrix,
+                self.Kinetics.stoich_matrix,
                 temp_all,
                 self.mask_species,
-                self.KinInstance.delta_hrxn,
-                self.KinInstance.tref_hrxn)
+                self.Kinetics.delta_hrxn,
+                self.Kinetics.tref_hrxn)
 
-            rates_i = self.KinInstance.get_rxn_rates(conc_partic,
-                                                     temp_all,
-                                                     delta_hrxn=deltah_rxn,
-                                                     overall_rates=False)
+            rates_i = self.Kinetics.get_rxn_rates(conc_partic,
+                                                  temp_all,
+                                                  delta_hrxn=deltah_rxn,
+                                                  overall_rates=False)
 
-        rates_j = np.dot(rates_i, self.KinInstance.normalized_stoich.T)
+        rates_j = np.dot(rates_i, self.Kinetics.normalized_stoich.T)
 
         material_bces = self.material_balances(time, conc_all, vol_diff,
                                                temp_all, flow_in, rates_j)
@@ -1414,12 +1433,14 @@ class PlugFlowReactor(_BaseReactor):
 
         else:
             conc = states
-            tempProf = np.ones((num_times, self.num_discr)) * self.Liquid_1.temp
+            tempProf = np.ones((num_times, self.num_discr)
+                               ) * self.Liquid_1.temp
 
         # Inputs
         inputs = self.get_inputs(time)
 
-        conc_inlet = np.ones((len(states), self.num_species)) * inputs['mole_conc']
+        conc_inlet = np.ones((len(states), self.num_species)
+                             ) * inputs['mole_conc']
 
         temp_inlet = np.ones(len(states)) * inputs['temp']
 
@@ -1528,7 +1549,7 @@ class PlugFlowReactor(_BaseReactor):
                     if ind_time == len(times) - 1:
 
                         ax[0].plot(self.vol_centers, conc_species, **color,
-                            alpha=alphas[ind_time], label=self.name_species[ind])
+                                   alpha=alphas[ind_time], label=self.name_species[ind])
 
                     else:
                         ax[0].plot(self.vol_centers, conc_species, **color,

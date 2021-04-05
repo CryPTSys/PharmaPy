@@ -156,6 +156,7 @@ class RxnKinetics:
                            for ind in range(1, num_orders + 1) ]
 
         self.name_params = name_k + name_e + name_orders
+        self.num_params = len(self.name_params)
 
     def concat_params(self):
 
@@ -464,7 +465,7 @@ class CrystKinetics:
 
         return params_parsed
 
-    def merge_params(self):
+    def concat_params(self):
         params = [np.array(vals) for vals in self.params.values()]
         params_conc = np.concatenate(params)
         return params_conc
@@ -515,7 +516,7 @@ class CrystKinetics:
                 # growth = growth * self.alpha_fn(conc)
 
                 if mom_3 is not None:
-                    mom_3 = mom_3 + eps
+                    # mom_3 = mom_3 + eps
                     nucl_sec = np.exp(phi_s) * sup_sat * absup**(par_s[2] - 1) * \
                         kv_cry**par_s[3] * max(0, mom_3)**par_s[3]
                 else:
