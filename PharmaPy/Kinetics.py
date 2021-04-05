@@ -156,6 +156,7 @@ class RxnKinetics:
                            for ind in range(1, num_orders + 1) ]
 
         self.name_params = name_k + name_e + name_orders
+        self.num_params = len(self.name_params)
 
     def concat_params(self):
 
