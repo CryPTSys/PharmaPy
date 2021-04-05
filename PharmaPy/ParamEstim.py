@@ -23,7 +23,7 @@ from PharmaPy.LevMarq import levenberg_marquardt
 from PharmaPy.Commons import plot_sens
 
 from itertools import cycle
-# from ipopt import minimize_ipopt
+from ipopt import minimize_ipopt
 
 linestyles = cycle(['-', '--', '-.', ':'])
 
@@ -143,7 +143,7 @@ class ParameterEstimation:
 
         self.num_xs = [len(xs) for xs in x_data]
         # self.num_data = [len(xs) * self.num_measured for xs in x_data]
-        self.num_data = [array.shape[0] * array.shape[1] for array in y_fit]
+        self.num_data = [array.size for array in y_fit]
         self.num_data_total = sum(self.num_data)
 
         self.x_data = x_data

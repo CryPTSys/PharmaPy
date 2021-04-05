@@ -53,7 +53,7 @@ class _BaseCryst:
 
     def __init__(self, mask_params,
                  method, target_ind, scale,
-                 isothermal, controls, adiabatic,
+                 isothermal, controls, params_control, adiabatic,
                  rad_zero,
                  reset_states, name_species,
                  u_ht, vol_ht, ht_media, basis, jac_type):
@@ -91,10 +91,10 @@ class _BaseCryst:
         # Controls
         if controls is None:
             self.controls = {}
+            self.params_control = ()
         else:
             self.controls = controls
-
-        self.params_control = None
+            self.params_control = params_control
 
         self.isothermal = isothermal
         if 'temp' in self.controls.keys():
@@ -573,12 +573,10 @@ class _BaseCryst:
 
         return problem
 
-    def solve_unit(self, runtime=None, time_grid=None, params_control=None,
+    def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
                    sundials_opts=None):
-
-        self.params_control = params_control
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
@@ -719,7 +717,8 @@ class _BaseCryst:
         self.elapsed_time = 0
 
         t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                               **kwargs_solve)
+                                               eval_sens=True,
+                                               verbose=False)
 
         sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
         if self.method == 'moments':
@@ -1148,13 +1147,15 @@ class _BaseCryst:
 class BatchCryst(_BaseCryst):
     def __init__(self, target_ind, mask_params=None,
                  method='1D-FVM', scale=1,
-                 isothermal=False, controls=None, adiabatic=False,
+                 isothermal=False, controls=None, params_control=None,
+                 adiabatic=False,
                  rad_zero=0, reset_states=False, name_species=None,
                  u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, adiabatic,
+                         scale, isothermal, controls, params_control,
+                         adiabatic,
                          rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
                          basis, jac_type)
@@ -1535,14 +1536,16 @@ class MSMPR(_BaseCryst):
     def __init__(self, target_ind,
                  mask_params=None,
                  method='1D-FVM', scale=1,
-                 isothermal=False, controls=None, adiabatic=False,
+                 isothermal=False, controls=None, params_control=None,
+                 adiabatic=False,
                  rad_zero=0, reset_states=False,
                  name_species=None,
                  u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, adiabatic, rad_zero,
+                         scale, isothermal, controls, params_control,
+                         adiabatic, rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
                          basis, jac_type)
         """ Construct a MSMPR object

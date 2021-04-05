@@ -273,8 +273,8 @@ class _BaseReactor:
             self.Liquid_1.concProf = self.concProf
             self.Liquid_1.timeProf = self.timeProf
 
-    def paramest_wrapper(self, params, t_vals, kwargs_solve={},
-                         modify_phase=None, reorder=True):
+    def paramest_wrapper(self, params, t_vals, modify_phase=None,
+                         reorder=True):
 
         evalsens = True
 
