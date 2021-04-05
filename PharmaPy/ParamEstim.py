@@ -296,7 +296,7 @@ class ParameterEstimation:
 
                 # MCR
                 conc_plus = np.linalg.pinv(conc_target)
-                absortivity_pred = np.dot(conc_plus, self.spectra)
+                absortivity_pred = np.dot(conc_plus, self.spectra[ind])
                 y_prof = np.dot(conc_target, absortivity_pred)
 
                 self.epsilon_mcr = absortivity_pred
