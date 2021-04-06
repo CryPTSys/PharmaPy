@@ -181,7 +181,7 @@ class Connection:
 
             if self.destination_uo.__class__.__name__ == 'DynamicCollector':
                 if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
-                    self.destination_uo.KinCryst = self.source_uo.KinInstance
+                    self.destination_uo.KinCryst = self.source_uo.Kinetics
                     self.destination_uo.kwargs_cryst = {
                         'target_ind': self.source_uo.target_ind,
                         'scale': self.source_uo.scale}

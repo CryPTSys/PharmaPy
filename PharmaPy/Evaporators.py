@@ -5,8 +5,8 @@ Created on Tue May 26 16:37:29 2020
 @author: dcasasor
 """
 
-from autograd import numpy as np
 import numpy as np
+from autograd import numpy as np
 from autograd import jacobian as jacauto
 from PharmaPy.Commons import mid_fn
 from PharmaPy.Streams import LiquidStream, VaporStream

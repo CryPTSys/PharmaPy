@@ -573,7 +573,7 @@ class DynamicCollector:
             SemiCryst = SemibatchCryst(method='1D-FVM', adiabatic=True,
                                        **self.kwargs_cryst)
             SemiCryst.Phases = phases
-            SemiCryst.KinInstance = self.KinCryst
+            SemiCryst.Kinetics = self.KinCryst
             SemiCryst.Inlet = self.Inlet
 
             SemiCryst.names_upstream = self.names_upstream

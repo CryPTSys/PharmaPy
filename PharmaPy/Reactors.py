@@ -1125,7 +1125,6 @@ class PlugFlowReactor(_BaseReactor):
                  u_ht=1000, ht_media=None, ht_mode='bath'):
 
         super().__init__(partic_species, name_species, mask_params,
-                         Kinetics, Phases,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
