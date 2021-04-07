@@ -17,6 +17,15 @@ environment structure allows us to have only the packages we need to do
 the analysis we need to do! If you want to use base, you may continue to step
 2 without doing steps 1 and 1.1.
 
+When user does not have a write permission to a required path, please direct the path of the directory
+
+step 1.1.1: Disclose the available enviornment directories.
+
+conda config -- show envs_dirs
+
+step 1.1.2: Create a path
+conda create --prefix <Directory address + /<env_name>>
+
 Step 2: Install the package requirements in requirements.txt
 
 conda install -c conda-forge --file requirements.txt
