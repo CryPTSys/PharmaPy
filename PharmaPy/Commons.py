@@ -64,8 +64,8 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
               time_div=1):
 
     num_plots = len(sensit)
-    num_cols = bool(num_plots // 2) + 1
-    num_rows = num_plots // 2 + num_plots % 2
+    num_cols = bool(num_plots // 2) + 2
+    num_rows = num_plots // num_cols + (num_plots % num_cols > 0)
 
     time_prof *= 1 / time_div
 
@@ -117,7 +117,7 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
 
     num_subplots = len(axes_sens.ravel())
     if num_subplots > num_plots:
-        fig_sens.delaxes(axes_sens.flatten()[-1])
+        [fig_sens.delaxes(ax) for ax in axes_sens.flatten()[num_plots:]]
 
     if mode == 'per_parameter':
         legend = [r'$' + name + r'$' for name in name_states]

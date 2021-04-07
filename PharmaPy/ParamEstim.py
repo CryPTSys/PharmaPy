@@ -141,7 +141,7 @@ class ParameterEstimation:
         self.num_states = self.y_orig[0].shape[1]
         self.num_measured = len(measured_ind)
 
-        self.num_xs = [len(xs) for xs in x_data]
+        self.num_xs = np.array([len(xs) for xs in x_data])
         # self.num_data = [len(xs) * self.num_measured for xs in x_data]
         self.num_data = [array.size for array in y_fit]
         self.num_data_total = sum(self.num_data)
@@ -597,9 +597,13 @@ class ParameterEstimation:
 
             seed_params = self.param_seed[self.map_variable]
             resid_seed = self.objective_fun(seed_params, residual_vec=True)
-            resid_seed = np.split(resid_seed, self.num_datasets)
+
+            idx_split = np.cumsum(self.num_measured * self.num_xs)[:-1]
+            resid_seed = np.split(resid_seed, idx_split)
 
             for ind in range(self.num_datasets):
+                x_exp = self.x_data[ind] / x_div
+
                 ymodel_seed = resid_seed[ind] + self.y_fit[ind]
                 ymodel_seed = ymodel_seed.reshape(-1, self.num_xs[ind])
 

@@ -10,7 +10,7 @@ from numpy import eye, inner, diag, asarray
 from numpy.linalg import solve, norm, inv
 
 
-def levenberg_marquardt(x, func, deriv, max_fun_eval=100,
+def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                         eps_1=1e-8, eps_2=1e-8, tol_fun=1e-12,
                         full_output=False,
                         lambd_zero=1e-2,
@@ -25,9 +25,11 @@ def levenberg_marquardt(x, func, deriv, max_fun_eval=100,
 
     a_matrix = inner(jac, jac)  # Hessian approximation
     b_vector = inner(jac, fun)  # gradient
-    d_diag = diag(diag(a_matrix))
+    if fletcher_modif:
+        d_diag = diag(diag(a_matrix))
+    else:
+        d_diag = eye(len(x))
 
-    ident = eye(len(x))
     mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
 
     num_feval = 0
@@ -43,8 +45,7 @@ def levenberg_marquardt(x, func, deriv, max_fun_eval=100,
 
     while num_feval < max_fun_eval:
 
-        lm_step = solve(a_matrix + mu*ident, -b_vector)
-        # lm_step = solve(a_matrix + mu*d_diag, -b_vector)
+        lm_step = solve(a_matrix + mu*d_diag, -b_vector)
 
         if norm(lm_step) < eps_2 * norm(x):
             reason = 'Small step'
