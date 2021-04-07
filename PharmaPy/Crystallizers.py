@@ -326,7 +326,7 @@ class _BaseCryst:
 
             # balance in kg_sol / m3_sln
             mass_transfer = rho_cry * kv_cry * (
-                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)**3
+                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
 
             # if growth > 0:
             #     print('Impurity factor: %.2f, growth: %.4e, dissol: %.4e'
