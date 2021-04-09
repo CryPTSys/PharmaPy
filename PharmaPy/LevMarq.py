@@ -68,7 +68,9 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
             a_matrix = inner(jac, jac)  # Hessian approximation
             b_vector = inner(jac, fun)
-            d_diag = diag(diag(a_matrix))
+
+            if fletcher_modif:
+                d_diag = diag(diag(a_matrix))
 
             num_iter += 1
 

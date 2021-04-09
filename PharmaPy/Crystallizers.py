@@ -723,7 +723,7 @@ class _BaseCryst:
         sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
         if self.method == 'moments':
             mu = states[:, :self.num_distr]
-            factor = (1e-3)**np.arange(self.num_distr)
+            factor = (1e-3)**np.arange(self.num_distr)  # convert to mm**n
 
             sens_mom = [elem * fact for elem, fact in zip(sens_sep, factor)]
             sens_sep = sens_mom + sens_sep[self.num_distr:]

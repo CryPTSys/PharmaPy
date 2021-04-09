@@ -701,13 +701,13 @@ class ThermoPhysicalManager:
         # Import data
         interac_path = os.path.abspath(
                 os.path.join(
-                    __file__, '../../../data/thermodynamics/unifac_interaction_params.csv'))
+                    __file__, '../data/thermodynamics/unifac_interaction_params.csv'))
 
         interac_data = pd.read_csv(interac_path, index_col=(0, 1))
 
         rq_path = os.path.abspath(
                 os.path.join(__file__,
-                             '../../../data/thermodynamics/unifac_rk_qk.csv'))
+                             '../data/thermodynamics/unifac_rk_qk.csv'))
         rk_qk = pd.read_csv(rq_path, index_col=(0, 1))
 
         # Create empty arrays
