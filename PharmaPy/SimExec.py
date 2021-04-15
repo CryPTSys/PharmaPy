@@ -8,7 +8,7 @@ Created on Mon Jan 13 12:44:44 2020
 import numpy as np
 import pandas as pd
 from PharmaPy.ThermoModule import ThermoPhysicalManager
-from PharmaPy.ParamEstim import ParameterEstimation
+from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
 from collections import OrderedDict
 import time
@@ -216,13 +216,25 @@ class SimulationExec:
         name_states = target_unit.states_uo
 
         # Instantiate parameter estimation
-        self.ParamInst = ParameterEstimation(
-            target_unit.paramest_wrapper,
-            param_seed, x_data, y_data, spectra, fit_spectra=fit_spectra,
-            args_fun=phase_modifiers, measured_ind=measured_ind,
-            optimize_flags=optimize_flags,
-            df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
-            name_params=name_params, name_states=name_states)
+        if fit_spectra:
+            print()
+            print('Mierda')
+            print()
+            self.ParamInst = MultipleCurveResolution(
+                target_unit.paramest_wrapper,
+                param_seed, x_data, spectra,
+                args_fun=phase_modifiers, measured_ind=measured_ind,
+                optimize_flags=optimize_flags,
+                df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
+                name_params=name_params, name_states=name_states)
+        else:
+            self.ParamInst = ParameterEstimation(
+                target_unit.paramest_wrapper,
+                param_seed, x_data, y_data,
+                args_fun=phase_modifiers, measured_ind=measured_ind,
+                optimize_flags=optimize_flags,
+                df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
+                name_params=name_params, name_states=name_states)
 
     def EstimateParams(self, optim_options=None, method='LM', bounds=None,
                        verbose=True):

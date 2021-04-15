@@ -87,6 +87,8 @@ class ParameterEstimation:
         self.df_dtheta = df_dtheta
         self.dx_fd = dx_finitediff
 
+        self.fit_spectra = False
+
         param_seed = np.asarray(param_seed)
         if param_seed.ndim == 0:
             param_seed = param_seed[np.newaxis]
@@ -245,7 +247,7 @@ class ParameterEstimation:
 
         return params_reconstr
 
-    def objective_fun(self, params, residual_vec=False):
+    def get_objective(self, params, residual_vec=False):
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
 
@@ -259,14 +261,8 @@ class ParameterEstimation:
         sens_runs = []
         for ind in range(self.num_datasets):
             # Solve
-            if self.fit_spectra:
-                kwarg_sens = {'reorder': False}
-            else:
-                kwarg_sens = {}
-
             result = self.function(params, self.x_data[ind],
-                                   *self.args_fun[ind],
-                                   **kwarg_sens)
+                                   *self.args_fun[ind])
 
             if type(result) is tuple:  # func also returns the jacobian
                 y_prof, sens = result
@@ -360,7 +356,7 @@ class ParameterEstimation:
 
             opt_par, inv_hessian, info = levenberg_marquardt(
                 params_var,
-                self.objective_fun,
+                self.get_objective,
                 self.get_gradient,
                 args=(True,),
                 **optim_options)
@@ -844,24 +840,25 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, conc_data=None, spectra=None,
+    def __init__(self, func, param_seed, time_data, spectra=None,
                  args_fun=None,
                  optimize_flags=None,
                  df_dtheta=None, df_dy=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
                  name_params=None, name_states=None):
 
-        super.__init__(func, param_seed, time_data, conc_data,
-                       args_fun, optimize_flags, df_dtheta, df_dy,
-                       dx_finitediff, measured_ind, covar_data,
-                       name_params, name_states)
+        super().__init__(func, param_seed, time_data, spectra,
+                         args_fun, optimize_flags, df_dtheta, df_dy,
+                         dx_finitediff, measured_ind, covar_data,
+                         name_params, name_states)
 
-        if not isinstance(y_fit, list):
-            spectra = [spectra]
-        
-        self.spectra = spectra
+        self.fit_spectra = True
+        self.spectra = self.y_orig
 
-    def objective_function(self, params):
+    def get_objective(self, params, residual_vec=False):
+        if type(self.params_iter) is list:
+            self.params_iter.append(params)
+
         def func_aux(params, x_vals, spectra, *args):
             states = self.function(params, x_vals, *args)
 
@@ -876,26 +873,27 @@ class MultipleCurveResolution(ParameterEstimation):
 
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_data[ind],
-                                   *self.args_fun[ind],
-                                   **kwarg_sens)
+                                   reorder=False,
+                                   *self.args_fun[ind])
 
             if isinstance(result, tuple):
-                y_prof, sens_states = result
+                conc_prof, sens_states = result
             else:
-                y_prof = result
+                conc_prof = result
                 sens_states = None
 
-            conc_target = y_prof[:, self.measured_ind]
+            conc_target = conc_prof[:, self.measured_ind]
 
             # MCR
             conc_plus = np.linalg.pinv(conc_target)
             absortivity_pred = np.dot(conc_plus, self.spectra[ind])
-            y_prof = np.dot(conc_target, absortivity_pred)
+            spectra_pred = np.dot(conc_target, absortivity_pred)
 
             self.epsilon_mcr = absortivity_pred
 
             if sens_states is None:
-                args_merged = [self.x_data[ind], self.args_fun[ind], self.spectra[ind]]
+                args_merged = [self.x_data[ind],
+                               self.args_fun[ind], self.spectra[ind]]
                 sens = numerical_jac_data(func_aux, params, args_merged,
                                           dx=self.dx_fd)[:, self.map_variable]
             else:
@@ -907,14 +905,17 @@ class MultipleCurveResolution(ParameterEstimation):
 
                 first_term = proj_orthogonal @ sens_pick @ conc_plus
                 second_term = first_term.transpose((0, 2, 1))
-                sens_an = (first_term + second_term) @ y_prof
+                sens_an = (first_term + second_term) @ spectra_pred
 
                 n_par, n_times, n_conc = sens_an.shape
                 sens = sens_an.T.reshape(n_conc * n_times, n_par)
 
-            y_runs.append(y_run)
+            resid = (spectra_pred - self.spectra[ind]).T.ravel()
+            resid_run = resid / self.stdev_data[ind]
+
+            y_runs.append(spectra_pred.T.ravel())
             resid_runs.append(resid_run)
-            sens_runs.append(sens_run)
+            sens_runs.append(sens)
 
         self.sens_runs = sens_runs
         self.y_runs = y_runs
@@ -983,4 +984,3 @@ if __name__ == '__main__':
         params_optim, covar, info = param_object.optimize_fn(
             optim_options=optim_options)
         param_object.plot_data_model()
-
