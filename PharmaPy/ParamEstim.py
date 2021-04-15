@@ -76,8 +76,8 @@ class ParameterEstimation:
         n_states x num_data experimental values for the dependent variable(s)
     """
 
-    def __init__(self, func, param_seed, x_data, y_data=None, spectra=None,
-                 fit_spectra=False, args_fun=None,
+    def __init__(self, func, param_seed, x_data, y_data=None,
+                 args_fun=None,
                  optimize_flags=None,
                  df_dtheta=None, df_dy=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
@@ -87,21 +87,12 @@ class ParameterEstimation:
         self.df_dtheta = df_dtheta
         self.dx_fd = dx_finitediff
 
-        self.spectra = spectra
-        self.fit_spectra = fit_spectra
-
         param_seed = np.asarray(param_seed)
         if param_seed.ndim == 0:
             param_seed = param_seed[np.newaxis]
 
         # --------------- Data
-        if fit_spectra:
-            y_fit = spectra
-        else:  # TODO check this
-            # if y_data.ndim == 1:
-            #     y_data = y_data[..., np.newaxis]
-
-            y_fit = y_data
+        y_fit = y_data
 
         # If one dataset, then put it in an one-element list
         if not isinstance(y_fit, list):
@@ -255,7 +246,6 @@ class ParameterEstimation:
         return params_reconstr
 
     def objective_fun(self, params, residual_vec=False):
-
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
 
@@ -278,53 +268,7 @@ class ParameterEstimation:
                                    *self.args_fun[ind],
                                    **kwarg_sens)
 
-            if self.fit_spectra:
-                if isinstance(result, tuple):
-                    y_prof, sens_states = result
-                else:
-                    y_prof = result
-
-                def func_aux(params, x_vals, *args):
-                    states = self.function(params, x_vals, *args)
-
-                    _, epsilon, absorbance = mcr_spectra(
-                        states[:, self.measured_ind], self.spectra)
-
-                    return absorbance.T.ravel()
-
-                conc_target = y_prof[:, self.measured_ind]
-
-                # MCR
-                conc_plus = np.linalg.pinv(conc_target)
-                absortivity_pred = np.dot(conc_plus, self.spectra[ind])
-                y_prof = np.dot(conc_target, absortivity_pred)
-
-                self.epsilon_mcr = absortivity_pred
-
-                sens_analytical = True
-
-                if sens_analytical:
-                    eye = np.eye(conc_target.shape[0])
-                    proj_orthogonal = eye - np.dot(conc_target, conc_plus)
-
-                    sens_pick = sens_states[self.map_variable][
-                        :, :, self.measured_ind]
-
-                    first_term = proj_orthogonal @ sens_pick @ conc_plus
-                    second_term = first_term.transpose((0, 2, 1))
-                    sens_an = (first_term + second_term) @ y_prof
-
-                    n_par, n_times, n_conc = sens_an.shape
-                    sens = sens_an.T.reshape(n_conc * n_times, n_par)
-
-                else:
-                    args_merged = [self.x_data[ind], self.args_fun[ind]]
-                    sens = numerical_jac_data(
-                        func_aux, params,
-                        args_merged,
-                        dx=self.dx_fd)[:, self.map_variable]
-
-            elif type(result) is tuple:  # func also returns the jacobian
+            if type(result) is tuple:  # func also returns the jacobian
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
@@ -338,7 +282,7 @@ class ParameterEstimation:
                     sens = self.df_dtheta(params, self.x_data[ind],
                                           *self.args_fun[ind])
 
-            if y_prof.ndim == 1 or self.fit_spectra:
+            if y_prof.ndim == 1:
                 y_run = y_prof
                 sens_run = sens
             else:
@@ -346,7 +290,6 @@ class ParameterEstimation:
                 sens_run = self.select_sens(sens, self.num_xs[ind])
 
             y_run = y_run.T.ravel()
-
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
 
             # Store
@@ -900,6 +843,98 @@ class Deconvolution:
         return fig, axis
 
 
+class MultipleCurveResolution(ParameterEstimation):
+    def __init__(self, func, param_seed, time_data, conc_data=None, spectra=None,
+                 args_fun=None,
+                 optimize_flags=None,
+                 df_dtheta=None, df_dy=None, dx_finitediff=None,
+                 measured_ind=None, covar_data=None,
+                 name_params=None, name_states=None):
+
+        super.__init__(func, param_seed, time_data, conc_data,
+                       args_fun, optimize_flags, df_dtheta, df_dy,
+                       dx_finitediff, measured_ind, covar_data,
+                       name_params, name_states)
+
+        if not isinstance(y_fit, list):
+            spectra = [spectra]
+        
+        self.spectra = spectra
+
+    def objective_function(self, params):
+        def func_aux(params, x_vals, spectra, *args):
+            states = self.function(params, x_vals, *args)
+
+            _, epsilon, absorbance = mcr_spectra(
+                states[:, self.measured_ind], spectra)
+
+            return absorbance.T.ravel()
+
+        y_runs = []
+        resid_runs = []
+        sens_runs = []
+
+        for ind in range(self.num_datasets):
+            result = self.function(params, self.x_data[ind],
+                                   *self.args_fun[ind],
+                                   **kwarg_sens)
+
+            if isinstance(result, tuple):
+                y_prof, sens_states = result
+            else:
+                y_prof = result
+                sens_states = None
+
+            conc_target = y_prof[:, self.measured_ind]
+
+            # MCR
+            conc_plus = np.linalg.pinv(conc_target)
+            absortivity_pred = np.dot(conc_plus, self.spectra[ind])
+            y_prof = np.dot(conc_target, absortivity_pred)
+
+            self.epsilon_mcr = absortivity_pred
+
+            if sens_states is None:
+                args_merged = [self.x_data[ind], self.args_fun[ind], self.spectra[ind]]
+                sens = numerical_jac_data(func_aux, params, args_merged,
+                                          dx=self.dx_fd)[:, self.map_variable]
+            else:
+                eye = np.eye(conc_target.shape[0])
+                proj_orthogonal = eye - np.dot(conc_target, conc_plus)
+
+                sens_pick = sens_states[self.map_variable][
+                    :, :, self.measured_ind]
+
+                first_term = proj_orthogonal @ sens_pick @ conc_plus
+                second_term = first_term.transpose((0, 2, 1))
+                sens_an = (first_term + second_term) @ y_prof
+
+                n_par, n_times, n_conc = sens_an.shape
+                sens = sens_an.T.reshape(n_conc * n_times, n_par)
+
+            y_runs.append(y_run)
+            resid_runs.append(resid_run)
+            sens_runs.append(sens_run)
+
+        self.sens_runs = sens_runs
+        self.y_runs = y_runs
+        self.resid_runs = resid_runs
+
+        if type(self.objfun_iter) is list:
+            objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            self.objfun_iter.append(objfun_val)
+
+        residuals = self.optimize_flag * np.concatenate(resid_runs)
+        self.residuals = residuals
+
+        # Return objective
+        if residual_vec:
+            return residuals
+        else:
+            residual = 1/2 * residuals.dot(residuals)
+            return residual
+
+
 if __name__ == '__main__':
     import englezos_example as englezos
 
@@ -948,3 +983,4 @@ if __name__ == '__main__':
         params_optim, covar, info = param_object.optimize_fn(
             optim_options=optim_options)
         param_object.plot_data_model()
+
