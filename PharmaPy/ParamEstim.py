@@ -99,7 +99,26 @@ class ParameterEstimation:
         # If one dataset, then put it in an one-element list
         if not isinstance(y_fit, list):
             y_fit = [y_fit]
-            x_data = [x_data]
+            if isinstance(x_data, list):  # different x vectors for a simulation
+                # This assumes that the longest x vector contains the lowest
+                # and highest time points, which is not necessarily true
+                lengths = [len(item) for item in x_data]
+
+                longest = np.argmax(lengths)
+                shorters = list(set(lengths).difference([longest]))
+
+                subset_flags = [set(x_data[ind]).issubset(x_data[longest])
+                                for ind in shorters]
+
+                if all(subset_flags):
+                    self.sample_points = [range(len(x_data[longest]))]
+                    self.common_x = [np.in1d(x_data[longest], x_data[ind])
+                                      for ind in shorters]
+                else:
+                    pass  # Interpolation
+            else:
+                self.sample_points = None
+                x_data = [x_data]
         elif not isinstance(x_data, list):
             x_data = [x_data] * len(y_fit)
 
@@ -285,7 +304,14 @@ class ParameterEstimation:
                 y_run = y_prof[:, self.measured_ind]
                 sens_run = self.select_sens(sens, self.num_xs[ind])
 
-            y_run = y_run.T.ravel()
+            if self.common_x is None:
+                y_run = y_run.T.ravel()
+            else:
+                y_run = [y_run[time_idx, ind] for ind, time_idx
+                         in enumerate(self.common_x)]
+
+                y_run = np.concatenate(y_run)
+
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
 
             # Store
