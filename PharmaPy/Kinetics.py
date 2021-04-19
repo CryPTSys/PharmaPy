@@ -14,6 +14,26 @@ gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
+def cryst_mechanism(sup_sat, temp, temp_ref, params):
+    phi_1, phi_2, exp = params
+    absup = max(eps, sup_sat)
+    pre_exp = np.exp(phi_1 + phi_2*(1/temp_ref - 1/temp))
+
+    kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
+
+    return kinetic_term
+
+
+def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry):
+    phi_1, phi_2, s_1, s_2 = params
+    absup = abs(sup_sat)
+    mom_3 = moms[3]
+    nucl_sec = np.exp(phi_1 + phi_2*(1/self.temp_ref - 1/temp)) * \
+        sup_sat * absup**(s_1 - 1) * kv_cry**s_1 * max(0, mom_3)**s_2
+
+    return nucl_sec
+
+
 class RxnKinetics:
 
     def __init__(self, stoich_matrix, k_params, ea_params,
@@ -373,13 +393,23 @@ class CrystKinetics:
 
     def __init__(self, coeff_solub,
                  b_params=None, s_params=None, g_params=None, d_params=None,
-                 rel_super=True, alpha_fn=None, temp_ref=298.15):
+                 rel_super=True, alpha_fn=None, temp_ref=298.15,
+                 secondary_fn=None):
 
         self.temp_ref = temp_ref
         self.rel_super = rel_super
 
+        self.custom_sec = False
+
+        if secondary_fn is None:
+            self.secondary_fn = secondary_nucleation
+        else:
+            self.secondary_fn = secondary_fn
+            self.custom_sec = True
+
         # ---------- Parameters
-        self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth', 'dissolution')
+        self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
+                                 'dissolution')
         params_all = [b_params, s_params, g_params, d_params]
 
         params_list = [item for item in params_all if item is not None]
@@ -406,6 +436,7 @@ class CrystKinetics:
         else:
             self.alpha_fn = alpha_fn
 
+
     def set_params(self, params_in):
         if all(isinstance(item, tuple) for item in params_in):
             params_dict = dict(zip(self.params_keys, params_in))
@@ -419,6 +450,7 @@ class CrystKinetics:
         self.params = params_complete
 
     def parse_params(self, param_dict, reparam=True):
+        self.params_sec = param_dict.get('nucl_sec')
         if reparam:
             zero_log = np.log(eps)
 
@@ -483,7 +515,7 @@ class CrystKinetics:
         return c_satur
 
     def get_kinetics(self, conc_target, temp, kv_cry,
-                     mom_3=None, nucl_sec_out=False):
+                     moments=None, nucl_sec_out=False):
 
         # Supersaturation
         conc_sat = self.get_solubility(temp)
@@ -492,43 +524,31 @@ class CrystKinetics:
         if self.rel_super:
             sup_sat = sup_sat / conc_sat
 
-        temp_abs = temp
-        tref = self.temp_ref
-
         par_p, par_s, par_g, par_d = self.params.values()
 
-        phi_p = par_p[0] + par_p[1]*(1/tref - 1/temp_abs)
-        phi_s = par_s[0] + par_s[1]*(1/tref - 1/temp_abs)
-        phi_g = par_g[0] + par_g[1]*(1/tref - 1/temp_abs)
-
-        phi_d = par_d[0] + par_d[1]*(1/tref - 1/temp_abs)
-
-        absup = np.abs(sup_sat)
+        if self.custom_sec:
+            args_sec = ()
+        else:
+            args_sec = (kv_cry, )
 
         if isinstance(sup_sat, float):
 
             if sup_sat >= 0:
-                absup = max(eps, absup)
-                nucl_prim = np.exp(phi_p) * sup_sat * absup**(par_p[2] - 1)
+                nucl_prim = cryst_mechanism(sup_sat, temp, self.temp_ref,
+                                            par_p)
 
-                growth = np.exp(phi_g) * sup_sat * absup**(par_g[2] - 1)
+                growth = cryst_mechanism(sup_sat, temp, self.temp_ref, par_g)
 
-                # growth = growth * self.alpha_fn(conc)
-
-                if mom_3 is not None:
-                    # mom_3 = mom_3 + eps
-                    nucl_sec = np.exp(phi_s) * sup_sat * absup**(par_s[2] - 1) * \
-                        kv_cry**par_s[3] * max(0, mom_3)**par_s[3]
-                else:
-                    nucl_sec = 0
-
+                nucl_sec = self.secondary_fn(sup_sat, moments, temp,
+                                             self.temp_ref, par_s,
+                                             *args_sec)
                 dissol = 0
             else:
                 growth = 0
                 nucl_prim = 0
                 nucl_sec = 0
 
-                dissol = np.exp(phi_d) * sup_sat * absup**(par_d[2] - 1)
+                dissol = cryst_mechanism(sup_sat, temp, self.temp_ref, par_d)
 
             # Returns
             self.prim_nucl = nucl_prim
@@ -537,27 +557,36 @@ class CrystKinetics:
             self.dissol = dissol  # um/s
 
         else:
+            # Divide positive and negative supersaturation periods
             positive_map = sup_sat > 0
-            sup_positive = absup[positive_map]
-            sup_negative = absup[~positive_map]
 
-            growth = np.zeros_like(sup_sat)
-            growth[positive_map] = np.exp(phi_g[positive_map]) * \
-                sup_positive**par_g[2]
+            sup_positive = sup_sat[positive_map]
+            sup_negative = sup_sat[~positive_map]
 
+            temp_positive = temp[positive_map]
+            temp_negative = temp[~positive_map]
+
+            # Primary nucleation
             nucl_prim = np.zeros_like(sup_sat)
-            nucl_prim[positive_map] = np.exp(phi_p[positive_map]) * \
-                sup_positive**par_p[2]
+            nucl_prim[positive_map] = cryst_mechanism(
+                sup_positive, temp_positive, self.temp_ref, par_p)
 
+            # Growth
+            growth = np.zeros_like(sup_sat)
+            growth[positive_map] = cryst_mechanism(
+                sup_positive, temp_positive, self.temp_ref, par_g)
+
+            # Secondary nucleation
             nucl_sec = np.zeros_like(sup_sat)
-            if mom_3 is not None:
-                mom_3 = mom_3[positive_map] + eps
-                nucl_sec = np.exp(phi_s[positive_map]) * sup_positive**par_s[2] * \
-                    kv_cry**par_s[3] * max(0, mom_3)**par_s[3]
+            moms_positive = moments[positive_map]
+            nucl_sec[positive_map] = self.secondary_fn(
+                sup_positive, moms_positive, temp_positive, self.temp_ref,
+                par_s, *args_sec)
 
+            # Dissolution
             dissol = np.zeros_like(sup_sat)
-            dissol[~positive_map] = np.exp(phi_d[~positive_map]) * \
-                sup_negative**par_d[2]
+            dissol[~positive_map] = cryst_mechanism(
+                sup_negative, temp_negative, self.temp_ref, par_d)
 
         if nucl_sec_out:
             return nucl_prim, nucl_sec, growth, dissol

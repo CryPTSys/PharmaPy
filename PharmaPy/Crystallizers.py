@@ -279,7 +279,8 @@ class _BaseCryst:
 
     def fvm_method(self, csd, moms, conc, temp, params, rho_cry,
                    output='dstates', vol=1):
-        mu_2, mu_3 = moms
+
+        mu_2 = moms[2]
 
         kv_cry = self.Solid_1.kv
 
@@ -292,7 +293,7 @@ class _BaseCryst:
             comp_kin = conc
 
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv_cry, mu_3)
+            comp_kin[self.target_ind], temp, kv_cry, moms[3])
 
         nucl = nucl * self.scale * vol
         impurity_factor = self.Kinetics.alpha_fn(conc)
@@ -418,9 +419,9 @@ class _BaseCryst:
             rhos = [rhos_susp, rhos_in]
 
         if self.method == 'moments':
-            moms = distr[[2, 3]] * (1e-6)**np.array([2, 3])
+            moms = distr * (1e-6)**np.array(len(distr))
         else:
-            moms = self.Solid_1.getMoments(distr / self.scale, mom_num=[2, 3])
+            moms = self.Solid_1.getMoments(distr / self.scale)
 
         # Balances
         material_bces, cryst_rate = self.material_balances(time, distr, w_conc,
