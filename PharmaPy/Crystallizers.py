@@ -293,7 +293,7 @@ class _BaseCryst:
             comp_kin = conc
 
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv_cry, moms[3])
+            comp_kin[self.target_ind], temp, kv_cry, moms)
 
         nucl = nucl * self.scale * vol
         impurity_factor = self.Kinetics.alpha_fn(conc)
@@ -1679,7 +1679,7 @@ class MSMPR(_BaseCryst):
             ddistr_dt, transf = self.fvm_method(distrib, moms, w_conc, temp,
                                                 params, rho_sol)
 
-            self.Solid_1.moments[[2, 3]] = moms
+            self.Solid_1.moments[[2, 3]] = moms[[2, 3]]
 
         # ---------- Add flow terms
         # Distribution
@@ -1689,7 +1689,7 @@ class MSMPR(_BaseCryst):
         ddistr_dt = ddistr_dt + flow_distrib
 
         # Liquid phase
-        phi = 1 - self.Solid_1.kv * moms[1]
+        phi = 1 - self.Solid_1.kv * moms[3]
 
         c_tank = w_conc
 
@@ -1714,7 +1714,7 @@ class MSMPR(_BaseCryst):
         input_temp = u_inputs['temp']
 
         # Thermodynamic properties (basis: slurry volume)
-        phi_liq = 1 - self.Solid_1.kv * moms[1]
+        phi_liq = 1 - self.Solid_1.kv * moms[3]
 
         phis = [phi_liq, 1 - phi_liq]
         h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
@@ -1929,7 +1929,7 @@ class SemibatchCryst(MSMPR):
         input_distrib = u_inputs['num_distrib'] * self.scale
         input_conc = u_inputs['mass_conc']
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_slurry = vol_liq + vol_solid
 
         self.Liquid_1.updatePhase(mass_conc=w_conc)
@@ -1976,7 +1976,7 @@ class SemibatchCryst(MSMPR):
         # Input properties
         input_flow = u_inputs['vol_flow']
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol_liq + vol_solid
 
         phi = vol_liq / vol_total
