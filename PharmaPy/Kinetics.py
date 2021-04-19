@@ -370,6 +370,35 @@ class RxnKinetics:
 
 
 class CrystKinetics:
+    """ Specify a kinetics crystallization kinetics object
+
+        Parameters
+        ----------
+        coeff_solub : array-like
+            coefficients for a temperature-dependent solubility (S) polynomial
+            of the form S = A + B*T + C*T^2...
+        b_params : array-like (3 elements)
+            primary nucleation coefficients, with the result given in
+            number of particles per second
+        s_params : array-like (4 elements) (optional)
+            secondary nucleation coefficients, with the result given in
+            number of particles per second
+        g_params : array-like (dimension 3) (optional)
+            nucleation parameters, with the result given in um/s
+        d_params : array_like (dimension 3) (optional)
+            dissolution parameters, with the result given in um/s
+        rel_super : bool (optional, default True)
+            if True, relative supersaturation is used for computing the kinetic
+            mechanism
+        alpha_fn : callable (optional)
+            function that receives the vector of liquid phase compositions
+            and calculates the growth inhibition term, returning a float
+            between 0 and 1
+
+        Returns
+        -------
+
+    """
 
     def __init__(self, coeff_solub,
                  b_params=None, s_params=None, g_params=None, d_params=None,
@@ -379,7 +408,9 @@ class CrystKinetics:
         self.rel_super = rel_super
 
         # ---------- Parameters
-        self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth', 'dissolution')
+        self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
+                                 'dissolution')
+
         params_all = [b_params, s_params, g_params, d_params]
 
         params_list = [item for item in params_all if item is not None]

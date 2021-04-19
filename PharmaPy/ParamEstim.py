@@ -394,7 +394,7 @@ class ParameterEstimation:
             else:
                 optim_options['print_level'] = int(verbose) * 5
 
-            result = minimize_ipopt(self.objective_fun, params_var,
+            result = minimize_ipopt(self.get_objective, params_var,
                                     jac=self.get_gradient,
                                     bounds=bounds, options=optim_options)
 
