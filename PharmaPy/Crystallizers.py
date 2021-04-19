@@ -278,7 +278,8 @@ class _BaseCryst:
 
     def fvm_method(self, csd, moms, conc, temp, params, rho_cry,
                    output='dstates', vol=1):
-        mu_2, mu_3 = moms
+
+        mu_2 = moms[2]
 
         kv_cry = self.Solid_1.kv
 
@@ -291,7 +292,7 @@ class _BaseCryst:
             comp_kin = conc
 
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv_cry, mu_3)
+            comp_kin[self.target_ind], temp, kv_cry, moms)
 
         nucl = nucl * self.scale * vol
         impurity_factor = self.Kinetics.alpha_fn(conc)
@@ -325,7 +326,7 @@ class _BaseCryst:
 
             # balance in kg_sol / m3_sln
             mass_transfer = rho_cry * kv_cry * (
-                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)**3
+                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
 
             # if growth > 0:
             #     print('Impurity factor: %.2f, growth: %.4e, dissol: %.4e'
@@ -417,9 +418,9 @@ class _BaseCryst:
             rhos = [rhos_susp, rhos_in]
 
         if self.method == 'moments':
-            moms = distr[[2, 3]] * (1e-6)**np.array([2, 3])
+            moms = distr * (1e-6)**np.array(len(distr))
         else:
-            moms = self.Solid_1.getMoments(distr / self.scale, mom_num=[2, 3])
+            moms = self.Solid_1.getMoments(distr / self.scale)
 
         # Balances
         material_bces, cryst_rate = self.material_balances(time, distr, w_conc,
@@ -1677,7 +1678,7 @@ class MSMPR(_BaseCryst):
             ddistr_dt, transf = self.fvm_method(distrib, moms, w_conc, temp,
                                                 params, rho_sol)
 
-            self.Solid_1.moments[[2, 3]] = moms
+            self.Solid_1.moments[[2, 3]] = moms[[2, 3]]
 
         # ---------- Add flow terms
         # Distribution
@@ -1687,7 +1688,7 @@ class MSMPR(_BaseCryst):
         ddistr_dt = ddistr_dt + flow_distrib
 
         # Liquid phase
-        phi = 1 - self.Solid_1.kv * moms[1]
+        phi = 1 - self.Solid_1.kv * moms[3]
 
         c_tank = w_conc
 
@@ -1712,7 +1713,7 @@ class MSMPR(_BaseCryst):
         input_temp = u_inputs['temp']
 
         # Thermodynamic properties (basis: slurry volume)
-        phi_liq = 1 - self.Solid_1.kv * moms[1]
+        phi_liq = 1 - self.Solid_1.kv * moms[3]
 
         phis = [phi_liq, 1 - phi_liq]
         h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
@@ -1927,7 +1928,7 @@ class SemibatchCryst(MSMPR):
         input_distrib = u_inputs['num_distrib'] * self.scale
         input_conc = u_inputs['mass_conc']
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_slurry = vol_liq + vol_solid
 
         self.Liquid_1.updatePhase(mass_conc=w_conc)
@@ -1974,7 +1975,7 @@ class SemibatchCryst(MSMPR):
         # Input properties
         input_flow = u_inputs['vol_flow']
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol_liq + vol_solid
 
         phi = vol_liq / vol_total
