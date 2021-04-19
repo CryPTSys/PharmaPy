@@ -687,6 +687,17 @@ class VaporPhase(ThermoPhysicalManager):
                                          phase='vapor')
 
         return viscosity
+    
+    def getDensity(self, pres_gas=None, temp_gas=None, phase ='gas', basis='mole'):
+        
+        if pres_gas is None and temp is None:
+        
+            pres_gas = self.pres_gas
+            temp_gas = self.temp
+            
+        densGas = pres_gas/ (8.314 * temp_gas) 
+            
+        return densGas
 
 
 class SolidPhase(ThermoPhysicalManager):
@@ -841,6 +852,8 @@ class SolidPhase(ThermoPhysicalManager):
                                        temp=temp, basis=basis)
 
         return densSolid
+    
+
 
     def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
         if distrib is None:

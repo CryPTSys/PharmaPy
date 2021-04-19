@@ -46,6 +46,7 @@ class Drying:
 
         self._Phases = None
         self._Inlet = None
+        self.porosity = 0.35
 
     @property
     def Phases(self):
@@ -111,10 +112,13 @@ class Drying:
 
         # Drying periods
         dry_correction = 1
+        
+        # Limiter factor
+        Lim_factor = 0.1
 
         y_volat = y_gas[:, self.idx_volatiles]
         dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat) * \
-            dry_correction * 0.001
+            dry_correction * Lim_factor
 
         dry_rates = np.zeros_like(y_gas)
         dry_rates[:, self.idx_volatiles] = dry_volatiles
@@ -167,7 +171,7 @@ class Drying:
         return model_eqns.ravel()
 
     def material_balance(self, time, satur, temp_gas, temp_sol, y_gas, x_liq,
-                         u_gas, dens_gas, dry_rate, inputs):
+                         u_gas, dens_gas, dry_rate, inputs, return_terms=False):
 
         # ----- Reading inputs
         y_gas_inputs = inputs['mole_frac']
@@ -193,11 +197,17 @@ class Drying:
         transfer_gas = dry_rate.T / epsilon_gas / dens_gas
 
         dygas_dt = -u_gas * dygas_dz + transfer_gas
-
-        return [dsat_dt, dygas_dt.T, dxliq_dt.T]
+        
+        if return_terms:    # TODO: check term by term in material balance down this line
+            self.masstrans_comp = 1
+            
+            return self.masstrans_comp
+            
+        else:
+            return [dsat_dt, dygas_dt.T, dxliq_dt.T]
 
     def energy_balance(self, time, temp_gas, temp_sol, satur, y_gas, x_liq,
-                       u_gas, rho_gas, dry_rate, inputs):
+                       u_gas, rho_gas, dry_rate, inputs, return_terms=False):
 
         # ----- Reading inputs
         temp_gas_inputs = inputs['temp']
@@ -211,6 +221,7 @@ class Drying:
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
+        heat_loss = 14626.86 * (temp_gas - 295) 
 
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
@@ -218,7 +229,11 @@ class Drying:
         fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
         dTg_dz = np.diff(fluxes_Tg) / self.dz
 
-        dTg_dt = -u_gas * dTg_dz + (drying_terms - heat_transf) / denom_gas
+        dTg_dt = -u_gas * dTg_dz + (drying_terms - heat_transf - heat_loss) / denom_gas
+        
+        # Empty port
+        #dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
+        
         # print(dTg_dt[0])
 
         # ----- Condensed phases equations
@@ -239,8 +254,19 @@ class Drying:
                              latent_heat).sum(axis=1)
 
         dTcond_dt = (-drying_terms_cond + heat_transf) / denom_cond
-
-        return [dTg_dt, dTcond_dt]
+        
+        
+        if return_terms:
+            self.convec_term = u_gas * dTg_dz
+            self.drying = drying_terms/ denom_gas
+            self.heat_cond = heat_transf/ denom_gas
+            self.heat_loss_emp = heat_loss/ denom_gas
+            
+            return self.convec_term, self.drying, self.heat_cond, self.heat_loss_emp
+        
+        else:
+            
+            return [dTg_dt, dTcond_dt]
 
     def solve_unit(self, deltaP, runtime, p_atm=101325):
 

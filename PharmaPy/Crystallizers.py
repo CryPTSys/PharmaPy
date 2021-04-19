@@ -50,7 +50,6 @@ gas_ct = 8.314  # J/mol/K
 class _BaseCryst:
     np = np
     # @decor_states
-
     def __init__(self, mask_params,
                  method, target_ind, scale,
                  isothermal, controls, params_control, adiabatic,
