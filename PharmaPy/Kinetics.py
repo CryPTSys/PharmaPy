@@ -422,7 +422,7 @@ class CrystKinetics:
 
     """
 
-    def __init__(self, coeff_solub,
+    def __init__(self, coeff_solub, solubility_type='polynomial',
                  b_params=None, s_params=None, g_params=None, d_params=None,
                  rel_super=True, alpha_fn=None, temp_ref=298.15,
                  secondary_fn=None):
@@ -454,6 +454,7 @@ class CrystKinetics:
         self.set_params(params_list)  # create self.params
 
         self.coeff_solub = np.asarray(coeff_solub)
+        self.solub_type = solubility_type
 
         self.name_params = ('k_{bp}', 'E_{bp}', 'b',
                             'k_{bs}', 'E_{bs}', 's_1', 's_2',
@@ -535,14 +536,22 @@ class CrystKinetics:
         return params_conc
 
     def get_solubility(self, temp):
-        int_coeff = np.arange(len(self.coeff_solub))
+        if self.solub_type == 'polynomial':
+            int_coeff = np.arange(len(self.coeff_solub))
 
-        temp = np.asarray(temp)
-        if temp.ndim == 0:
-            c_satur = (temp**int_coeff * self.coeff_solub).sum()
+            temp = np.asarray(temp)
+            if temp.ndim == 0:
+                c_satur = (temp**int_coeff * self.coeff_solub).sum()
+            else:
+                temp = temp[..., np.newaxis]
+                c_satur = (temp**int_coeff * self.coeff_solub).sum(axis=1)
+
+        elif self.solub_type == 'apelblat':
+            a1, a2, a3 = self.coeff_solub
+            c_satur = np.exp(a1 + a2/temp + a3*np.log(temp))
         else:
-            temp = temp[..., np.newaxis]
-            c_satur = (temp**int_coeff * self.coeff_solub).sum(axis=1)
+            raise NameError("Bad 'solub_type' name. It must be either "
+                            "'polynomial' or 'apelblat")
 
         return c_satur
 
