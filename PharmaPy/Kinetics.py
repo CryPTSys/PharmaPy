@@ -64,10 +64,14 @@ class RxnKinetics:
             model. It must be a dictionary with the following structure:
                 {'k_vals': (phi_1, phi_2, ...), 'E_vals': (Ea_1, Ea_2, ...)}
             The keys must be as shown
-        rxn_orders : list
+        params_f : array-like
             parameters for the concentration-dependent term in the kinetic
-            model. If not given, the reaction orders are set to the stoichio-
-            metric coefficients
+            model. If no custom model is provided through the 'kinetic_model'
+            argument, then params_f are interpreted as the reaction orders of
+            an built-in elementary reaction kinetic model.
+            The params_f argument is optional only if no custom model is provided.
+            If not given, the reaction orders are set to the stoichiometric
+            coefficients.
 
 
         """
@@ -89,35 +93,60 @@ class RxnKinetics:
             self.df_dstates = df_dstates
             self.df_dthetaf = df_dtheta
 
+        # Stoichiometry
+        stoich_matrix = np.atleast_2d(stoich_matrix)
+        self.num_rxns, self.num_species = stoich_matrix.shape
+
+        # Normalize stoichiometric coefficients
+        first_negative = (stoich_matrix < 0).argmax(axis=1)
+        ref_stoich = np.zeros(self.num_rxns)
+
+        for ind in range(self.num_rxns):
+            ref_stoich[ind] = stoich_matrix[ind, first_negative[ind]]
+
+        self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
+        self.stoich_matrix = stoich_matrix
+
         # ---------- Parameters
         self.reparam_center = reparam_center
 
-        self.k_params = np.atleast_1d(k_params)
-        self.ea_params = np.atleast_1d(ea_params)
+        k_params = np.atleast_1d(k_params) + eps
+        ea_params = np.atleast_1d(ea_params) + eps
 
+        self.transform_params(stoich_matrix, k_params, ea_params)
 
         # Note: self.rxn_orders also includes the 'orders' for products
-        # self.num_paramsk = len(self.k_params)
-        self.num_paramsk = len(self.k_params) + len(self.ea_params)
+        self.num_paramsk = len(k_params) + len(ea_params)
 
-        if params_f is None:
-            # self.params_concat = params_k.T.flatten()
-            self.rxn_orders = None
+        self.fit_paramsf = True
+        if self.elem_flag:
+            if params_f is None:
+                is_reactant = stoich_matrix < 0
+                orders = abs(is_reactant * stoich_matrix)
+                self.fit_paramsf = False
+            else:
+                orders = self.rxn_orders
 
-        elif self.elem_flag:
-            params_f = np.asarray(params_f)
-            if params_f.ndim == 1:
-                params_f = params_f[np.newaxis, ...]
+            if orders.ndim == 1:
+                orders = orders[np.newaxis, ...]
 
-            self.rxn_orders = params_f
+            params_f = orders
+
+        else:
+            if params_f is None:
+                raise RuntimeError("For user-defined kinetic function, "
+                                   "argument 'params_f' is mandatory.")
 
         self.params_f = params_f
         self.order_map = stoich_matrix < 0
 
-        # Reparametrizations
-        self.phi_1 = None
-        self.phi_2 = None
+        # # Reparametrizations
+        # self.phi_1 = None
+        # self.phi_2 = None
 
+        self.nomenclature(stoich_matrix, k_params)
+
+        # Equilibrium kinetics
         if keq_params is None:
             self.keq_params = keq_params
         else:
@@ -134,26 +163,40 @@ class RxnKinetics:
             else:
                 self.tref_hrxn = tref_hrxn
 
-        self.set_stoichiometry(stoich_matrix)
-
         # Outputs
         self.rxn_rates = None
         self.time_profile = None
         self.conc_profile = None
         self.sensitivities = None
 
-    def set_stoichiometry(self, stoich_matrix):
-
-        stoich_matrix = np.atleast_2d(stoich_matrix)
-        self.num_rxns, self.num_species = stoich_matrix.shape
-
+    def transform_params(self, stoich_matrix, kvals, evals):
         # Transform parameters
-        kvals = np.atleast_1d(self.k_params)
-        evals = np.atleast_1d(self.ea_params)
 
         ea_term = evals/gas_ct/self.temp_ref * self.reparam_center
         self.phi_1 = np.log(kvals) - ea_term
         self.phi_2 = np.log(evals/gas_ct)
+
+    def nomenclature(self, stoich_matrix, kvals):
+
+        # Names
+        num_kpar = len(kvals)
+        name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
+        name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
+
+        if self.fit_paramsf:
+            num_orders = (stoich_matrix < 0).sum()
+            name_orders = [r'\alpha_{}'.format(ind)
+                           for ind in range(1, num_orders + 1)]
+        else:
+            name_orders = []
+
+        self.name_params = name_k + name_e + name_orders
+        self.num_params = len(self.name_params)
+
+    def set_stoichiometry(self, stoich_matrix):
+
+        stoich_matrix = np.atleast_2d(stoich_matrix)
+        self.num_rxns, self.num_species = stoich_matrix.shape
 
         # Normalize stoichiometric coefficients
         first_negative = (stoich_matrix < 0).argmax(axis=1)
@@ -165,30 +208,16 @@ class RxnKinetics:
         self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
         self.stoich_matrix = stoich_matrix
 
-        # Names
-        num_kpar = len(kvals)
-        name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
-        name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
-
-        if self.params_f is None:
-            name_orders = []
-        else:
-            num_orders = (stoich_matrix < 0).sum()
-            name_orders = [r'\alpha_{}'.format(ind)
-                           for ind in range(1, num_orders + 1) ]
-
-        self.name_params = name_k + name_e + name_orders
-        self.num_params = len(self.name_params)
-
     def concat_params(self):
 
         params_k_conc = np.concatenate((self.phi_1, self.phi_2))
         if self.elem_flag:
-            if self.params_f is None:  # rxn orders are fixed
-                params_concat = params_k_conc
-            else:
+            if self.fit_paramsf:  # rxn orders not fixed
                 orders = self.params_f[self.order_map]
                 params_concat = np.concatenate((params_k_conc, orders))
+
+            else:  # rxn orders are fixed
+                params_concat = params_k_conc
 
         else:
             params_concat = np.concatenate((params_k_conc, self.params_f))
@@ -202,11 +231,11 @@ class RxnKinetics:
 
         if self.elem_flag:
             # Reorganize rxn orders into a stoich_matrix-like structure
-            if self.params_f is not None:
-                self.rxn_orders = np.zeros_like(self.stoich_matrix,
-                                                dtype=np.float64)
+            if self.fit_paramsf:
+                self.params_f = np.zeros_like(self.stoich_matrix,
+                                              dtype=np.float64)
 
-                self.rxn_orders[self.order_map] = params[self.num_paramsk:]
+                self.params_f[self.order_map] = params[self.num_paramsk:]
 
     def temp_term(self, temp):
 
@@ -245,7 +274,7 @@ class RxnKinetics:
 
         return np.atleast_2d(drate_dk)
 
-    def elem_f_model(self, conc):
+    def elem_f_model(self, conc, rxn_orders):
         """ Compute elementary reaction rates for each participating reaction
 
         Parameters
@@ -269,22 +298,16 @@ class RxnKinetics:
         conc = np.asarray(conc)
         n_conc = len(conc)
 
-        if self.rxn_orders is None:
-            orders = abs(is_reactant * self.stoich_matrix)
-            self.rxn_orders = orders
-        else:
-            orders = self.rxn_orders
-
         # Compute elementary reaction rate
         conc = np.abs(conc)
         if conc.ndim == 1:
             f_term = np.zeros(self.num_rxns)
             for ind in range(self.num_rxns):
-                f_term[ind] = np.prod(conc**(orders[ind]))
+                f_term[ind] = np.prod(conc**(rxn_orders[ind]))
         else:  # vectorized
             f_term = np.zeros((n_conc, self.num_rxns))
             for ind in range(self.num_rxns):
-                f_term[:, ind] = np.prod(conc**(orders[ind]), axis=1)
+                f_term[:, ind] = np.prod(conc**(rxn_orders[ind]), axis=1)
 
         return f_term
 
@@ -299,7 +322,7 @@ class RxnKinetics:
         keq_temp[keq_temp == 0] = 1e20
 
         # Forward term
-        f_term = self.elem_f_model(conc)
+        f_term = self.elem_f_model(conc, self.params_f)
 
         # Backward term
         if conc.ndim == 1:
@@ -317,15 +340,15 @@ class RxnKinetics:
 
     def elem_df_dstates(self, conc):
 
-        f_term = self.elem_f_model(conc)
+        f_term = self.elem_f_model(conc, self.params_f)
 
-        df_dconc = f_term[..., np.newaxis] * self.rxn_orders / (conc + eps)
+        df_dconc = f_term[..., np.newaxis] * self.params_f / (conc + eps)
 
         return df_dconc
 
     def elem_df_dtheta(self, conc):
 
-        f_term = self.elem_f_model(conc)
+        f_term = self.elem_f_model(conc, self.params_f)
 
         conc_correc = np.maximum(np.ones_like(conc) * 1e-20, conc)
 
@@ -342,7 +365,7 @@ class RxnKinetics:
 
     def derivatives(self, conc, temp, dstates=True):
         temp_terms = self.temp_term(temp)
-        f_terms = self.kinetic_model(conc, *self.args_kin)
+        f_terms = self.kinetic_model(conc, self.params_f, *self.args_kin)
 
         if dstates:  # --------------- wrt states
             df_dstates = self.df_dstates(conc, *self.args_kin)
@@ -353,13 +376,14 @@ class RxnKinetics:
             dk_dphi = self.dk_dkparams(temp).T
             dr_dthetak = (dk_dphi * f_terms).T
 
-            if self.params_f is None:
-                dr_dparams = dr_dthetak
-            else:
+            if self.fit_paramsf:
                 dr_dthetaf = self.df_dthetaf(
                         conc, *self.args_kin) * temp_terms
 
                 dr_dparams = np.hstack((dr_dthetak, dr_dthetaf))
+
+            else:
+                dr_dparams = dr_dthetak
 
             jac_params = np.dot(self.normalized_stoich, dr_dparams)
 
@@ -379,7 +403,8 @@ class RxnKinetics:
             temp_terms = self.temp_term(temp)
 
             if self.keq_params is None:
-                f_terms = self.kinetic_model(conc, *self.args_kin)
+                f_terms = self.kinetic_model(conc, self.params_f,
+                                             *self.args_kin)
             else:
                 f_terms = self.equilibrium_model(conc, temp, delta_hrxn)
 

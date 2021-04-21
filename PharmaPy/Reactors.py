@@ -589,7 +589,7 @@ class BatchReactor(_BaseReactor):
 
             problem = Explicit_Problem(fobj, states_init,
                                        t0=self.elapsed_time)
-            if self.isothermal:
+            if self.isothermal and self.Kinetics.df_dstates is not None:
                 problem.jac = lambda time, states: self.get_jacobians(
                     time, states, 0, merged_params)
 
@@ -647,9 +647,9 @@ class BatchReactor(_BaseReactor):
                 tht_prof = None
 
         # Heat profile
-        self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
-                                              tht_prof, None,
-                                              heat_prof=True)
+        # self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
+        #                                       tht_prof, None,
+        #                                       heat_prof=True)
 
         self.tempProf.append(temp_prof)
         self.concProf.append(conc_prof)
@@ -684,7 +684,6 @@ class CSTR(_BaseReactor):
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
 
         super().__init__(partic_species, name_species, mask_params,
-                         Kinetics, Phases,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
