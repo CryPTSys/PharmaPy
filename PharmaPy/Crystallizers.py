@@ -258,7 +258,8 @@ class _BaseCryst:
 
         # Kinetic terms
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv, mu[3]*(1e-6)**3)
+            comp_kin[self.target_ind], temp, kv,
+            mu*(1e-6)**np.arange(self.num_distr))
 
         growth = growth * self.Kinetics.alpha_fn(conc)
 

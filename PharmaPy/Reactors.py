@@ -647,9 +647,9 @@ class BatchReactor(_BaseReactor):
                 tht_prof = None
 
         # Heat profile
-        # self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
-        #                                       tht_prof, None,
-        #                                       heat_prof=True)
+        self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
+                                              tht_prof, None,
+                                              heat_prof=True)
 
         self.tempProf.append(temp_prof)
         self.concProf.append(conc_prof)

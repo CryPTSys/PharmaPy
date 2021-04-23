@@ -447,10 +447,10 @@ class CrystKinetics:
 
     """
 
-    def __init__(self, coeff_solub, solubility_type='polynomial',
+    def __init__(self, coeff_solub,
                  b_params=None, s_params=None, g_params=None, d_params=None,
-                 rel_super=True, alpha_fn=None, temp_ref=298.15,
-                 secondary_fn=None):
+                 solubility_type='polynomial', rel_super=True, alpha_fn=None,
+                 temp_ref=298.15, secondary_fn=None):
 
         self.temp_ref = temp_ref
         self.rel_super = rel_super
