@@ -101,19 +101,37 @@ class ParameterEstimation:
         self.y_data = y_data
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):
-            pass
+
+            keys_x = x_data.keys()
+            keys_y = y_data.keys()
+
+            if keys_x == keys_y:
+                keys_dict = keys_x
+            else:
+                raise NameError("Keys of the x_data and y_data dictionaries "
+                                "don't match")
+
+            x_fit = []
+            y_fit = []
+            for key in keys_dict:
+                x_vals, y_vals = self.interpret_data(x_data[key], y_data[key])
+
+                x_fit.append(x_vals)
+                y_fit.append(y_vals)
         else:
             x_fit, y_fit = self.interpret_data(x_data, y_data)
 
-            self.x_fit = x_fit
-            self.y_fit = y_fit
-            # self.args_fun = [args_fun]
+            x_fit = [x_fit]
+            y_fit = [y_fit]
+
+        self.x_fit = x_fit
+        self.y_fit = y_fit
 
         # Covariance
         if (covar_data is not None) and (type(covar_data) is not list):
             covar_data = [covar_data]
 
-        self.num_datasets = len(y_fit)
+        self.num_datasets = len(self.y_fit)
 
         # Arguments
         if args_fun is None:
@@ -132,8 +150,8 @@ class ParameterEstimation:
         # Count dimensions
         self.num_measured = len(measured_ind)
 
-        self.num_xs = np.array([len(xs) for xs in x_fit])
-        self.num_data = [array.size for array in y_fit]
+        self.num_xs = np.array([len(xs) for xs in self.x_fit])
+        self.num_data = [array.size for array in self.y_fit]
         self.num_data_total = sum(self.num_data)
 
         self.x_data = x_data
@@ -213,25 +231,22 @@ class ParameterEstimation:
             self.x_match = [np.isin(x_fit, array) for array in x_data]
             self.num_states = len(y_data)
 
-            x_fit = [x_fit]
-            y_fit = [np.concatenate(y_data)]
+            x_fit = x_fit
+            y_fit = np.concatenate(y_data)
 
         else:  # unique dataset, one simulation
-            x_fit = [x_data]
+            x_fit = x_data
 
             if y_data.ndim == 1:
                 y_data = y_data[..., np.newaxis]
 
-            y_data = [y_data.T]
+            y_data = y_data.T
             # args_fun = (args_fun, )
 
         if self.x_match is None:
-            y_fit = []
-            for data in y_data:
-                data[data == 0] = eps
-                y_fit.append(data.ravel())
+            y_fit = y_data.flatten()
         else:
-            y_fit = [np.concatenate(y_data)]
+            y_fit = np.concatenate(y_data)
 
         return x_fit, y_fit
 
@@ -261,8 +276,13 @@ class ParameterEstimation:
     def select_sens(self, sens_ordered, num_xs, times=None):
         parts = np.vsplit(sens_ordered, len(sens_ordered)//num_xs)
 
-        selected = [parts[ind][times[count], :]
-                    for count, ind in enumerate(self.measured_ind)]
+        if times is None:
+            selected = [parts[ind]
+                        for count, ind in enumerate(self.measured_ind)]
+        else:
+            selected = [parts[ind][times[count]]
+                        for count, ind in enumerate(self.measured_ind)]
+
         selected_array = np.vstack(selected)
 
         return selected_array
@@ -286,6 +306,7 @@ class ParameterEstimation:
         y_runs = []
         resid_runs = []
         sens_runs = []
+
         for ind in range(self.num_datasets):
             # Solve
             result = self.function(params, self.x_fit[ind],
@@ -313,15 +334,14 @@ class ParameterEstimation:
 
                 if self.x_match is None:
                     y_run = y_run.T.ravel()
-                    x_sens = [None] * self.num_datasets
+                    sens_run = self.select_sens(sens, self.num_xs[ind])
                 else:
                     y_run = [y_run[idx, col]
                              for col, idx in enumerate(self.x_match)]
                     y_run = np.concatenate(y_run)
 
-                    x_sens = self.x_match
-
-                sens_run = self.select_sens(sens, self.num_xs[ind], x_sens)
+                    x_sens = self.x_match  # TODO: include ind (experiment)
+                    sens_run = self.select_sens(sens, self.num_xs[ind], x_sens)
 
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
 
@@ -541,15 +561,14 @@ class ParameterEstimation:
         names_meas = [self.name_states[ind] for ind in self.measured_ind]
         # params_nominal = self.reconstruct_params(self.params_convg)
 
-        if self.x_match is None:
-            xdata = self.x_data
-        else:
-            xdata = self.x_datas
+        xdata = self.x_fit
+        if self.num_datasets > 1:
+            ydata = list(self.y_data.values())
 
         for ind in range(self.num_datasets):
             # Experimental data
             x_exp = xdata[ind] / x_div
-            y_exp = self.y_orig[ind]
+            y_exp = ydata[ind]
             markers = cycle(['o', 's', '^', '*', 'P', 'X'])
 
             # Model prediction
@@ -585,13 +604,13 @@ class ParameterEstimation:
             resid_runs_convg = self.resid_runs.copy()
 
             seed_params = self.param_seed[self.map_variable]
-            resid_seed = self.objective_fun(seed_params, residual_vec=True)
+            resid_seed = self.get_objective(seed_params, residual_vec=True)
 
             idx_split = np.cumsum(self.num_measured * self.num_xs)[:-1]
             resid_seed = np.split(resid_seed, idx_split)
 
             for ind in range(self.num_datasets):
-                x_exp = self.x_data[ind] / x_div
+                x_exp = xdata[ind] / x_div
 
                 ymodel_seed = resid_seed[ind] + self.y_fit[ind]
                 ymodel_seed = ymodel_seed.reshape(-1, self.num_xs[ind])
@@ -916,7 +935,7 @@ class MultipleCurveResolution(ParameterEstimation):
                          name_params, name_states)
 
         self.fit_spectra = True
-        self.spectra = self.y_orig
+        self.spectra = list(self.y_data.values())
 
     def get_objective(self, params, residual_vec=False):
         if type(self.params_iter) is list:
@@ -935,7 +954,7 @@ class MultipleCurveResolution(ParameterEstimation):
         sens_runs = []
 
         for ind in range(self.num_datasets):
-            result = self.function(params, self.x_data[ind],
+            result = self.function(params, self.x_fit[ind],
                                    reorder=False,
                                    *self.args_fun[ind])
 
