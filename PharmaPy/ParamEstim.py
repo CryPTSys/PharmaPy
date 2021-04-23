@@ -96,53 +96,26 @@ class ParameterEstimation:
             param_seed = param_seed[np.newaxis]
 
         # --------------- Data
-        self.x_match = None
-        if isinstance(x_data, (list, tuple)):  # several datasets
-
-            if isinstance(args_fun, (list, tuple)):  # several simulations
-                if not isinstance(y_data, (list, tuple)):
-                    raise TypeError("'y_data' must be a list of arrays")
-
-                y_data = [array.T for array in y_data]
-
-            else:  # One simulation, different time grids
-                args_fun = (args_fun, )
-
-                x_datas = x_data
-                x_data = np.concatenate(x_data)
-                x_data.sort()
-                x_data = np.unique(x_data)
-
-                self.x_match = [np.isin(x_data, array) for array in x_datas]
-                self.x_datas = x_datas
-
-                x_data = [x_data]
-
-        else:  # unique dataset, one simulation
-            x_data = [x_data]
-
-            if y_data.ndim == 1:
-                y_data = y_data[..., np.newaxis]
-
-            y_data = [y_data.T]
-            args_fun = (args_fun, )
-
+        # Read data
+        self.x_data = x_data
         self.y_data = y_data
 
+        if isinstance(x_data, dict) and isinstance(y_data, dict):
+            pass
+        else:
+            x_fit, y_fit = self.interpret_data(x_data, y_data)
+
+            self.x_fit = x_fit
+            self.y_fit = y_fit
+            # self.args_fun = [args_fun]
+
+        # Covariance
         if (covar_data is not None) and (type(covar_data) is not list):
             covar_data = [covar_data]
 
-        self.num_datasets = len(y_data)
+        self.num_datasets = len(y_fit)
 
-        if self.x_match is None:
-            self.y_fit = []
-            for data in y_data:
-                data[data == 0] = eps
-                self.y_fit.append(data.ravel())
-        else:
-            self.y_fit = [np.concatenate(y_data)]
-
-
+        # Arguments
         if args_fun is None:
             self.args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
@@ -150,15 +123,17 @@ class ParameterEstimation:
         else:
             self.args_fun = args_fun
 
+        # Measured states
         if measured_ind is None:
             measured_ind = range(len(self.y_orig[0].T))
 
         self.measured_ind = measured_ind
-        self.num_states = self.y_data[0].shape[1]
+
+        # Count dimensions
         self.num_measured = len(measured_ind)
 
-        self.num_xs = np.array([len(xs) for xs in x_data])
-        self.num_data = [array.size for array in self.y_fit]
+        self.num_xs = np.array([len(xs) for xs in x_fit])
+        self.num_data = [array.size for array in y_fit]
         self.num_data_total = sum(self.num_data)
 
         self.x_data = x_data
@@ -225,6 +200,41 @@ class ParameterEstimation:
         self.sens_runs = None
         self.y_model = []
 
+    def interpret_data(self, x_data, y_data):
+        self.x_match = None
+
+        if isinstance(x_data, (list, tuple)):  # several datasets
+            # args_fun = (args_fun, )
+
+            x_fit = np.concatenate(x_data)
+            x_fit.sort()
+            x_fit = np.unique(x_fit)
+
+            self.x_match = [np.isin(x_fit, array) for array in x_data]
+            self.num_states = len(y_data)
+
+            x_fit = [x_fit]
+            y_fit = [np.concatenate(y_data)]
+
+        else:  # unique dataset, one simulation
+            x_fit = [x_data]
+
+            if y_data.ndim == 1:
+                y_data = y_data[..., np.newaxis]
+
+            y_data = [y_data.T]
+            # args_fun = (args_fun, )
+
+        if self.x_match is None:
+            y_fit = []
+            for data in y_data:
+                data[data == 0] = eps
+                y_fit.append(data.ravel())
+        else:
+            y_fit = [np.concatenate(y_data)]
+
+        return x_fit, y_fit
+
     def scale_sens(self, param_lims=None):
         """ Scale sensitivity matrix to make it non-dimensional.
         After Brun et al. Water Research, 36, 4113-4127 (2002),
@@ -278,7 +288,7 @@ class ParameterEstimation:
         sens_runs = []
         for ind in range(self.num_datasets):
             # Solve
-            result = self.function(params, self.x_data[ind],
+            result = self.function(params, self.x_fit[ind],
                                    *self.args_fun[ind])
 
             if type(result) is tuple:  # func also returns the jacobian
@@ -289,10 +299,10 @@ class ParameterEstimation:
 
                 if self.df_dtheta is None:
                     sens = numerical_jac_data(self.function, params,
-                                              (self.x_data[ind], ),
+                                              (self.x_fit[ind], ),
                                               dx=self.dx_fd)
                 else:
-                    sens = self.df_dtheta(params, self.x_data[ind],
+                    sens = self.df_dtheta(params, self.x_fit[ind],
                                           *self.args_fun[ind])
 
             if y_prof.ndim == 1:
@@ -617,16 +627,13 @@ class ParameterEstimation:
     def plot_data_model_sep(self, fig_size=None, fig_kwargs=None,
                             plot_initial=False):
 
-        if len(self.x_data) > 1:
+        if len(self.x_fit) > 1:
             raise NotImplementedError('More than one dataset detected. '
                                       'Not supported')
 
-        if self.x_match is None:
-            xdata = [self.x_data[0]] * self.num_datasets
-        else:
-            xdata = self.x_datas
+        xdata = self.x_data
 
-        ydata = self.y_orig[0]
+        ydata = self.y_data
         ymodel = self.y_model[0]
 
         num_x = self.num_xs[0]
@@ -655,7 +662,14 @@ class ParameterEstimation:
             resid_seed = self.get_objective(seed_params, residual_vec=True)
 
             ymodel_seed = resid_seed*self.stdev_data[0] + self.y_fit[0]
-            ymodel_seed = ymodel_seed.reshape(-1, num_x)
+
+            if self.x_match is None:
+                ymodel_seed = ymodel_seed.reshape(-1, num_x)
+            else:
+                x_len = [sum(array) for array in self.x_match]
+                x_sum = np.cumsum(x_len)[:-1]
+                ymodel_seed = np.split(ymodel_seed, x_sum)
+
             for ind in range(num_plots):
                 axes.flatten()[ind].plot(xdata[ind], ymodel_seed[ind], '--',
                                          color=color,
