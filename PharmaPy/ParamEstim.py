@@ -229,7 +229,6 @@ class ParameterEstimation:
             x_fit = np.unique(x_fit)
 
             self.x_match = [np.isin(x_fit, array) for array in x_data]
-            self.num_states = len(y_data)
 
             x_fit = x_fit
             y_fit = np.concatenate(y_data)
@@ -242,6 +241,8 @@ class ParameterEstimation:
 
             y_data = y_data.T
             # args_fun = (args_fun, )
+
+        self.num_states = len(y_data)
 
         if self.x_match is None:
             y_fit = y_data.flatten()
@@ -466,6 +467,7 @@ class ParameterEstimation:
                 x_len = [sum(array) for array in self.x_match]
                 x_sum = np.cumsum(x_len)[:-1]
                 y_reshape = np.split(y_model_flat, x_sum)
+
             self.y_model.append(y_reshape)
 
         covar_params = self.get_covariance()
@@ -502,7 +504,7 @@ class ParameterEstimation:
             kwarg_sens = {}
 
         for ind in range(self.num_datasets):
-            states_pred = self.function(self.param_seed, self.x_data[ind],
+            states_pred = self.function(self.param_seed, self.x_fit[ind],
                                         *self.args_fun[ind],
                                         **kwarg_sens)
 
@@ -514,16 +516,16 @@ class ParameterEstimation:
         if len(states_seed) == 1:
             y_seed = states_seed[0]
 
-            x_data = self.x_data[0]
-            y_data = self.y_orig[0]
+            x_data = self.x_fit
+            y_data = self.y_data
 
-            fig, axes = plt.subplots(y_data.shape[1], figsize=fig_size)
+            fig, axes = plt.subplots(len(y_data), figsize=fig_size)
 
             axes = np.atleast_1d(axes)
 
-            for ind, experimental in enumerate(y_data.T):
-                axes[ind].plot(x_data, y_seed[:, self.measured_ind[ind]])
-                axes[ind].plot(x_data, experimental, 'o', mfc='None')
+            for ind, experimental in enumerate(y_data):
+                axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind[ind]])
+                axes[ind].plot(x_data[ind], experimental, 'o', mfc='None')
 
                 axes[ind].spines['right'].set_visible(False)
                 axes[ind].spines['top'].set_visible(False)
@@ -649,17 +651,23 @@ class ParameterEstimation:
         if len(self.x_fit) > 1:
             raise NotImplementedError('More than one dataset detected. '
                                       'Not supported')
-
-        xdata = self.x_data
-
-        ydata = self.y_data
-        ymodel = self.y_model[0]
+        if self.x_match is None:
+            ydata = self.y_data.T
+            xdata = [self.x_data] * len(ydata)
+            ymodel = self.y_model[0].T  # TODO: change this
+        else:
+            xdata = self.x_data
+            ydata = self.y_data
+            ymodel = self.y_model[0]
 
         num_x = self.num_xs[0]
         num_plots = self.num_states
 
         num_col = 2
         num_row = num_plots // num_col + num_plots % num_col
+
+        num_row = 2
+        num_col = num_plots // num_row + num_plots % num_row
 
         fig, axes = plt.subplots(num_row, num_col, figsize=fig_size)
 

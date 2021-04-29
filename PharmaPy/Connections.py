@@ -7,7 +7,6 @@ Created on Mon Mar  2 15:36:35 2020
 
 from PharmaPy.NameAnalysis import NameAnalyzer
 
-import numpy as np
 import copy
 
 
