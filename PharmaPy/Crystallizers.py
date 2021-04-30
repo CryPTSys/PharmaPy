@@ -712,11 +712,22 @@ class _BaseCryst:
         else:
             return time, states
 
-    def paramest_wrapper(self, params, t_vals, kwargs_solve={}):
+    def paramest_wrapper(self, params, t_vals, kwargs_solve={},
+                         modify_phase=None, modify_controls=None):
         self.reset()
         self.params_iter = params
 
         self.elapsed_time = 0
+
+        if isinstance(modify_phase, dict):
+            liquid_mod = modify_phase['Liquid']
+            solid_mod = modify_phase['Solid']
+
+            self.Liquid_1.updatePhase(**liquid_mod)
+            self.Solid_1.updatePhase(**solid_mod)
+
+        if isinstance(modify_controls, dict):
+            self.params_control = modify_controls
 
         t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                eval_sens=True,

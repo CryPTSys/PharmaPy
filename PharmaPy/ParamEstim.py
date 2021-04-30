@@ -60,6 +60,11 @@ def mcr_spectra(conc, spectra):
     return conc_plus, absortivity_pred, absorbance_pred
 
 
+class Experiment:
+    def __init__(self):
+        pass
+
+
 class ParameterEstimation:
 
     """ Create a ParameterEstimation object

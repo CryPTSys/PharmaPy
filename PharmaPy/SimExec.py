@@ -198,8 +198,8 @@ class SimulationExec:
             else:
                 pass  # remember setting reset_states to True!!
 
-        if phase_modifiers is None:
-            phase_modifiers = {}
+        if phase_modifiers is not None:
+            phase_modifiers = [(modifier, ) for modifier in phase_modifiers]
 
         # Get 1D array of parameters from the UO class
         if param_seed is None:
@@ -217,9 +217,6 @@ class SimulationExec:
 
         # Instantiate parameter estimation
         if fit_spectra:
-            print()
-            print('Mierda')
-            print()
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
                 param_seed, x_data, spectra,
