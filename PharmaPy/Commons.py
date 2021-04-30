@@ -59,6 +59,102 @@ def vol_ufun(time, vol_zero, rate):
     return vol_t
 
 
+def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
+                 t_init=0.0, y_init=None):
+
+    if y_ramps is not None and y_init is None:
+        raise ValueError('If specifying ramp functions, you need to pass an '
+                         'initial state value for y_init')
+
+    if time_vals is None and time_lengths is None:
+        raise ValueError('time_vals or time_lengths must be specified to '
+                         'utilize piecewise linear profiles')
+
+    if y_vals is None and y_ramps is None:
+        raise ValueError('y_vals or y_ramps must be specified to utilize '
+                         'piecewise linear profiles')
+
+    num_segments = 0
+    if time_vals is None:
+        num_segments = len(time_lengths)
+    else:
+        num_segments = len(time_vals) - 1
+
+    pw_logic_exprs = []
+    pw_fncs = []
+    y_prev = None
+    y_end = None
+
+    for j in range(num_segments):
+        if time_vals is not None:
+            fun_logic = lambda x, j=j: \
+                (time_vals[j] <= x) * (x < time_vals[j + 1])
+
+            if y_vals is not None:
+                function = lambda x, j=j: \
+                        (x - time_vals[j])/(time_vals[j + 1] - time_vals[j]) *\
+                        (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                y_end = y_vals[j + 1]
+            else:
+                if j == 0:
+                    y_prev = y_init
+
+                function = lambda x, j=j, y_prev=y_prev: \
+                    (x - time_vals[j]) * y_ramps[j] + y_prev
+
+                y_prev += y_ramps[j] * (time_vals[j + 1] - time_vals[j])
+                y_end = y_prev
+
+            pw_logic_exprs.append(fun_logic)
+            pw_fncs.append(function)
+
+            if j == (num_segments - 1):
+                pw_logic_exprs.append(lambda x, j=j: (x >= time_vals[j + 1]))
+                pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
+        else:
+            fun_logic = lambda x, j=j: \
+                (sum(time_lengths[0:j]) <= x)*(x < sum(time_lengths[0:j + 1]))
+
+            if y_vals is not None:
+                function = lambda x, j=j: \
+                    (x - sum(time_lengths[0:j])) / (time_lengths[j]) * \
+                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                y_end = y_vals[j + 1]
+            else:
+                if j == 0:
+                    y_prev = y_init
+
+                function = lambda x, j=j, y_prev=y_prev: \
+                    (x - sum(time_lengths[0:j])) * y_ramps[j] + y_prev
+
+                y_prev += y_ramps[j] * (time_lengths[j])
+                y_end = y_prev
+
+            pw_logic_exprs.append(fun_logic)
+            pw_fncs.append(function)
+
+            if j == (num_segments - 1):
+                pw_logic_exprs.append(lambda x, j=j:
+                                      (x >= sum(time_lengths[0:j + 1])))
+                pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
+
+    return pw_logic_exprs, pw_fncs
+
+
+def temp_pw_lin(time, temp_zero, pw_exprs=None, pw_fncs=None, t_zero=0):
+    pw_exprs_vals = []
+
+    for ind, val in enumerate(pw_exprs):
+        if ind < (len(pw_exprs)):
+            pw_exprs_vals.append(pw_exprs[ind](time))
+
+    temp_t = np.piecewise(time, pw_exprs_vals, pw_fncs)
+
+    return temp_t
+
+
 def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
               name_params=None, mode='per_parameter', black_white=False,
               time_div=1):
