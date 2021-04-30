@@ -202,10 +202,11 @@ class SimulationExec:
             phase_modifiers = [(modifier, ) for modifier in phase_modifiers]
 
         # Get 1D array of parameters from the UO class
-        if param_seed is None:
-            # All UOs must have this attrib
-            param_seed = target_unit.Kinetics.concat_params()
-            param_seed = param_seed[target_unit.mask_params]
+        if param_seed is not None:
+            target_unit.Kinetics.set_params(param_seed)
+
+        param_seed = target_unit.Kinetics.concat_params()
+        param_seed = param_seed[target_unit.mask_params]
 
         name_params = []
 

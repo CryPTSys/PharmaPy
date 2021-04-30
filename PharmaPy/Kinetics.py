@@ -110,40 +110,10 @@ class RxnKinetics:
         # ---------- Parameters
         self.reparam_center = reparam_center
 
-        k_params = np.atleast_1d(k_params) + eps
-        ea_params = np.atleast_1d(ea_params) + eps
+        params_dict = {'k_params': k_params, 'ea_params': ea_params,
+                       'keq_params': keq_params, 'params_f': params_f}
 
-        self.transform_params(stoich_matrix, k_params, ea_params)
-
-        # Note: self.rxn_orders also includes the 'orders' for products
-        self.num_paramsk = len(k_params) + len(ea_params)
-
-        self.fit_paramsf = True
-        if self.elem_flag:
-            if params_f is None:
-                is_reactant = stoich_matrix < 0
-                orders = abs(is_reactant * stoich_matrix)
-                self.fit_paramsf = False
-            else:
-                orders = self.rxn_orders
-
-            if orders.ndim == 1:
-                orders = orders[np.newaxis, ...]
-
-            params_f = orders
-
-        else:
-            if params_f is None:
-                raise RuntimeError("For user-defined kinetic function, "
-                                   "argument 'params_f' is mandatory.")
-
-        self.params_f = params_f
-        self.order_map = stoich_matrix < 0
-
-        # # Reparametrizations
-        # self.phi_1 = None
-        # self.phi_2 = None
-
+        self.set_params(params_dict)
         self.nomenclature(stoich_matrix, k_params)
 
         # Equilibrium kinetics
@@ -170,16 +140,63 @@ class RxnKinetics:
         self.sensitivities = None
 
     def transform_params(self, stoich_matrix, kvals, evals):
-        # Transform parameters
-
         ea_term = evals/gas_ct/self.temp_ref * self.reparam_center
-        self.phi_1 = np.log(kvals) - ea_term
-        self.phi_2 = np.log(evals/gas_ct)
+
+        phi_1 = np.log(kvals) - ea_term
+        phi_2 = np.log(evals/gas_ct)
+
+        return phi_1, phi_2
+
+    def set_params(self, params):  # From 1D params to matrix-shaped params
+
+        if isinstance(params, dict):
+            k_params = np.atleast_1d(params['k_params']) + eps
+            ea_params = np.atleast_1d(params['ea_params']) + eps
+
+            phi_1, phi_2 = self.transform_params(
+                self.stoich_matrix, k_params, ea_params)
+
+            self.num_paramsk = len(phi_1) + len(phi_2)
+
+            self.phi_1 = phi_1
+            self.phi_2 = phi_2
+
+            self.fit_paramsf = True
+            if self.elem_flag:
+                if params['params_f'] is None:
+                    is_reactant = self.stoich_matrix < 0
+                    orders = abs(is_reactant * self.stoich_matrix)
+                    self.fit_paramsf = False
+                else:
+                    orders = params['params_f']
+
+                if orders.ndim == 1:
+                    orders = orders[np.newaxis, ...]
+
+                params_f = orders
+            elif params_f is None:
+                raise RuntimeError("For user-defined kinetic function, "
+                                    "argument 'params_f' is mandatory.")
+
+            self.params_f = orders
+            self.order_map = self.stoich_matrix < 0
+
+        else:
+            self.phi_1 = params[:self.num_rxns]
+            self.phi_2 = params[self.num_rxns:self.num_rxns*2]
+
+            if self.elem_flag:
+                # Reorganize rxn orders into a stoich_matrix-like structure
+                if self.fit_paramsf:
+                    self.params_f = np.zeros_like(self.stoich_matrix,
+                                                  dtype=np.float64)
+
+                    self.params_f[self.order_map] = params[self.num_paramsk:]
 
     def nomenclature(self, stoich_matrix, kvals):
 
         # Names
-        num_kpar = len(kvals)
+        num_kpar = len(self.phi_1)
         name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
         name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
 
@@ -223,19 +240,6 @@ class RxnKinetics:
             params_concat = np.concatenate((params_k_conc, self.params_f))
 
         return params_concat
-
-    def assign_params(self, params):  # From 1D params to matrix-shaped params
-
-        self.phi_1 = params[:self.num_rxns]
-        self.phi_2 = params[self.num_rxns:self.num_rxns*2]
-
-        if self.elem_flag:
-            # Reorganize rxn orders into a stoich_matrix-like structure
-            if self.fit_paramsf:
-                self.params_f = np.zeros_like(self.stoich_matrix,
-                                              dtype=np.float64)
-
-                self.params_f[self.order_map] = params[self.num_paramsk:]
 
     def temp_term(self, temp):
 
@@ -448,7 +452,7 @@ class CrystKinetics:
     """
 
     def __init__(self, coeff_solub,
-                 b_params=None, s_params=None, g_params=None, d_params=None,
+                 nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
                  solubility_type='polynomial', rel_super=True, alpha_fn=None,
                  temp_ref=298.15, secondary_fn=None):
 
@@ -467,16 +471,20 @@ class CrystKinetics:
         self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
                                  'dissolution')
 
-        params_all = [b_params, s_params, g_params, d_params]
+        params_all = [nucl_prim, nucl_sec, growth, dissolution]
+
+        params_keys = [name for param, name
+                       in zip(params_all, self.names_mechanisms)
+                       if param is not None]
 
         params_list = [item for item in params_all if item is not None]
-        self.params_keys = [name for param, name
-                            in zip(params_all, self.names_mechanisms)
-                            if param is not None]
 
         self.num_par_tuple = [len(item) for item in params_list]
 
-        self.set_params(params_list)  # create self.params
+        param_dict = {key: value
+                      for key, value in zip(params_keys, params_list)}
+
+        self.set_params(param_dict)  # create self.params
 
         self.coeff_solub = np.asarray(coeff_solub)
         self.solub_type = solubility_type
@@ -494,11 +502,9 @@ class CrystKinetics:
         else:
             self.alpha_fn = alpha_fn
 
-
     def set_params(self, params_in):
-        if all(isinstance(item, tuple) for item in params_in):
-            params_dict = dict(zip(self.params_keys, params_in))
-            params_complete = self.parse_params(params_dict)
+        if isinstance(params_in, dict):
+            params_complete = self.transform_params(params_in)
         else:
             split_idx = np.array([3, 4, 3, 3]).cumsum()[:-1]
             params_in = np.split(params_in, split_idx)
@@ -507,7 +513,7 @@ class CrystKinetics:
 
         self.params = params_complete
 
-    def parse_params(self, param_dict, reparam=True):
+    def transform_params(self, param_dict, reparam=True):
         self.params_sec = param_dict.get('nucl_sec')
         if reparam:
             zero_log = np.log(eps)
@@ -521,7 +527,7 @@ class CrystKinetics:
                              'growth': growth, 'dissolution': dissol}
 
             for name in self.names_mechanisms:
-                if name in self.params_keys:
+                if name in param_dict.keys():
                     vals = param_dict[name]
 
                     tref = self.temp_ref
@@ -542,7 +548,7 @@ class CrystKinetics:
                              'growth': growth, 'dissolution': dissol}
 
             for name in self.names_mechanisms:
-                if name in self.params_keys:
+                if name in param_dict.keys():
                     vals = param_dict[name]
                     tref = self.temp_ref
                     phi_1 = vals[0]

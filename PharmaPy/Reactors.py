@@ -282,7 +282,7 @@ class _BaseReactor:
         if isinstance(modify_phase, dict):
             self.Liquid_1.updatePhase(**modify_phase)
 
-        self.Kinetics.assign_params(params)
+        self.Kinetics.set_params(params)
         self.elapsed_time = 0
 
         if evalsens:
