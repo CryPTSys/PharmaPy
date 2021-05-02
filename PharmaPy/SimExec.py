@@ -180,7 +180,7 @@ class SimulationExec:
     def SetParamEstimation(self, x_data,
                            param_seed=None, y_data=None, spectra=None,
                            fit_spectra=False,
-                           phase_modifiers=None,
+                           phase_modifiers=None, control_modifiers = None,
                            measured_ind=None, optimize_flags=None,
                            df_dtheta=None, df_dy=None,
                            covar_data=None,
@@ -198,8 +198,19 @@ class SimulationExec:
             else:
                 pass  # remember setting reset_states to True!!
 
-        if phase_modifiers is not None:
-            phase_modifiers = [(modifier, ) for modifier in phase_modifiers]
+        if phase_modifiers is None:
+            if control_modifiers is None:
+                phase_modifiers = [phase_modifiers]
+            else:
+                phase_modifiers = [phase_modifiers] * len(control_modifiers)
+
+        if control_modifiers is None:
+            if phase_modifiers is None:
+                control_modifiers = [control_modifiers]
+            else:
+                control_modifiers = [control_modifiers] * len(phase_modifiers)
+
+        args_wrapper = list(zip(phase_modifiers, control_modifiers))
 
         # Get 1D array of parameters from the UO class
         if param_seed is not None:
@@ -221,7 +232,7 @@ class SimulationExec:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
                 param_seed, x_data, spectra,
-                args_fun=phase_modifiers, measured_ind=measured_ind,
+                args_fun=args_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
                 df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)
@@ -229,7 +240,7 @@ class SimulationExec:
             self.ParamInst = ParameterEstimation(
                 target_unit.paramest_wrapper,
                 param_seed, x_data, y_data,
-                args_fun=phase_modifiers, measured_ind=measured_ind,
+                args_fun=args_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
                 df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)

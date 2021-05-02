@@ -176,7 +176,7 @@ class RxnKinetics:
                 params_f = orders
             elif params_f is None:
                 raise RuntimeError("For user-defined kinetic function, "
-                                    "argument 'params_f' is mandatory.")
+                                   "argument 'params_f' is mandatory.")
 
             self.params_f = orders
             self.order_map = self.stoich_matrix < 0

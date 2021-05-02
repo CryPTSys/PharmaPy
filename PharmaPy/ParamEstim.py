@@ -565,7 +565,7 @@ class ParameterEstimation:
             fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 3}
 
         ax_flatten = axes.flatten()
-        names_meas = [self.name_states[ind] for ind in self.measured_ind]
+        # names_meas = [self.name_states[ind] for ind in self.measured_ind]
         # params_nominal = self.reconstruct_params(self.params_convg)
 
         xdata = self.x_fit
@@ -604,7 +604,7 @@ class ParameterEstimation:
             ax_flatten[ind].xaxis.set_minor_locator(AutoMinorLocator(2))
             ax_flatten[ind].yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        ax_flatten[0].legend(names_meas, loc='best')
+        # ax_flatten[0].legend(names_meas, loc='best')
 
         if plot_initial:
             residuals_convg = self.residuals.copy()

@@ -712,7 +712,7 @@ class _BaseCryst:
         else:
             return time, states
 
-    def paramest_wrapper(self, params, t_vals, kwargs_solve={},
+    def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None):
         self.reset()
         self.params_iter = params
