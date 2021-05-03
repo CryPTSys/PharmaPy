@@ -274,13 +274,17 @@ class _BaseReactor:
             self.Liquid_1.timeProf = self.timeProf
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
-                         reorder=True):
+                         modify_controls=None, reorder=True):
 
         evalsens = True
 
         self.reset()
+
         if isinstance(modify_phase, dict):
             self.Liquid_1.updatePhase(**modify_phase)
+
+        if isinstance(modify_controls, dict):
+            self.params_control = modify_controls
 
         self.Kinetics.set_params(params)
         self.elapsed_time = 0

@@ -474,10 +474,10 @@ class ParameterEstimation:
             y_model_flat = self.resid_runs[ind]*self.stdev_data[ind] + \
                 self.y_fit[ind]
 
-            if self.x_match is None:
+            if self.x_match[ind] is None:
                 y_reshape = y_model_flat.reshape(-1, self.num_xs[ind]).T
             else:
-                x_len = [sum(array) for array in self.x_match]
+                x_len = [sum(array) for array in self.x_match[ind]]
                 x_sum = np.cumsum(x_len)[:-1]
                 y_reshape = np.split(y_model_flat, x_sum)
 
@@ -656,6 +656,8 @@ class ParameterEstimation:
         if len(axes) == 1:
             axes = axes[0]
 
+        fig.tight_layout()
+
         return fig, axes
 
     def plot_data_model_sep(self, fig_size=None, fig_kwargs=None,
@@ -663,8 +665,10 @@ class ParameterEstimation:
 
         if len(self.x_fit) > 1:
             raise NotImplementedError('More than one dataset detected. '
-                                      'Not supported')
-        if self.x_match is None:
+                                      'Not supported for multiple datasets')
+
+        all_type_one = all([item is None for item in self.x_match])
+        if all_type_one:
             ydata = self.y_data.T
             xdata = [self.x_data] * len(ydata)
             ymodel = self.y_model[0].T  # TODO: change this
@@ -703,7 +707,7 @@ class ParameterEstimation:
 
             ymodel_seed = resid_seed*self.stdev_data[0] + self.y_fit[0]
 
-            if self.x_match is None:
+            if all_type_one:
                 ymodel_seed = ymodel_seed.reshape(-1, num_x)
             else:
                 x_len = [sum(array) for array in self.x_match]
@@ -739,10 +743,10 @@ class ParameterEstimation:
 
         fig, axis = plt.subplots(figsize=fig_size)
 
-        if self.x_match is None:
+        if all([item is None for item in self.x_match]):
             y_model = self.y_model
         else:
-            y_model = [np.concatenate(list) for list in self.y_model]
+            y_model = [np.concatenate(lst) for lst in self.y_model]
 
         for ind, y_model in enumerate(y_model):
             axis.scatter(y_model.T.flatten(), self.y_fit[ind],
