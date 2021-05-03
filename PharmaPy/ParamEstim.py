@@ -118,16 +118,24 @@ class ParameterEstimation:
 
             x_fit = []
             y_fit = []
+            x_match = []
             for key in keys_dict:
-                x_vals, y_vals = self.interpret_data(x_data[key], y_data[key])
+                x_vals, y_vals, x_common = self.interpret_data(
+                    x_data[key], y_data[key])
 
                 x_fit.append(x_vals)
                 y_fit.append(y_vals)
+                x_match.append(x_common)
+
+
         else:
-            x_fit, y_fit = self.interpret_data(x_data, y_data)
+            x_fit, y_fit, x_common = self.interpret_data(x_data, y_data)
 
             x_fit = [x_fit]
             y_fit = [y_fit]
+            x_match = [x_common]
+
+        self.x_match = x_match
 
         self.x_fit = x_fit
         self.y_fit = y_fit
@@ -224,7 +232,7 @@ class ParameterEstimation:
         self.y_model = []
 
     def interpret_data(self, x_data, y_data):
-        self.x_match = None
+        x_match = None
 
         if isinstance(x_data, (list, tuple)):  # several datasets
             # args_fun = (args_fun, )
@@ -233,7 +241,7 @@ class ParameterEstimation:
             x_fit.sort()
             x_fit = np.unique(x_fit)
 
-            self.x_match = [np.isin(x_fit, array) for array in x_data]
+            x_match = [np.isin(x_fit, array) for array in x_data]
 
             x_fit = x_fit
             y_fit = np.concatenate(y_data)
@@ -249,12 +257,12 @@ class ParameterEstimation:
 
         self.num_states = len(y_data)
 
-        if self.x_match is None:
+        if x_match is None:
             y_fit = y_data.flatten()
         else:
             y_fit = np.concatenate(y_data)
 
-        return x_fit, y_fit
+        return x_fit, y_fit, x_match
 
     def scale_sens(self, param_lims=None):
         """ Scale sensitivity matrix to make it non-dimensional.
@@ -338,15 +346,15 @@ class ParameterEstimation:
             else:
                 y_run = y_prof[:, self.measured_ind]
 
-                if self.x_match is None:
+                if self.x_match[ind] is None:
                     y_run = y_run.T.ravel()
                     sens_run = self.select_sens(sens, self.num_xs[ind])
                 else:
                     y_run = [y_run[idx, col]
-                             for col, idx in enumerate(self.x_match)]
+                             for col, idx in enumerate(self.x_match[ind])]
                     y_run = np.concatenate(y_run)
 
-                    x_sens = self.x_match  # TODO: include ind (experiment)
+                    x_sens = self.x_match[ind]
                     sens_run = self.select_sens(sens, self.num_xs[ind], x_sens)
 
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]

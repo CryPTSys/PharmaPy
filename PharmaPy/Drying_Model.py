@@ -228,7 +228,7 @@ class Drying:
                                       basis='mole')
 
         latent_heat = self.Vapor_1.getHeatVaporization(temp_sol,
-                                                       idx=self.idx_volatiles,
+                                                       # idx=self.idx_volatiles,
                                                        basis='mole')
 
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \

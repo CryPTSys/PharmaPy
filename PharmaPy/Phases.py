@@ -539,15 +539,18 @@ class VaporPhase(ThermoPhysicalManager):
 
         return cpMix
 
-    def getHeatVaporization(self, temp, idx=None, basis='mass'):
-        if idx is None:
-            idx = np.arange(len(self.t_crit))
+    def getHeatVaporization(self, temp, basis='mass'):
+        # if idx is None:
+        #     idx = np.arange(len(self.t_crit))
 
         temp = np.atleast_1d(temp)
-        tref = self.tref_hvap[idx]
 
         if len(temp) > 1:
             temp = temp[..., np.newaxis]
+
+        # TODO: generalize this
+        idx = np.unique(np.where(temp < self.t_crit)[1])
+        tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
