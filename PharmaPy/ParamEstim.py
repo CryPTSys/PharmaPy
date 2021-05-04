@@ -146,12 +146,19 @@ class ParameterEstimation:
         self.num_datasets = len(self.y_fit)
 
         # Arguments
-        if args_fun is None:
+        if isinstance(args_fun, (list, tuple)):
+            self.args_fun = args_fun
+        elif args_fun is None:
             self.args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
             self.args_fun = [args_fun]
-        else:
-            self.args_fun = args_fun
+
+        # if args_fun is None:
+        #     self.args_fun = [()] * self.num_datasets
+        # elif self.num_datasets == 1:
+        #     self.args_fun = [args_fun]
+        # else:
+        #     self.args_fun = args_fun
 
         # Measured states
         if measured_ind is None:
@@ -290,8 +297,7 @@ class ParameterEstimation:
         parts = np.vsplit(sens_ordered, len(sens_ordered)//num_xs)
 
         if times is None:
-            selected = [parts[ind]
-                        for count, ind in enumerate(self.measured_ind)]
+            selected = [parts[ind] for ind in self.measured_ind]
         else:
             selected = [parts[ind][times[count]]
                         for count, ind in enumerate(self.measured_ind)]
@@ -306,6 +312,11 @@ class ParameterEstimation:
         params_reconstr[self.map_variable] = params
 
         return params_reconstr
+
+    def func_aux(self, params, x_vals, args):
+        states = self.function(params, x_vals, *args)
+
+        return states.T.ravel()
 
     def get_objective(self, params, residual_vec=False):
         # Reconstruct parameter set with fixed and non-fixed indexes
@@ -332,9 +343,10 @@ class ParameterEstimation:
                 y_prof = result
 
                 if self.df_dtheta is None:
-                    sens = numerical_jac_data(self.function, params,
-                                              (self.x_fit[ind], ),
-                                              dx=self.dx_fd)
+                    sens = numerical_jac_data(
+                        self.func_aux, params,
+                        (self.x_fit[ind], self.args_fun[ind]),
+                        dx=self.dx_fd)
                 else:
                     sens = self.df_dtheta(params, self.x_fit[ind],
                                           *self.args_fun[ind])
