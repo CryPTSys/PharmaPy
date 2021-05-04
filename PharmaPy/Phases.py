@@ -709,11 +709,6 @@ class SolidPhase(ThermoPhysicalManager):
         self.temp_ref = temp_ref
         self.pres = pres
 
-        self.moments = moments
-        self.distrib = distrib
-        self.x_distrib = x_distrib
-        self.num_mom = None
-
         mass_frac = np.atleast_1d(mass_frac)
         mass_frac[mass_frac == 0] = eps
         self.mass_frac = mass_frac
@@ -727,6 +722,9 @@ class SolidPhase(ThermoPhysicalManager):
         if moments is not None:
             num_mom = len(moments)
             self.moments = moments
+
+            self.x_distrib = x_distrib
+            self.distrib = distrib
 
         elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
