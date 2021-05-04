@@ -160,7 +160,7 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
               time_div=1):
 
     num_plots = len(sensit)
-    num_cols = bool(num_plots // 2) + 2
+    num_cols = bool(num_plots // 2) + 1
     num_rows = num_plots // num_cols + (num_plots % num_cols > 0)
 
     time_prof *= 1 / time_div

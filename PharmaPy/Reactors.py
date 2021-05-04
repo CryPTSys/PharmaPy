@@ -276,8 +276,6 @@ class _BaseReactor:
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
                          modify_controls=None, reorder=True):
 
-        evalsens = True
-
         self.reset()
 
         if isinstance(modify_phase, dict):
@@ -289,27 +287,18 @@ class _BaseReactor:
         self.Kinetics.set_params(params)
         self.elapsed_time = 0
 
-        if evalsens:
-            t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                                   verbose=False,
-                                                   eval_sens=True)
+        t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                               verbose=False,
+                                               eval_sens=True)
 
-            if reorder:
-                sens = reorder_sens(sens)
-            else:
-                sens = np.stack(sens)
-
-            c_prof = states[:, :self.Kinetics.num_species]
-
-            return c_prof, sens
+        if reorder:
+            sens = reorder_sens(sens)
         else:
-            t_prof, states = self.solve_unit(time_grid=t_vals,
-                                             verbose=False,
-                                             eval_sens=False)
+            sens = np.stack(sens)
 
-            c_prof = states[:, :self.Kinetics.num_species]
+        c_prof = states[:, :self.Kinetics.num_species]
 
-            return c_prof
+        return c_prof, sens
 
     def plot_profiles(self, fig_size=None, title=None, time_div=1, q_div=1,
                       pick_idx=None, black_white=False):

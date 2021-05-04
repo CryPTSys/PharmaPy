@@ -127,7 +127,6 @@ class ParameterEstimation:
                 y_fit.append(y_vals)
                 x_match.append(x_common)
 
-
         else:
             x_fit, y_fit, x_common = self.interpret_data(x_data, y_data)
 
