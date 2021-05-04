@@ -553,7 +553,7 @@ class ParameterEstimation:
             pass  # TODO what to do with multiple datasets, maybe a parity plot?
 
     def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None,
-                        plot_initial=False, black_white=False, x_div=1):
+                        plot_initial=False, black_white=False):
 
         num_plots = self.num_datasets
 
@@ -576,21 +576,27 @@ class ParameterEstimation:
         # names_meas = [self.name_states[ind] for ind in self.measured_ind]
         # params_nominal = self.reconstruct_params(self.params_convg)
 
-        xdata = self.x_fit
         if self.num_datasets > 1:
-            ydata = list(self.y_data.values())
+            x_data = list(self.x_data.values())
+            y_data = list(self.y_data.values())
+        else:
+            x_data = [self.x_data]
+            y_data = [self.y_data]
+
+        if any([item is not None for item in self.x_match]):
+            raise NotImplementedError('One or more datasets of type 2.')
 
         for ind in range(self.num_datasets):
-            # Experimental data
-            x_exp = xdata[ind] / x_div
-            y_exp = ydata[ind]
+            x_exp = x_data[ind]
+            y_exp = y_data[ind]
+
             markers = cycle(['o', 's', '^', '*', 'P', 'X'])
 
             # Model prediction
             if black_white:
                 ax_flatten[ind].plot(x_exp, self.y_model[ind], 'k')
 
-                for col in y_exp.T:
+                for col in y_exp:
                     ax_flatten[ind].plot(x_exp, col, color='k',
                                          marker=next(markers), **fig_kwargs)
             else:
@@ -615,6 +621,11 @@ class ParameterEstimation:
         # ax_flatten[0].legend(names_meas, loc='best')
 
         if plot_initial:
+            if self.x_match[ind] is None:  # type 1
+                x_exp = [x_data[ind]] * len(self.y_model)
+            else:  # type 2
+                x_exp = x_data[ind]
+
             residuals_convg = self.residuals.copy()
             resid_runs_convg = self.resid_runs.copy()
 
@@ -625,7 +636,7 @@ class ParameterEstimation:
             resid_seed = np.split(resid_seed, idx_split)
 
             for ind in range(self.num_datasets):
-                x_exp = xdata[ind] / x_div
+                x_exp = x_data[ind]
 
                 ymodel_seed = resid_seed[ind] + self.y_fit[ind]
                 ymodel_seed = ymodel_seed.reshape(-1, self.num_xs[ind])

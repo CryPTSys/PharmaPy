@@ -720,8 +720,9 @@ class _BaseCryst:
         self.elapsed_time = 0
 
         if isinstance(modify_phase, dict):
-            liquid_mod = modify_phase['Liquid']
-            solid_mod = modify_phase['Solid']
+
+            liquid_mod = modify_phase.get('Liquid', {})
+            solid_mod = modify_phase.get('Solid', {})
 
             self.Liquid_1.updatePhase(**liquid_mod)
             self.Solid_1.updatePhase(**solid_mod)
