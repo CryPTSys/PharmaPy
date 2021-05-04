@@ -428,15 +428,15 @@ class CrystKinetics:
         coeff_solub : array-like
             coefficients for a temperature-dependent solubility (S) polynomial
             of the form S = A + B*T + C*T^2...
-        b_params : array-like (3 elements)
+        nucl_prim : array-like (3 elements)
             primary nucleation coefficients, with the result given in
             number of particles per second
-        s_params : array-like (4 elements) (optional)
+        nucl_sec : array-like (4 elements) (optional)
             secondary nucleation coefficients, with the result given in
             number of particles per second
-        g_params : array-like (dimension 3) (optional)
+        growth : array-like (dimension 3) (optional)
             nucleation parameters, with the result given in um/s
-        d_params : array_like (dimension 3) (optional)
+        dissolution : array_like (dimension 3) (optional)
             dissolution parameters, with the result given in um/s
         rel_super : bool (optional, default True)
             if True, relative supersaturation is used for computing the kinetic

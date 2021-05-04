@@ -695,7 +695,7 @@ class VaporPhase(ThermoPhysicalManager):
 class SolidPhase(ThermoPhysicalManager):
     def __init__(self, path_thermo, temp=298.15, temp_ref=298.15, pres=101325,
                  mass=0, mass_frac=None,
-                 moments=None,
+                 moments=None, num_mom=4,
                  distrib=None, x_distrib=None, distrib_type='vol_perc',
                  moisture=0, porosity=0,
                  concentr=None, kv=1):
@@ -723,7 +723,12 @@ class SolidPhase(ThermoPhysicalManager):
             self.num_mom = len(moments)
 
         dens = self.getDensity()
-        if distrib is not None:
+
+        if moments is not None:
+            num_mom = len(moments)
+            self.moments = moments
+
+        elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
             self.x_distrib = x_distrib
 
@@ -765,11 +770,15 @@ class SolidPhase(ThermoPhysicalManager):
             distr[distr == 0] = eps
             self.distrib = distr
 
-            if self.num_mom is None:
-                self.moments = self.getMoments()
-            else:
-                idx = np.arange(self.num_mom)
-                self.moments = self.getMoments(mom_num=idx)
+            mom_idx = np.arange(num_mom)
+            self.moments = self.getMoments(mom_num=mom_idx)
+
+        else:
+            raise ValueError('Neither moment nor distribution data was '
+                             'provided for the solid phase. Please specify '
+                             'one of the two')
+
+        self.num_mom = num_mom
 
         # Mass
         self.mass = mass

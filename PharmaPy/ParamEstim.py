@@ -156,7 +156,7 @@ class ParameterEstimation:
 
         # Measured states
         if measured_ind is None:
-            measured_ind = range(len(self.y_orig[0].T))
+            measured_ind = range(len(self.y_data[0].T))
 
         self.measured_ind = measured_ind
 
@@ -518,8 +518,8 @@ class ParameterEstimation:
 
         for ind in range(self.num_datasets):
             states_pred = self.function(self.param_seed, self.x_fit[ind],
-                                        *self.args_fun[ind],
-                                        **kwarg_sens)
+                                           *self.args_fun[ind],
+                                           **kwarg_sens)
 
             if isinstance(states_pred, tuple):
                 states_pred = states_pred[0]
@@ -529,7 +529,7 @@ class ParameterEstimation:
         if len(states_seed) == 1:
             y_seed = states_seed[0]
 
-            x_data = self.x_fit
+            x_data = self.x_data
             y_data = self.y_data
 
             fig, axes = plt.subplots(len(y_data), figsize=fig_size)
