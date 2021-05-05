@@ -217,8 +217,8 @@ class RxnKinetics:
             name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
             name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
         else:
-            name_k = ['\\k_%i' % ind for ind in range(1, num_kpar + 1)]
-            name_e = ['\\E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_k = ['k_%i' % ind for ind in range(1, num_kpar + 1)]
+            name_e = ['E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
 
         if self.fit_paramsf:
             num_orders = (stoich_matrix < 0).sum()
@@ -523,10 +523,16 @@ class CrystKinetics:
         self.coeff_solub = np.asarray(coeff_solub)
         self.solub_type = solubility_type
 
-        self.name_params = ('k_{bp}', 'E_{bp}', 'b',
-                            'k_{bs}', 'E_{bs}', 's_1', 's_2',
-                            'k_{g}', 'E_{g}', 'g',
-                            'k_{d}', 'E_{d}', 'd')
+        if reformulate_kin:
+            self.name_params = ('log(k_{bp})', 'log(E_{bp}/R)', 'b',
+                                'log(k_{bs})', 'log(E_{bs})', 's_1', 's_2',
+                                'log(k_{g})', 'log(E_{g})', 'g',
+                                '\log(k_{d})', 'log(E_{d})', 'd')
+        else:
+            self.name_params = ('k_{bp}', 'E_{bp}', 'b',
+                                'k_{bs}', 'E_{bs}', 's_1', 's_2',
+                                'k_{g}', 'E_{g}', 'g',
+                                'k_{d}', 'E_{d}', 'd')
 
         self.num_params = len(self.name_params)
 
@@ -567,7 +573,7 @@ class CrystKinetics:
 
                     tref = self.temp_ref
                     phi_1 = np.log(vals[0] + eps) - vals[1]/gas_ct/tref
-                    phi_2 = np.log(vals[1]/gas_ct)
+                    phi_2 = np.log((vals[1] + eps)/gas_ct)
 
                     params_parsed[name] = list(vals)
 
@@ -717,7 +723,6 @@ class CrystKinetics:
                      mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
                      mech * np.log(ssat)])
             else:
-                k = params[0]
                 e_act = params[1]
                 expo = params[2]
 

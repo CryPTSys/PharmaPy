@@ -239,7 +239,7 @@ class ParameterEstimation:
             x_fit = x_fit
             y_fit = np.concatenate(y_data)
 
-            y_data = [item[..., np.newaxis] for item in y_fit
+            y_data = [item[..., np.newaxis] for item in y_data
                       if item.ndim == 1]
 
         else:  # unique dataset
@@ -541,10 +541,13 @@ class ParameterEstimation:
             for ind, experimental in enumerate(y_data):
                 axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind])
 
+                markers = cycle(['o', 's', '^', '*', 'P', 'X'])
+
                 for idx, row in enumerate(experimental):
                     color = axes[ind].lines[idx].get_color()
-                    axes[ind].plot(x_data[ind], row, 'o', mfc='None',
-                                   color=color)
+                    axes[ind].plot(x_data[ind], row, lw=0,
+                                   marker=next(markers), ms=5,
+                                   mfc='None', color=color)
 
                 axes[ind].spines['right'].set_visible(False)
                 axes[ind].spines['top'].set_visible(False)
@@ -578,17 +581,17 @@ class ParameterEstimation:
             axes = np.asarray(axes)[np.newaxis]
 
         if fig_kwargs is None:
-            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 3}
+            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
 
         ax_flatten = axes.flatten()
 
         x_data = self.x_data
         y_data = self.y_data
 
-        if any([item is not None for item in self.x_match]):
-            raise NotImplementedError('One or more datasets of type 2.')
+        # if any([item is not None for item in self.x_match]):
+        #     raise NotImplementedError('One or more datasets of type 2.')
 
-        for ind in range(self.num_datasets):
+        for ind in range(self.num_datasets):  # experiment loop
             markers = cycle(['o', 's', '^', '*', 'P', 'X'])
 
             # Model prediction
@@ -599,13 +602,26 @@ class ParameterEstimation:
                     ax_flatten[ind].plot(x_data[ind], col, color='k',
                                          marker=next(markers), **fig_kwargs)
             else:
-                ax_flatten[ind].plot(x_data[ind], self.y_model[ind])
+                try:  # Type 1
+                    ax_flatten[ind].plot(x_data[ind], self.y_model[ind])
+                except:  # Type 2
+                    for x, y in zip(x_data[ind], self.y_model[ind]):
+                        ax_flatten[ind].plot(x, y)
+
                 lines = ax_flatten[ind].lines
                 colors = [line.get_color() for line in lines]
 
-                for color, col in zip(colors, y_data[ind]):
-                    ax_flatten[ind].plot(x_data[ind], col, color=color,
-                                         marker=next(markers), **fig_kwargs)
+                try:  # Type 1
+                    for color, col in zip(colors, y_data[ind]):
+                        ax_flatten[ind].plot(x_data[ind], col, color=color,
+                                             marker=next(markers),
+                                             **fig_kwargs)
+                except:  # Type 2
+                    for color, x, y in zip(colors, x_data[ind], y_data[ind]):
+                        ax_flatten[ind].plot(x, y, color=color,
+                                             marker=next(markers),
+                                             **fig_kwargs)
+
 
             # Edit
             ax_flatten[ind].spines['right'].set_visible(False)

@@ -222,8 +222,9 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
         else:
             ncols = 1
     elif mode == 'per_state':
-        legend = [r'${}$'.format(name_params[ind])
-                  for ind in range(num_params)]
+        legend = [r'$' + name + r'$' for name in name_params]
+        # legend = [r'${}$'.format(name_params[ind])
+        #           for ind in range(num_params)]
         if len(legend) > 4:
             ncols = num_params // 4 + 1
         else:

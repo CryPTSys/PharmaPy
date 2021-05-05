@@ -91,7 +91,7 @@ class StatisticsClass:
 
             for ind, (key, val) in enumerate(confidence_int.items()):
                 low, high = val
-                print("{:<12} {:^15.3f} {:^15.3f} {:^15.3f}".format(
+                print("{:<12} {:^15.3e} {:^15.3e} {:^15.3e}".format(
                         key, low, self.params[ind], high))
 
             print('{:<55}'.format('-'*57))
