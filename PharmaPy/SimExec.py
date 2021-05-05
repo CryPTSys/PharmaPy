@@ -182,7 +182,7 @@ class SimulationExec:
                            fit_spectra=False,
                            phase_modifiers=None, control_modifiers = None,
                            measured_ind=None, optimize_flags=None,
-                           df_dtheta=None, df_dy=None,
+                           jac_fun=None,
                            covar_data=None,
                            pick_unit=None):
 
@@ -212,6 +212,9 @@ class SimulationExec:
 
         args_wrapper = list(zip(phase_modifiers, control_modifiers))
 
+        if len(args_wrapper) == 1:
+            args_wrapper = args_wrapper[0]
+
         # Get 1D array of parameters from the UO class
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
@@ -234,7 +237,7 @@ class SimulationExec:
                 param_seed, x_data, spectra,
                 args_fun=args_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
-                df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
+                jac_fun=jac_fun, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)
         else:
             self.ParamInst = ParameterEstimation(
@@ -242,7 +245,7 @@ class SimulationExec:
                 param_seed, x_data, y_data,
                 args_fun=args_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
-                df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
+                jac_fun=jac_fun, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)
 
     def EstimateParams(self, optim_options=None, method='LM', bounds=None,

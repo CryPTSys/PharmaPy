@@ -17,7 +17,7 @@ eps = np.finfo(float).eps
 def cryst_mechanism(sup_sat, temp, temp_ref, params):
     phi_1, phi_2, exp = params
     absup = max(eps, sup_sat)
-    pre_exp = np.exp(phi_1 + phi_2*(1/temp_ref - 1/temp))
+    pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
 
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
 
@@ -271,8 +271,9 @@ class RxnKinetics:
         temp_term = self.temp_term(temp)
 
         drate_dphi1 = np.diag(temp_term)
-        drate_dphi2 = np.diag((1/self.temp_ref - 1/temp) * temp_term)
-        drate_dphi2 *= np.exp(self.phi_2)
+
+        dphi_2 = temp_term * (1/self.temp_ref - 1/temp) * np.exp(self.phi_2)
+        drate_dphi2 = np.diag(dphi_2)
 
         drate_dk = np.hstack((drate_dphi1, drate_dphi2))
 
@@ -532,7 +533,7 @@ class CrystKinetics:
 
                     tref = self.temp_ref
                     phi_1 = np.log(vals[0] + eps) - vals[1]/gas_ct/tref
-                    phi_2 = vals[1]/gas_ct
+                    phi_2 = np.log(vals[1]/gas_ct)
 
                     params_parsed[name] = list(vals)
 
@@ -672,16 +673,19 @@ class CrystKinetics:
         conc_sat = self.get_solubility(temp)
         ssat = max(eps, (conc - conc_sat) / conc_sat)
 
-        def dmech_dparam(mech):
-            dmech = np.array([mech,
-                              mech * (1 / self.temp_ref - 1 / temp),
-                              mech * np.log(ssat)])
+        def dmech_dparam(mech, phi_2):
+            dmech = np.array(
+                [mech,
+                 mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
+                 mech * np.log(ssat)])
 
             return dmech
 
-        dbp_dpar = dmech_dparam(self.prim_nucl)
-        dbs_dpar = dmech_dparam(self.sec_nucl)
-        dgr_dpar = dmech_dparam(self.growth)
-        ddiss_dpar = dmech_dparam(self.dissol)
+        b_par, s_par, g_par, d_par = self.params.values()
+
+        dbp_dpar = dmech_dparam(self.prim_nucl, b_par[1])
+        dbs_dpar = dmech_dparam(self.sec_nucl, s_par[1])
+        dgr_dpar = dmech_dparam(self.growth, g_par[1])
+        ddiss_dpar = dmech_dparam(self.dissol, d_par[1])
 
         return dbp_dpar, dbs_dpar, dgr_dpar, ddiss_dpar, conc_sat

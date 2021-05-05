@@ -86,12 +86,13 @@ class ParameterEstimation:
     def __init__(self, func, param_seed, x_data, y_data=None,
                  args_fun=None,
                  optimize_flags=None,
-                 df_dtheta=None, df_dy=None, dx_finitediff=None,
+                 jac_fun=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
                  name_params=None, name_states=None):
 
         self.function = func
-        self.df_dtheta = df_dtheta
+
+        self.jac_fun = jac_fun
         self.dx_fd = dx_finitediff
 
         self.fit_spectra = False
@@ -101,9 +102,7 @@ class ParameterEstimation:
             param_seed = param_seed[np.newaxis]
 
         # --------------- Data
-        # Read data
-        self.x_data = x_data
-        self.y_data = y_data
+        self.measured_ind = measured_ind
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):
 
@@ -119,61 +118,55 @@ class ParameterEstimation:
             x_fit = []
             y_fit = []
             x_match = []
+
+            x_exp = []
+            y_exp = []
             for key in keys_dict:
-                x_vals, y_vals, x_common = self.interpret_data(
+                x_vals, y_vals, x_common, y_experim = self.interpret_data(
                     x_data[key], y_data[key])
 
                 x_fit.append(x_vals)
                 y_fit.append(y_vals)
                 x_match.append(x_common)
 
+                x_exp.append(x_data[key])
+                y_exp.append(y_experim)
+
         else:
-            x_fit, y_fit, x_common = self.interpret_data(x_data, y_data)
+            x_fit, y_fit, x_common, y_experim = self.interpret_data(
+                x_data, y_data)
 
             x_fit = [x_fit]
             y_fit = [y_fit]
             x_match = [x_common]
 
+            x_exp = [x_data]
+            y_exp = [y_experim]
+
+        self.x_data = x_exp
+        self.y_data = y_exp
         self.x_match = x_match
 
         self.x_fit = x_fit
         self.y_fit = y_fit
 
-        # Covariance
+        # ---------- Covariance
         if (covar_data is not None) and (type(covar_data) is not list):
             covar_data = [covar_data]
 
         self.num_datasets = len(self.y_fit)
 
-        # Arguments
-        if isinstance(args_fun, (list, tuple)):
-            self.args_fun = args_fun
-        elif args_fun is None:
-            self.args_fun = [()] * self.num_datasets
+        # ---------- Arguments
+        if args_fun is None:
+            args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
-            self.args_fun = [args_fun]
+            args_fun = [args_fun]
 
-        # if args_fun is None:
-        #     self.args_fun = [()] * self.num_datasets
-        # elif self.num_datasets == 1:
-        #     self.args_fun = [args_fun]
-        # else:
-        #     self.args_fun = args_fun
-
-        # Measured states
-        if measured_ind is None:
-            measured_ind = range(len(self.y_data[0].T))
-
-        self.measured_ind = measured_ind
-
-        # Count dimensions
-        self.num_measured = len(measured_ind)
+        self.args_fun = args_fun
 
         self.num_xs = np.array([len(xs) for xs in self.x_fit])
         self.num_data = [array.size for array in self.y_fit]
         self.num_data_total = sum(self.num_data)
-
-        self.x_data = x_data
 
         if covar_data is None:
             self.stdev_data = [np.ones(num_data) for num_data in self.num_data]
@@ -189,9 +182,6 @@ class ParameterEstimation:
         else:
             self.map_variable = np.array(optimize_flags)
             self.map_fixed = ~self.map_variable
-
-        # param_ind = range(len(param_seed))
-        # self.ind_variable = [x for x in param_ind if x not in self.ind_fixed]
 
         self.param_seed = param_seed
 
@@ -216,21 +206,18 @@ class ParameterEstimation:
             self.name_params_plot = [r'$' + name + '$'
                                      for name in self.name_params]
 
-        # Outputs
-        self.params_iter = []
-        self.objfun_iter = []
-
-        # States
+        # ---------- States
         if name_states is None:
             self.name_states = [r'$y_{}$'.format(ind + 1)
                                 for ind in range(self.num_states)]
         else:
             self.name_states = name_states
 
-        # Iteration-dependent output data
+        # --------------- Outputs
+        self.params_iter = []
+        self.objfun_iter = []
         self.cond_number = []
 
-        # --------------- Outputs
         self.resid_runs = None
         self.y_runs = None
         self.sens = None
@@ -252,23 +239,27 @@ class ParameterEstimation:
             x_fit = x_fit
             y_fit = np.concatenate(y_data)
 
-        else:  # unique dataset, one simulation
+            y_data = [item[..., np.newaxis] for item in y_fit
+                      if item.ndim == 1]
+
+        else:  # unique dataset
             x_fit = x_data
 
             if y_data.ndim == 1:
                 y_data = y_data[..., np.newaxis]
 
             y_data = y_data.T
-            # args_fun = (args_fun, )
+
+            y_fit = y_data.flatten()
 
         self.num_states = len(y_data)
 
-        if x_match is None:
-            y_fit = y_data.flatten()
-        else:
-            y_fit = np.concatenate(y_data)
+        if self.measured_ind is None:
+            self.measured_ind = np.arange(0, self.num_states)
 
-        return x_fit, y_fit, x_match
+        self.num_measured = len(self.measured_ind)
+
+        return x_fit, y_fit, x_match, y_data
 
     def scale_sens(self, param_lims=None):
         """ Scale sensitivity matrix to make it non-dimensional.
@@ -342,14 +333,14 @@ class ParameterEstimation:
             else:  # call a separate function for jacobian
                 y_prof = result
 
-                if self.df_dtheta is None:
+                if self.jac_fun is None:
                     sens = numerical_jac_data(
                         self.func_aux, params,
                         (self.x_fit[ind], self.args_fun[ind]),
                         dx=self.dx_fd)
                 else:
-                    sens = self.df_dtheta(params, self.x_fit[ind],
-                                          *self.args_fun[ind])
+                    sens = self.jac_fun(params, self.x_fit[ind],
+                                        *self.args_fun[ind])
 
             if y_prof.ndim == 1:
                 y_run = y_prof
@@ -548,16 +539,22 @@ class ParameterEstimation:
             axes = np.atleast_1d(axes)
 
             for ind, experimental in enumerate(y_data):
-                axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind[ind]])
-                axes[ind].plot(x_data[ind], experimental, 'o', mfc='None')
+                axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind])
+
+                for idx, row in enumerate(experimental):
+                    color = axes[ind].lines[idx].get_color()
+                    axes[ind].plot(x_data[ind], row, 'o', mfc='None',
+                                   color=color)
 
                 axes[ind].spines['right'].set_visible(False)
                 axes[ind].spines['top'].set_visible(False)
 
                 axes[ind].set_ylabel(self.name_states[ind])
 
-            axes[0].legend(
-                ('prediction with seed params', 'experimental data'))
+            axes[0].lines[0].set_label('prediction with seed parameters')
+            axes[0].lines[self.num_measured].set_label('data')
+
+            axes[0].legend(loc='best')
             axes[-1].set_xlabel('$x$')
 
         else:
@@ -584,39 +581,30 @@ class ParameterEstimation:
             fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 3}
 
         ax_flatten = axes.flatten()
-        # names_meas = [self.name_states[ind] for ind in self.measured_ind]
-        # params_nominal = self.reconstruct_params(self.params_convg)
 
-        if self.num_datasets > 1:
-            x_data = list(self.x_data.values())
-            y_data = list(self.y_data.values())
-        else:
-            x_data = [self.x_data]
-            y_data = [self.y_data]
+        x_data = self.x_data
+        y_data = self.y_data
 
         if any([item is not None for item in self.x_match]):
             raise NotImplementedError('One or more datasets of type 2.')
 
         for ind in range(self.num_datasets):
-            x_exp = x_data[ind]
-            y_exp = y_data[ind]
-
             markers = cycle(['o', 's', '^', '*', 'P', 'X'])
 
             # Model prediction
             if black_white:
-                ax_flatten[ind].plot(x_exp, self.y_model[ind], 'k')
+                ax_flatten[ind].plot(x_data[ind], self.y_model[ind], 'k')
 
-                for col in y_exp:
-                    ax_flatten[ind].plot(x_exp, col, color='k',
+                for col in y_data[ind]:
+                    ax_flatten[ind].plot(x_data[ind], col, color='k',
                                          marker=next(markers), **fig_kwargs)
             else:
-                ax_flatten[ind].plot(x_exp, self.y_model[ind])
+                ax_flatten[ind].plot(x_data[ind], self.y_model[ind])
                 lines = ax_flatten[ind].lines
                 colors = [line.get_color() for line in lines]
 
-                for color, col in zip(colors, y_exp.T):
-                    ax_flatten[ind].plot(x_exp, col, color=color,
+                for color, col in zip(colors, y_data[ind]):
+                    ax_flatten[ind].plot(x_data[ind], col, color=color,
                                          marker=next(markers), **fig_kwargs)
 
             # Edit
@@ -874,22 +862,22 @@ class Deconvolution:
 
         return fig, axis, gaussian_pred
 
-    def estimate_params(self, optim_opt=None):
-        seed = self.concat_params()
+    # def estimate_params(self, optim_opt=None):
+    #     seed = self.concat_params()
 
-        paramest = ParameterEstimation(self.fun_wrapper, seed, self.x_data,
-                                       self.y_data,
-                                       df_dtheta=self.dparam_wrapper,
-                                       df_dy=self.dx_wrapper)
+    #     paramest = ParameterEstimation(self.fun_wrapper, seed, self.x_data,
+    #                                    self.y_data,
+    #                                    df_dtheta=self.dparam_wrapper,
+    #                                    df_dy=self.dx_wrapper)
 
-        result = paramest.optimize_fn(optim_options=optim_opt)
+    #     result = paramest.optimize_fn(optim_options=optim_opt)
 
-        optim_params = np.split(result[0], 3)
+    #     optim_params = np.split(result[0], 3)
 
-        self.param_obj = paramest
-        self.optim_params = optim_params
+    #     self.param_obj = paramest
+    #     self.optim_params = optim_params
 
-        return optim_params, result[1:], paramest
+    #     return optim_params, result[1:], paramest
 
     def plot_results(self, fig_size=None, plot_initial=False,
                      plot_individual=False):
@@ -972,17 +960,17 @@ class MultipleCurveResolution(ParameterEstimation):
     def __init__(self, func, param_seed, time_data, spectra=None,
                  args_fun=None,
                  optimize_flags=None,
-                 df_dtheta=None, df_dy=None, dx_finitediff=None,
+                 jac_fun=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
                  name_params=None, name_states=None):
 
         super().__init__(func, param_seed, time_data, spectra,
-                         args_fun, optimize_flags, df_dtheta, df_dy,
+                         args_fun, optimize_flags, jac_fun,
                          dx_finitediff, measured_ind, covar_data,
                          name_params, name_states)
 
         self.fit_spectra = True
-        self.spectra = list(self.y_data.values())
+        self.spectra = [data.T for data in self.y_data]
 
     def get_objective(self, params, residual_vec=False):
         if type(self.params_iter) is list:

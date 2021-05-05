@@ -36,12 +36,12 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
     if verbose:
         print()
-        print('{:<40}'.format('-'*45))
-        print("{:<7} {:<10} {:<10} {:<10}".format(
-            'eval', 'fun_val', '||step||', 'gradient'))
-        print('{:<40}'.format('-'*45))
-        print("{:<7} {:<10.3e} {:<10} {:<10.3e}".format(
-                num_feval, norm(fun)**2, '---', norm(b_vector)))
+        print('{:<40}'.format('-'*60))
+        print("{:<7} {:<10} {:<10} {:<10} {:<10}".format(
+            'eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'))
+        print('{:<40}'.format('-'*60))
+        print("{:<7} {:<10.3e} {:<10} {:<10.3e} {:<10.3e}".format(
+                num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
 
@@ -87,8 +87,8 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         # print(mu)
 
         if verbose:
-            print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e}".format(
-                num_feval, sq_new, norm(lm_step), norm(b_vector)))
+            print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}".format(
+                num_feval, sq_new, norm(lm_step), norm(b_vector), mu))
 
         if norm(fun_new) < tol_fun:
             break
@@ -100,7 +100,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     covar_x = inv(a_matrix)
 
     if verbose:
-        print('{:<40}'.format('-'*45))
+        print('{:<40}'.format('-'*60))
         print()
 
     if full_output:

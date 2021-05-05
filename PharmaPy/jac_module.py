@@ -75,7 +75,7 @@ def numerical_jac_central(func, x, rel_tol, abs_tol, dx=None, args=()):
     return np.column_stack(jac)
 
 
-def numerical_jac_data(func, x, args=(), dx=None):
+def numerical_jac_data(func, x, args=(), dx=None):  # TODO: x-dependent dx
 
     if dx is None:
         dx = eps
