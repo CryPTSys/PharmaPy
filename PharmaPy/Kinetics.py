@@ -14,22 +14,32 @@ gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
-def cryst_mechanism(sup_sat, temp, temp_ref, params):
+def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
     absup = max(eps, sup_sat)
-    pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
+
+    if reformulate:
+        pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
+    else:
+        pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
 
     return kinetic_term
 
 
-def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry):
+def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
+                         reformulate):
+
     phi_1, phi_2, s_1, s_2 = params
     absup = max(eps, sup_sat)
     mom_3 = moms[3]
 
-    pre_exp = np.exp(phi_1 + phi_2*(1/temp_ref - 1/temp))
+    if reformulate:
+        pre_exp = np.exp(phi_1 + phi_2*(1/temp_ref - 1/temp))
+    else:
+        pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
+
     nucl_sec = pre_exp * sup_sat * absup**(s_1 - 1) * \
         kv_cry**s_1 * max(0, mom_3)**s_2
 
@@ -475,11 +485,13 @@ class CrystKinetics:
 
     def __init__(self, coeff_solub,
                  nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
-                 solubility_type='polynomial', rel_super=True, alpha_fn=None,
+                 solubility_type='polynomial', rel_super=True,
+                 reformulate_kin=False, alpha_fn=None,
                  temp_ref=298.15, secondary_fn=None):
 
         self.temp_ref = temp_ref
         self.rel_super = rel_super
+        self.reformulate_kin = reformulate_kin
 
         self.custom_sec = False
 
@@ -526,7 +538,8 @@ class CrystKinetics:
 
     def set_params(self, params_in):
         if isinstance(params_in, dict):
-            params_complete = self.transform_params(params_in)
+            params_complete = self.transform_params(params_in,
+                                                    self.reformulate_kin)
         else:
             split_idx = np.array([3, 4, 3, 3]).cumsum()[:-1]
             params_in = np.split(params_in, split_idx)
@@ -535,7 +548,7 @@ class CrystKinetics:
 
         self.params = params_complete
 
-    def transform_params(self, param_dict, reparam=True):
+    def transform_params(self, param_dict, reparam):
         self.params_sec = param_dict.get('nucl_sec')
         if reparam:
             zero_log = np.log(eps)
@@ -624,16 +637,17 @@ class CrystKinetics:
             args_sec = ()
             par_sec = self.params_sec
         else:
-            args_sec = (kv_cry, )
+            args_sec = (kv_cry, self.reformulate_kin)
             par_sec = par_s
 
         if isinstance(sup_sat, float):
 
             if sup_sat >= 0:
                 nucl_prim = cryst_mechanism(sup_sat, temp, self.temp_ref,
-                                            par_p)
+                                            par_p, self.reformulate_kin)
 
-                growth = cryst_mechanism(sup_sat, temp, self.temp_ref, par_g)
+                growth = cryst_mechanism(sup_sat, temp, self.temp_ref, par_g,
+                                         self.reformulate_kin)
 
                 nucl_sec = self.secondary_fn(sup_sat, moments, temp,
                                              self.temp_ref, par_sec,
@@ -694,19 +708,33 @@ class CrystKinetics:
         conc_sat = self.get_solubility(temp)
         ssat = max(eps, (conc - conc_sat) / conc_sat)
 
-        def dmech_dparam(mech, phi_2):
-            dmech = np.array(
-                [mech,
-                 mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
-                 mech * np.log(ssat)])
+        def dmech_dparam(mech, params):
+            if self.reformulate_kin:
+                phi_2 = params[1]
+
+                dmech = np.array(
+                    [mech,
+                     mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
+                     mech * np.log(ssat)])
+            else:
+                k = params[0]
+                e_act = params[1]
+                expo = params[2]
+
+                absup = max(eps, ssat)
+
+                dmech = np.array(
+                    [np.exp(-e_act/gas_ct/temp) * ssat * absup**(expo - 1),
+                     -mech * np.exp(e_act/gas_ct/temp),
+                     mech * np.log(ssat)])
 
             return dmech
 
         b_par, s_par, g_par, d_par = self.params.values()
 
-        dbp_dpar = dmech_dparam(self.prim_nucl, b_par[1])
-        dbs_dpar = dmech_dparam(self.sec_nucl, s_par[1])
-        dgr_dpar = dmech_dparam(self.growth, g_par[1])
-        ddiss_dpar = dmech_dparam(self.dissol, d_par[1])
+        dbp_dpar = dmech_dparam(self.prim_nucl, b_par)
+        dbs_dpar = dmech_dparam(self.sec_nucl, s_par)
+        dgr_dpar = dmech_dparam(self.growth, g_par)
+        ddiss_dpar = dmech_dparam(self.dissol, d_par)
 
         return dbp_dpar, dbs_dpar, dgr_dpar, ddiss_dpar, conc_sat
