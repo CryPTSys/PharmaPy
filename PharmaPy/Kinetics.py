@@ -40,7 +40,7 @@ class RxnKinetics:
 
     def __init__(self, stoich_matrix, k_params, ea_params,
                  keq_params=None, params_f=None,
-                 delta_hrxn=None, tref_hrxn=None,
+                 reformulate_kin=False, delta_hrxn=None, tref_hrxn=None,
                  temp_ref=298.15, reparam_center=True,
                  kinetic_model=None, df_dstates=None, df_dtheta=None):
         """ Create a reactor object
@@ -77,6 +77,7 @@ class RxnKinetics:
         """
 
         self.temp_ref = temp_ref
+        self.reformulate_kin = reformulate_kin
 
         self.args_kin = ()
 
@@ -153,8 +154,12 @@ class RxnKinetics:
             k_params = np.atleast_1d(params['k_params']) + eps
             ea_params = np.atleast_1d(params['ea_params']) + eps
 
-            phi_1, phi_2 = self.transform_params(
-                self.stoich_matrix, k_params, ea_params)
+            if self.reformulate_kin:
+                phi_1, phi_2 = self.transform_params(
+                    self.stoich_matrix, k_params, ea_params)
+            else:
+                phi_1 = k_params
+                phi_2 = ea_params
 
             self.num_paramsk = len(phi_1) + len(phi_2)
 
@@ -197,8 +202,13 @@ class RxnKinetics:
 
         # Names
         num_kpar = len(self.phi_1)
-        name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
-        name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
+
+        if self.reformulate_kin:
+            name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
+        else:
+            name_k = ['\\k_%i' % ind for ind in range(1, num_kpar + 1)]
+            name_e = ['\\E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
 
         if self.fit_paramsf:
             num_orders = (stoich_matrix < 0).sum()
@@ -244,13 +254,22 @@ class RxnKinetics:
     def temp_term(self, temp):
 
         temp = np.asarray(temp)
-        inv_temp = (1/self.temp_ref - 1/temp)
 
-        if temp.ndim == 0:
-            k_temp = np.exp(self.phi_1 + np.exp(self.phi_2) * inv_temp)
+        if self.reformulate_kin:
+            inv_temp = (1/self.temp_ref - 1/temp)
+            if temp.ndim == 0:
+                k_temp = np.exp(self.phi_1 + np.exp(self.phi_2) * inv_temp)
+            else:
+                k_temp = np.exp(self.phi_1 +
+                                np.outer(inv_temp, np.exp(self.phi_2)))
+
         else:
-            k_temp = np.exp(self.phi_1 +
-                            np.outer(inv_temp, np.exp(self.phi_2)))
+            if temp.ndim == 0:
+                k_temp = self.phi_1 * np.exp(self.phi_2/temp/gas_ct)
+            else:
+                k_temp = self.phi_1 * \
+                    np.exp(np.outer(1/temp, self.phi_2))
+
 
         return k_temp
 
@@ -267,14 +286,16 @@ class RxnKinetics:
         return k_eq
 
     def dk_dkparams(self, temp):
-
         temp_term = self.temp_term(temp)
 
-        drate_dphi1 = np.diag(temp_term)
+        if self.reformulate_kin:
+            drate_dphi1 = np.diag(temp_term)
+            dphi_2 = temp_term * (1/self.temp_ref - 1/temp) * np.exp(self.phi_2)
+        else:
+            drate_dphi1 = np.diag(np.exp(-self.phi_2/gas_ct/temp))
+            dphi_2 = -temp_term/gas_ct/temp
 
-        dphi_2 = temp_term * (1/self.temp_ref - 1/temp) * np.exp(self.phi_2)
         drate_dphi2 = np.diag(dphi_2)
-
         drate_dk = np.hstack((drate_dphi1, drate_dphi2))
 
         return np.atleast_2d(drate_dk)

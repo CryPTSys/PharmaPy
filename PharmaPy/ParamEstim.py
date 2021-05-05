@@ -677,10 +677,9 @@ class ParameterEstimation:
             raise NotImplementedError('More than one dataset detected. '
                                       'Not supported for multiple datasets')
 
-        all_type_one = all([item is None for item in self.x_match])
-        if all_type_one:
-            ydata = self.y_data.T
-            xdata = [self.x_data] * len(ydata)
+        if self.x_match[0] is None:
+            ydata = self.y_data[0]
+            xdata = [self.x_data[0]] * len(ydata)
             ymodel = self.y_model[0].T  # TODO: change this
         else:
             xdata = self.x_data
@@ -698,12 +697,12 @@ class ParameterEstimation:
 
         fig, axes = plt.subplots(num_row, num_col, figsize=fig_size)
 
-        for ind in range(num_plots):
+        for ind in range(num_plots):  # for every state
             axes.flatten()[ind].plot(xdata[ind], ymodel[ind])
 
             line = axes.flatten()[ind].lines[0]
             color = line.get_color()
-            axes.flatten()[ind].plot(xdata[ind], ydata[ind], 'o', color=color,
+            axes.flatten()[ind].plot(xdata[ind], ydata[ind].T, 'o', color=color,
                                      mfc='None')
 
             axes.flatten()[ind].set_ylabel(self.name_states[ind])
@@ -717,7 +716,7 @@ class ParameterEstimation:
 
             ymodel_seed = resid_seed*self.stdev_data[0] + self.y_fit[0]
 
-            if all_type_one:
+            if self.x_match[0] is None:
                 ymodel_seed = ymodel_seed.reshape(-1, num_x)
             else:
                 x_len = [sum(array) for array in self.x_match]
