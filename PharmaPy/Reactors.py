@@ -211,7 +211,7 @@ class _BaseReactor:
         self.Liquid_1.temp = temp
 
         if self.oper_mode != 'Batch':
-            self.Liquid_1.updatePhase(concentr=conc, vol=vol)
+            self.Liquid_1.updatePhase(mole_conc=conc, vol=vol)
 
         material_bces = self.material_balances(time, conc, vol, temp,
                                                u_values)
@@ -474,7 +474,7 @@ class BatchReactor(_BaseReactor):
         temp = np.atleast_1d(temp)
         conc = np.atleast_2d(conc)
 
-        conc_all = np.ones((len(conc), len(self.Liquid_1.concentr)))
+        conc_all = np.ones((len(conc), len(self.Liquid_1.mole_conc)))
 
         if conc.ndim == 1:
             conc_all[self.mask_species] = conc
@@ -547,13 +547,9 @@ class BatchReactor(_BaseReactor):
         if time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
 
-        # # Reset states
-        # if self.reset_states:
-        #     self.reset()
-
         # Initial states
-        conc_init = self.Liquid_1.concentr[self.mask_species]
-        self.conc_inert = self.Liquid_1.concentr[~self.mask_species]
+        conc_init = self.Liquid_1.mole_conc[self.mask_species]
+        self.conc_inert = self.Liquid_1.mole_conc[~self.mask_species]
         self.num_concentr = len(conc_init)
 
         states_init = conc_init
@@ -661,9 +657,9 @@ class BatchReactor(_BaseReactor):
         # self.Liquid_1.vol = self.vol
         # self.Liquid_1.calcComposition()
 
-        concentr_final = self.Liquid_1.concentr.copy()
+        concentr_final = self.Liquid_1.mole_conc.copy()
         concentr_final[self.mask_species] = self.concentr
-        self.Liquid_1.updatePhase(vol=self.vol, concentr=concentr_final)
+        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=concentr_final)
 
         self.Outlet = self.Liquid_1
         self.outputs = states
@@ -830,8 +826,8 @@ class CSTR(_BaseReactor):
         # self.Inlet.Liquid_1.getProps()
 
         # Initial states
-        states_init = self.Liquid_1.concentr
-        self.num_concentr = len(self.Liquid_1.concentr)
+        states_init = self.Liquid_1.mole_conc
+        self.num_concentr = len(self.Liquid_1.mole_conc)
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
@@ -1025,8 +1021,8 @@ class SemibatchReactor(CSTR):
         # self.Inlet.getProps()
 
         # Initial states
-        states_init = self.Liquid_1.concentr
-        self.num_concentr = len(self.Liquid_1.concentr)
+        states_init = self.Liquid_1.mole_conc
+        self.num_concentr = len(self.Liquid_1.mole_conc)
         states_init = np.append(states_init, self.Liquid_1.vol)
 
         if 'temp' in self.states_uo:
@@ -1160,7 +1156,7 @@ class PlugFlowReactor(_BaseReactor):
     def energy_steady(self, conc, temp):
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
-        concentr = np.zeros_like(self.Liquid_1.concentr)
+        concentr = np.zeros_like(self.Liquid_1.mole_conc)
         concentr[self.mask_species] = conc
         concentr[~self.mask_species] = self.c_inert
 
@@ -1391,7 +1387,7 @@ class PlugFlowReactor(_BaseReactor):
         self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
 
         c_init = np.ones((num_discr,
-                          self.num_species)) * self.Liquid_1.concentr
+                          self.num_species)) * self.Liquid_1.mole_conc
 
         self.num_concentr = self.num_species  # TODO: make consistent with Batch
 

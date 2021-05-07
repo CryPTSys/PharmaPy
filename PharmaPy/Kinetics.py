@@ -50,7 +50,7 @@ class RxnKinetics:
 
     def __init__(self, stoich_matrix, k_params, ea_params,
                  keq_params=None, params_f=None,
-                 reformulate_kin=False, delta_hrxn=None, tref_hrxn=None,
+                 reformulate_kin=False, delta_hrxn=0, tref_hrxn=298.15,
                  temp_ref=298.15, reparam_center=True,
                  kinetic_model=None, df_dstates=None, df_dtheta=None):
         """ Create a reactor object
@@ -664,7 +664,8 @@ class CrystKinetics:
                 nucl_prim = 0
                 nucl_sec = 0
 
-                dissol = cryst_mechanism(sup_sat, temp, self.temp_ref, par_d)
+                dissol = cryst_mechanism(sup_sat, temp, self.temp_ref, par_d,
+                                         self.reformulate_kin)
 
             # Returns
             self.prim_nucl = nucl_prim

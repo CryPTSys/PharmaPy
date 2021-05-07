@@ -103,6 +103,7 @@ class ParameterEstimation:
 
         # --------------- Data
         self.measured_ind = measured_ind
+        self.experim_names = None
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):
 
@@ -114,6 +115,8 @@ class ParameterEstimation:
             else:
                 raise NameError("Keys of the x_data and y_data dictionaries "
                                 "don't match")
+
+            self.experim_names = list(keys_dict)
 
             x_fit = []
             y_fit = []
@@ -773,9 +776,15 @@ class ParameterEstimation:
         else:
             y_model = [np.concatenate(lst) for lst in self.y_model]
 
+        if self.experim_names is None:
+            experim_names = ['experiment {}'.format(ind + 1)
+                             for ind in range(self.num_datasets)]
+        else:
+            experim_names = self.experim_names
+
         for ind, y_model in enumerate(y_model):
             axis.scatter(y_model.T.flatten(), self.y_fit[ind],
-                         label='experiment {}'.format(ind + 1),
+                         label=experim_names[ind],
                          **fig_kwargs)
 
         axis.set_xlabel('Model')
@@ -988,6 +997,9 @@ class MultipleCurveResolution(ParameterEstimation):
         self.spectra = [data.T for data in self.y_data]
 
     def get_objective(self, params, residual_vec=False):
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
+
         if type(self.params_iter) is list:
             self.params_iter.append(params)
 
