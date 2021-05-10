@@ -9,7 +9,7 @@ import numpy.matlib
 from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
-import scipy 
+import scipy
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Cake
@@ -26,7 +26,7 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9):
+                 resist_medium=2.22e9, eta_fun=None, mass_eta=False):
 
         self.idx_supercrit = np.atleast_1d(idx_supercrit)
 
@@ -47,6 +47,12 @@ class Drying:
         self._Phases = None
         self._Inlet = None
         self.porosity = 0.35
+
+        # Limiting factor
+        if eta_fun is None:
+            eta_fun = lambda sat, mass_frac: 1
+
+        self.eta_fun = eta_fun
 
     @property
     def Phases(self):
@@ -109,11 +115,11 @@ class Drying:
 
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
-        
+
         # x_liq_mass_frac = self.Liquid_1.
         # Drying periods
         dry_correction = 1
-        
+
         # Limiter factor
         Lim_factor = 0.1
 
@@ -152,7 +158,22 @@ class Drying:
 
         # ---------- Drying rate term
         rho_gas = self.pres_gas / gas_ct / temp_gas  # mol/m**3
+
+        # Dry correction
+        if self.mass_eta:
+            rho_liq = self.rho_liq
+            sat_eta = satur * rho_liq / (satur*rho_liq + (1 - satur)*rho_gas)
+            w_eta = self.Liquid_1.frac_to_frac(mole_frac=x_liq)
+        else:
+            sat_eta = satur
+            w_eta = x_liq
+
+        limiter_factor = self.eta_fun(sat_eta, w_eta)
+
+        # Dry rate
+
         dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
+        dry_rate *= limiter_factor
 
         # ---------- Model equations
         inputs = self.get_inputs(time)
@@ -198,12 +219,12 @@ class Drying:
         transfer_gas = dry_rate.T / epsilon_gas / dens_gas
 
         dygas_dt = -u_gas * dygas_dz + transfer_gas
-        
+
         if return_terms:    # TODO: check term by term in material balance down this line
             self.masstrans_comp = 1
-            
+
             return self.masstrans_comp
-            
+
         else:
             return [dsat_dt, dygas_dt.T, dxliq_dt.T]
 
@@ -222,7 +243,7 @@ class Drying:
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
-        heat_loss = 14626.86 * (temp_gas - 295) 
+        heat_loss = 14626.86 * (temp_gas - 295)
 
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
@@ -231,10 +252,10 @@ class Drying:
         dTg_dz = np.diff(fluxes_Tg) / self.dz
 
         dTg_dt = -u_gas * dTg_dz + (drying_terms - heat_transf - heat_loss) / denom_gas
-        
+
         # Empty port
         #dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
-        
+
         # print(dTg_dt[0])
 
         # ----- Condensed phases equations
@@ -255,18 +276,18 @@ class Drying:
                              latent_heat).sum(axis=1)
 
         dTcond_dt = (-drying_terms_cond + heat_transf) / denom_cond
-        
-        
+
+
         if return_terms:
             self.convec_term = u_gas * dTg_dz
             self.drying = drying_terms/ denom_gas
             self.heat_cond = heat_transf/ denom_gas
             self.heat_loss_emp = heat_loss/ denom_gas
-            
+
             return self.convec_term, self.drying, self.heat_cond, self.heat_loss_emp
-        
+
         else:
-            
+
             return [dTg_dt, dTcond_dt]
 
     def solve_unit(self, deltaP, runtime, p_atm=101325):
