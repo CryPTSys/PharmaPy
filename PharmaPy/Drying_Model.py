@@ -40,7 +40,7 @@ class Drying:
 
         # Transfer coefficients
         self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
-        self.h_T_j = 10  # W/m**2/K
+        self.h_T_j = 30  # W/m**2/K
 
         self.nomenclature()
 
@@ -109,7 +109,8 @@ class Drying:
 
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
-
+        
+        # x_liq_mass_frac = self.Liquid_1.
         # Drying periods
         dry_correction = 1
         
