@@ -108,12 +108,8 @@ class Drying:
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
 
-        # Drying periods
-        dry_correction = 1
-
         y_volat = y_gas[:, self.idx_volatiles]
-        dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat) * \
-            dry_correction * 0.001
+        dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat)
 
         dry_rates = np.zeros_like(y_gas)
         dry_rates[:, self.idx_volatiles] = dry_volatiles
@@ -146,6 +142,8 @@ class Drying:
 
         # ---------- Drying rate term
         rho_gas = self.pres_gas / gas_ct / temp_gas  # mol/m**3
+
+        dry_correction = 1e-3
         dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
 
         # ---------- Model equations

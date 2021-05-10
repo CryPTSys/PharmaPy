@@ -275,10 +275,10 @@ class RxnKinetics:
 
         else:
             if temp.ndim == 0:
-                k_temp = self.phi_1 * np.exp(self.phi_2/temp/gas_ct)
+                k_temp = self.phi_1 * np.exp(-self.phi_2/temp/gas_ct)
             else:
                 k_temp = self.phi_1 * \
-                    np.exp(np.outer(1/temp, self.phi_2))
+                    np.exp(np.outer(1/temp, -self.phi_2))
 
 
         return k_temp
