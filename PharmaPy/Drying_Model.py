@@ -110,9 +110,8 @@ class Drying:
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
         
-        # x_liq_mass_frac = self.Liquid_1.
         # Drying periods
-        dry_correction = 1
+        dry_correction = 1            
         
         # Limiter factor
         Lim_factor = 0.1
