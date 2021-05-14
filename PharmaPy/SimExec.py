@@ -179,7 +179,7 @@ class SimulationExec:
 
     def SetParamEstimation(self, x_data,
                            param_seed=None, y_data=None, spectra=None,
-                           fit_spectra=False,
+                           fit_spectra=False, global_analysis=True,
                            phase_modifiers=None, control_modifiers = None,
                            measured_ind=None, optimize_flags=None,
                            jac_fun=None,
@@ -234,7 +234,7 @@ class SimulationExec:
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed, x_data, spectra,
+                param_seed, x_data, spectra, global_analysis,
                 args_fun=args_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
                 jac_fun=jac_fun, covar_data=covar_data,

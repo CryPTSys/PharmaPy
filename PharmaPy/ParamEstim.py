@@ -982,6 +982,7 @@ class Deconvolution:
 
 class MultipleCurveResolution(ParameterEstimation):
     def __init__(self, func, param_seed, time_data, spectra=None,
+                 global_analysis=True,
                  args_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
@@ -995,25 +996,97 @@ class MultipleCurveResolution(ParameterEstimation):
 
         self.fit_spectra = True
         self.spectra = [data.T for data in self.y_data]
+        self.len_spectra = [data.shape[0] for data in self.spectra]
+        self.size_spectra = [data.size for data in self.spectra]
+        self.spectra_tot = np.vstack(self.spectra)
 
-    def get_objective(self, params, residual_vec=False):
-        # Reconstruct parameter set with fixed and non-fixed indexes
-        params = self.reconstruct_params(params)
+        self.global_analysis = global_analysis
 
-        if type(self.params_iter) is list:
-            self.params_iter.append(params)
+    def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
+        eye = np.eye(c_target.shape[0])
+        proj_orthogonal = eye - np.dot(c_target, c_plus)
 
-        def func_aux(params, x_vals, spectra, *args):
-            states = self.function(params, x_vals, *args)
+        sens_pick = sens_states[self.map_variable][:, :, self.measured_ind]
 
-            _, epsilon, absorbance = mcr_spectra(
-                states[:, self.measured_ind], spectra)
+        first_term = proj_orthogonal @ sens_pick @ c_plus
+        second_term = first_term.transpose((0, 2, 1))
+        sens_an = (first_term + second_term) @ spectra_pred
 
-            return absorbance.T.ravel()
+        n_par, n_times, n_conc = sens_an.shape
+        sens_proj = sens_an.T.reshape(n_conc * n_times, n_par)
 
+        return sens_proj
+
+    def func_aux(self, params, x_vals, spectra, *args):
+        states = self.function(params, x_vals, *args)
+
+        _, epsilon, absorbance = mcr_spectra(
+            states[:, self.measured_ind], spectra)
+
+        return absorbance.T.ravel()
+
+    def spectra_decomp(self, conc_tg, spectra):
+        c_plus = np.linalg.pinv(conc_tg)
+        molar_absorptivity = np.dot(c_plus, spectra)
+        spectra_sim = np.dot(conc_tg, molar_absorptivity)
+
+        return c_plus, molar_absorptivity, spectra_sim
+
+    def get_global_analysis(self, params,):
+        c_runs = []
+        sens_conc = []
+        for ind in range(self.num_datasets):
+            result = self.function(params, self.x_fit[ind],
+                                   reorder=False,
+                                   *self.args_fun[ind])
+
+            if isinstance(result, tuple):
+                conc_prof, sens_states = result
+                sens_conc.append(sens_states)
+            else:
+                conc_prof = result
+
+            conc_target = conc_prof[:, self.measured_ind]
+
+            # MCR
+            c_runs.append(conc_target)
+
+        conc_tot = np.vstack(c_runs)
+
+        # MCR
+        conc_plus, absorptivity_pure, spectra_pred = self.spectra_decomp(
+            conc_tot, self.spectra_tot)
+
+        if len(sens_conc) == 0:  # TODO: it won't work like this
+            args_merged = [self.x_data[ind],
+                           self.args_fun[ind], self.spectra[ind]]
+
+            sens = numerical_jac_data(self.func_aux, params, args_merged,
+                                      dx=self.dx_fd)[:, self.map_variable]
+        else:
+            sens_tot = np.concatenate(sens_conc, axis=1)
+            sens = self.get_sens_projection(conc_tot, conc_plus,
+                                            sens_tot, spectra_pred)
+
+        residuals = (spectra_pred - self.spectra_tot).T.ravel() / self.stdev_data[ind]
+
+        trim_y = np.cumsum(self.len_spectra)[:-1]
+        trim_sens = np.cumsum(self.size_spectra)[:-1]
+
+        y_runs = np.split(spectra_pred, trim_y, axis=0)
+        sens_runs = np.split(sens, trim_sens, axis=0)
+        resid_runs = np.split(residuals, trim_sens)
+
+        self.epsilon_mcr = absorptivity_pure
+
+        return y_runs, sens_runs, resid_runs
+
+    def get_local_analysis(self, params):
         y_runs = []
         resid_runs = []
         sens_runs = []
+        c_runs = []
+        epsilon_mcr = []
 
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_fit[ind],
@@ -1029,30 +1102,20 @@ class MultipleCurveResolution(ParameterEstimation):
             conc_target = conc_prof[:, self.measured_ind]
 
             # MCR
-            conc_plus = np.linalg.pinv(conc_target)
-            absortivity_pred = np.dot(conc_plus, self.spectra[ind])
-            spectra_pred = np.dot(conc_target, absortivity_pred)
+            conc_plus, absortivity_pred, spectra_pred = self.spectra_decomp(
+                conc_target, self.spectra[ind])
 
-            self.epsilon_mcr = absortivity_pred
+            epsilon_mcr.append(absortivity_pred)
 
             if sens_states is None:
                 args_merged = [self.x_data[ind],
                                self.args_fun[ind], self.spectra[ind]]
-                sens = numerical_jac_data(func_aux, params, args_merged,
+
+                sens = numerical_jac_data(self.func_aux, params, args_merged,
                                           dx=self.dx_fd)[:, self.map_variable]
             else:
-                eye = np.eye(conc_target.shape[0])
-                proj_orthogonal = eye - np.dot(conc_target, conc_plus)
-
-                sens_pick = sens_states[self.map_variable][
-                    :, :, self.measured_ind]
-
-                first_term = proj_orthogonal @ sens_pick @ conc_plus
-                second_term = first_term.transpose((0, 2, 1))
-                sens_an = (first_term + second_term) @ spectra_pred
-
-                n_par, n_times, n_conc = sens_an.shape
-                sens = sens_an.T.reshape(n_conc * n_times, n_par)
+                sens = self.get_sens_projection(conc_target, conc_plus,
+                                                sens_states, spectra_pred)
 
             resid = (spectra_pred - self.spectra[ind]).T.ravel()
             resid_run = resid / self.stdev_data[ind]
@@ -1061,15 +1124,33 @@ class MultipleCurveResolution(ParameterEstimation):
             resid_runs.append(resid_run)
             sens_runs.append(sens)
 
-        self.sens_runs = sens_runs
+        self.epsilon_mcr = epsilon_mcr
+
+        return y_runs, resid_runs, sens_runs
+
+
+    def get_objective(self, params, residual_vec=False):
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
+
+        if type(self.params_iter) is list:
+            self.params_iter.append(params)
+
+        if self.global_analysis:
+            y_runs, resid_runs, sens_runs = self.get_global_analysis(params)
+
+        else:
+            y_runs, resid_runs, sens_runs = self.get_local_analysis(params)
+
         self.y_runs = y_runs
+        self.sens_runs = sens_runs
         self.resid_runs = resid_runs
 
         if type(self.objfun_iter) is list:
             objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
             self.objfun_iter.append(objfun_val)
 
-        residuals = self.optimize_flag * np.concatenate(resid_runs)
+        residuals = np.concatenate(resid_runs)
         self.residuals = residuals
 
         # Return objective

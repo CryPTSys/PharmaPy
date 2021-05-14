@@ -150,7 +150,7 @@ def anim_func(time, states, name_file=None, legend=None, names_y=None,
 
 
 def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
-                  separate_plots=False, title=None, xlabel=None, ylabel=None,
+                  title=None, xlabel=None, ylabel=None, invert_x=False,
                   time_unit=None, legend=None):
     """
     Animate states that depend on time and position. This typically arises when
@@ -225,6 +225,8 @@ def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
         return data_merged
 
     lines = ax_anim.plot(indep_vble, func_data(0))
+    if invert_x:
+        ax_anim.set_xlim(ax_anim.get_xlim()[::-1])
 
     time_tag = ax_anim.text(
         1, 1.04, '$time = {:.1f}$ {}'.format(time[0], time_unit),
