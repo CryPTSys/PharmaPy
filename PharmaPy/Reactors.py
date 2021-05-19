@@ -1311,7 +1311,7 @@ class PlugFlowReactor(_BaseReactor):
     def get_inputs(self, time):
 
         if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_conc': self.Inlet.concentr,
+            input_dict = {'mole_conc': self.Inlet.mole_conc,
                           'temp': self.Inlet.temp,
                           'vol_flow': self.Inlet.vol_flow}
         else:
@@ -1378,7 +1378,7 @@ class PlugFlowReactor(_BaseReactor):
     def solve_unit(self, runtime, num_discr):
         self.set_names()
 
-        c_inlet = self.Inlet.concentr
+        c_inlet = self.Inlet.mole_conc
         self.num_species = len(c_inlet)
         self.num_discr = num_discr
 

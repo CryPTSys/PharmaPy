@@ -547,14 +547,16 @@ class VaporPhase(ThermoPhysicalManager):
 
         if len(temp) > 1:
             temp = temp[..., np.newaxis]
+            idx = np.unique(np.where(temp < self.t_crit)[1])
+        else:
+            idx = np.where(temp < self.t_crit)[0]
 
-        # TODO: generalize this
-        idx = np.unique(np.where(temp < self.t_crit)[1])
         tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
-        deltahvap = watson * self.delta_hvap[idx]  # J/mole
+        deltahvap = np.zeros_like(self.t_crit)
+        deltahvap[idx] = watson * self.delta_hvap[idx]  # J/mole
 
         if basis == 'mass':
             deltahvap = deltahvap / self.mw[idx] * 1000  # J/kg
@@ -601,6 +603,7 @@ class VaporPhase(ThermoPhysicalManager):
         if temp is None:
             temp = self.temp
 
+        # Sensible heat
         if any(temp > self.t_crit):
             ind_super = np.where(temp > self.t_crit)[0]
             ind_sub = np.where(temp < self.t_crit)[0]
@@ -616,12 +619,6 @@ class VaporPhase(ThermoPhysicalManager):
                     temp, temp_ref, mass_frac, mole_frac, phase='liquid',
                     total_h=total_h, idx=ind_sub, basis=basis)
 
-                deltaVap = self.getHeatVaporization(
-                    temp, idx=ind_sub, basis=basis)
-
-                deltaVap = np.concatenate(
-                    (np.zeros_like(ind_super), deltaVap))[ind_sort]
-
                 if total_h:
                     hSens = sensSuper + sensSub
                 else:
@@ -629,15 +626,16 @@ class VaporPhase(ThermoPhysicalManager):
 
             else:
                 hSens = sensSuper
-                deltaVap = np.zeros_like(ind_super)
 
         else:
             hSens = super().getEnthalpy(
                 temp, temp_ref, mass_frac, mole_frac, phase='liquid',
                 total_h=total_h)
 
-            deltaVap = self.getHeatVaporization(temp, basis=basis)
+        # Phase change
+        deltaVap = self.getHeatVaporization(temp, basis=basis)
 
+        # Collect terms
         if total_h:
             hVap = hSens + np.dot(deltaVap, mole_frac)
 
@@ -761,7 +759,7 @@ class SolidPhase(ThermoPhysicalManager):
                     distr = mass*distrib / x_distrib**3 / kv * 1e18
 
             else:
-                mom_three = self.getMoments(mom_num=3)  # m**3
+                mom_three = self.getMoments(distrib=distrib, mom_num=3)  # m**3
                 mass = mom_three * self.kv * dens
                 distr = distrib
 
@@ -772,9 +770,10 @@ class SolidPhase(ThermoPhysicalManager):
             self.moments = self.getMoments(mom_num=mom_idx)
 
         else:
-            raise ValueError('Neither moment nor distribution data was '
-                             'provided for the solid phase. Please specify '
-                             'one of the two')
+            print('Neither moment nor distribution data was '
+                  'provided for this SolidPhase object. Make sure to provide '
+                  'one of the two either when declaring this phase, or in a '
+                  'Slurry object to which this phase is aggregated')
 
         self.num_mom = num_mom
 

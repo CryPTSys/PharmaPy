@@ -278,8 +278,7 @@ class RxnKinetics:
                 k_temp = self.phi_1 * np.exp(-self.phi_2/temp/gas_ct)
             else:
                 k_temp = self.phi_1 * \
-                    np.exp(np.outer(1/temp, -self.phi_2))
-
+                    np.exp(np.outer(1/temp, -self.phi_2/gas_ct))
 
         return k_temp
 

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
 
-class PCR_calibration():
+class PCR_calibration:
     def __init__(self, data, num_comp=None, standarize=False):
         self.data = data
         self.standarize = standarize

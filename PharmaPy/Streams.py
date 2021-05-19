@@ -107,12 +107,12 @@ class SolidStream(SolidPhase):
 class VaporStream(VaporPhase):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass_flow=0, vol_flow=0, mole_flow=0,
-                 mass_frac=None, mole_frac=None, concentr=None):
+                 mass_frac=None, mole_frac=None, mole_conc=None):
 
         super().__init__(path_thermo, temp, pres,
                          mass=mass_flow, vol=vol_flow, moles=mole_flow,
                          mass_frac=mass_frac, mole_frac=mole_frac,
-                         concentr=concentr)
+                         mole_conc=mole_conc)
 
         self.mass_flow = self.mass
         self.vol_flow = self.vol
