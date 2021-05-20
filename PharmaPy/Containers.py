@@ -45,6 +45,10 @@ class Mixer:
 
         self.type_out = None
 
+    @property
+    def Inlets(self):
+        pass
+
     def nomenclature(self):
         self.names_states_in = ['mass_frac', 'mass', 'mass_flow', 'temp']
         self.names_states_out = self.names_states_in

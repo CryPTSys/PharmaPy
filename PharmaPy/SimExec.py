@@ -52,17 +52,18 @@ class SimulationExec:
             module_name = getattr(value, '__module__', None)
             if module_name == 'PharmaPy.Connections':
                 value.ThermoInstance = self.ThermoInstance
+
                 self.connection_instances.append(value)
                 self.connection_names.append(key)
 
-    def SetConnectivity(self, incidence_matrix=None):
-        self.LoadUOs()
-        self.LoadConnections()
+                value.name = key
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
                        run_subset=None):
 
-        self.SetConnectivity()
+        # Set connectivity
+        self.LoadUOs()
+        self.LoadConnections()
 
         # Pick specific units, if given
         if pick_units is None:
@@ -121,6 +122,8 @@ class SimulationExec:
             for conn in self.connection_instances:
                 if conn.source_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
+
+        self.execution_order = execution_order
 
     def GetStreamTable(self, basis='mass'):
 
@@ -261,6 +264,59 @@ class SimulationExec:
         print('Optimization time: {:.2e} s.'.format(elapsed))
 
         return results
+
+    def GetCosts(self):
+        # ---------- CAPEX
+        # Raw materials
+        raw_inlets = [obj.Inlet for obj in self.execution_order
+                      if getattr(obj.Inlet, 'y_upstream', False)]
+
+        raw_connections = [connection
+                           for connection in self.connection_instances
+                           if connection.source_uo is None]
+
+        # Names
+        connection_names = [conn.name for conn in raw_connections]
+        inlet_name = list(self.uos_instances.keys())[0]
+
+        input_names = [inlet_name] + connection_names
+
+        connection_matter = [conn.Matter for conn in raw_connections]
+        raw_objects = [raw_inlets] + connection_matter
+        num_raw = len(raw_objects)
+
+        is_stream = [raw.__module__ == 'PharmaPy.Streams'
+                     for raw in raw_objects]
+
+        if any(is_stream):  # there might be different times
+            time_flow = raw_connections[0].destination_uo.timeProf[-1]
+
+        fracs = []
+        masses = np.zeros(num_raw)
+        for ind, obj in enumerate(raw_objects):
+            if is_stream[ind]:
+                masses[ind] = obj.mass_flow * time_flow
+            else:
+                masses[ind] = obj.mass
+
+            fracs.append(obj.mass_frac)
+
+        fracs = np.array(fracs)
+
+        raw_materials = (fracs.T * masses).T
+
+        total_raw = raw_materials.sum(axis=0)
+        raw_materials = np.vstack((raw_materials, total_raw))
+
+        index = input_names + ['total']
+
+        raw_amounts = pd.DataFrame(raw_materials, index=index,
+                                   columns=self.NamesSpecies)
+
+        # ---------- OPEX
+        # Utilities
+
+        return raw_amounts
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)
