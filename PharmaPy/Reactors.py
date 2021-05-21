@@ -116,7 +116,8 @@ class _BaseReactor:
             raise RuntimeError('Please provide a list or tuple of phases '
                                'objects')
         classify_phases(self)
-        self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
+        self.__original_phase__ = copy.deepcopy(self.Liquid_1)
 
     @property
     def Kinetics(self):
@@ -147,7 +148,7 @@ class _BaseReactor:
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
 
-        self.Liquid_1.__dict__.update(self.__original_phase__)
+        self.Liquid_1.__dict__.update(self.__original_phase_dict__)
         self.__dict__.update(copy_dict)
 
     def heat_transfer(self, temp, temp_ht, vol):
@@ -437,6 +438,8 @@ class BatchReactor(_BaseReactor):
         self.is_continuous = False
         self.nomenclature()
 
+        self.material_from_upstream = False
+
     def nomenclature(self):
         if not self.isothermal and 'temp' not in self.controls.keys():
             self.states_uo.append('temp')
@@ -667,7 +670,6 @@ class BatchReactor(_BaseReactor):
 
 class CSTR(_BaseReactor):
     def __init__(self, partic_species, name_species=None, mask_params=None,
-                 Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
@@ -677,7 +679,7 @@ class CSTR(_BaseReactor):
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
 
-        self.Inlet = Inlet
+        self.Inlet = None
         self.oper_mode = 'Continuous'
         self.is_continuous = True
         self.nomenclature()
@@ -951,6 +953,8 @@ class SemibatchReactor(CSTR):
 
         self.vol_ht = self.vol_max * 0.15
 
+        self.material_from_upstream = False
+
     def heat_transfer(self, temp, temp_ht, vol):
         # Geometry
         circ = np.pi / 4 * self.diam**2  # m**2
@@ -1118,6 +1122,7 @@ class PlugFlowReactor(_BaseReactor):
                          u_ht, ht_media, ht_mode)
 
         self.is_continuous = True
+        self.oper_mode = 'Continuous'
         self.diam = diam_in
 
         self.adiabatic = adiabatic
@@ -1127,6 +1132,8 @@ class PlugFlowReactor(_BaseReactor):
         self.distributed_uo = True
 
         self.nomenclature()
+
+        self.Inlet = None
 
     def nomenclature(self):
         if not self.isothermal:

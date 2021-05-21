@@ -489,6 +489,7 @@ class Filter:
                  station_diam=0.01):
 
         self._Phases = Phases
+        self.material_from_upstream = False
 
         self.r_medium = resist_medium
         self.station_diam = station_diam

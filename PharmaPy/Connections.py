@@ -139,14 +139,12 @@ class Connection:
 
         if mode == 'Batch':
             self.destination_uo.Phases = transfered_matter
+            self.destination_uo.material_from_upstream = True
         elif mode == 'Semibatch':
             if self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
-            else:
-                pass
+                self.destination_uo.material_from_upstream = True
 
-        elif self.source_uo is None:  # Mixers
-            self.destination_uo.inlets.append(transfered_matter)
         else:  # Continuous
             source_phases = self.source_uo.Outlet
             if self.source_uo.oper_mode == 'Batch' and source_phases is not self.Matter:
@@ -173,10 +171,12 @@ class Connection:
                         elif 'Solid' in name_source and 'Solid' in name_destin:
                             pass
 
-            if self.destination_uo.__class__.__name__ == 'Mixer':
-                self.destination_uo.inlets.append(transfered_matter)
-            else:
+            if hasattr(self.destination_uo, 'Inlet'):
                 self.destination_uo.Inlet = transfered_matter
+                self.destination_uo.material_from_upstream = True
+            else:
+                self.destination_uo.Inlets = transfered_matter
+                self.destination_uo.material_from_upstream = True
 
             if self.destination_uo.__class__.__name__ == 'DynamicCollector':
                 if self.source_uo.__module__ == 'PharmaPy.Crystallizers':

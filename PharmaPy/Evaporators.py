@@ -21,6 +21,7 @@ from assimulo.problem import Implicit_Problem
 from assimulo.solvers import IDA
 
 from pathlib import Path
+import copy
 
 gas_ct = 8.314
 eps = np.finfo(float).eps
@@ -299,6 +300,7 @@ class Evaporator:
 
         self._Inlet = inlet
         self._Phases = phase
+        self.material_from_upstream = False
 
         self.vol_tot = vol_drum
         self.area_out = np.pi / 4 * diam_out**2
@@ -340,6 +342,7 @@ class Evaporator:
         paths = [path_comp, path_inert]
         self.paths = paths
 
+        self.__original_phase__ = copy.deepcopy(phase)
         self.LiqPhase = phase
 
         self.num_species = len(self.LiqPhase.mole_frac)
@@ -350,13 +353,14 @@ class Evaporator:
 
         self._Phases = phase
 
-
     @property
     def Inlet(self):
         return self._Inlet
 
     @Inlet.setter
     def Inlet(self, inlet):  # Create an inlet with additional species (N2)
+
+        self.Inlet_orig = inlet
         path_comp = inlet.path_data
         path_inert = '/data/evaporator/props_nitrogen.json'
         path_inert = str(Path(__file__).parents[1]) + path_inert
@@ -833,6 +837,8 @@ class ContinuousEvaporator:
         self.VapPhase = VaporStream(path_comp, pres=self.pres)
 
         self._Phases = phase
+
+        self.__original_phase__ = copy.deepcopy(self.LiqPhase)
 
     @property
     def Inlet(self):

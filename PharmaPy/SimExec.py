@@ -43,6 +43,7 @@ class SimulationExec:
         for key, value in self.__dict__.items():
             type_val = getattr(value, '__module__', None)
             if type_val in modules_ids:
+                value.id_uo = key
                 value.name_species = self.NamesSpecies
                 self.uos_instances[key] = value
                 # self.oper_mode.append(value.oper_mode)
@@ -265,58 +266,89 @@ class SimulationExec:
 
         return results
 
-    def GetCosts(self):
+    def get_raw_objects(self):
+        raw_inlets = []
+        inlets_ids = []
+        time_inlets = []
+
+        raw_holdups = []
+        holdups_ids = []
+
+        for uo in self.execution_order:
+            # Inlets (flows)
+            if hasattr(uo, 'Inlet'):
+                if uo.Inlet.y_upstream is None:
+                    inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+                    raw_inlets.append(inlet)
+
+                    time_inlets.append(uo.timeProf[-1])
+                    inlets_ids.append(uo.id_uo)
+
+            elif hasattr(uo, 'Inlets'):
+                for inlet in uo.Inlets:
+                    if inlet.y_upstream is None:
+                        raw_inlets.append(inlet)
+
+                        time_inlets.append(uo.timeProf[-1])
+                        inlets_ids.append(uo.id_uo)
+
+            # Initial holdups
+            if hasattr(uo, '__original_phase__'):
+                if uo.oper_mode == 'Continuous':
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+                elif not uo.material_from_upstream:
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+
+        return raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids, holdups_ids
+
+    def GetRawMaterials(self):
         # ---------- CAPEX
         # Raw materials
-        raw_inlets = [obj.Inlet for obj in self.execution_order
-                      if getattr(obj.Inlet, 'y_upstream', False)]
-
-        raw_connections = [connection
-                           for connection in self.connection_instances
-                           if connection.source_uo is None]
+        raw_flows, raw_holdups, time_flows, flow_idx, holdup_idx = self.get_raw_objects()
 
         # Names
-        connection_names = [conn.name for conn in raw_connections]
-        inlet_name = list(self.uos_instances.keys())[0]
+        inlet_names = list(self.uos_instances.keys())[0]
 
-        input_names = [inlet_name] + connection_names
-
-        connection_matter = [conn.Matter for conn in raw_connections]
-        raw_objects = [raw_inlets] + connection_matter
-        num_raw = len(raw_objects)
-
-        is_stream = [raw.__module__ == 'PharmaPy.Streams'
-                     for raw in raw_objects]
-
-        if any(is_stream):  # there might be different times
-            time_flow = raw_connections[0].destination_uo.timeProf[-1]
-
+        # Flows
         fracs = []
-        masses = np.zeros(num_raw)
-        for ind, obj in enumerate(raw_objects):
-            if is_stream[ind]:
-                masses[ind] = obj.mass_flow * time_flow
-            else:
-                masses[ind] = obj.mass
+        masses_inlets = np.zeros_like(time_flows)
+        for ind, obj in enumerate(raw_flows):
+            masses_inlets[ind] = obj.mass_flow
+            fracs.append(obj.mass_frac)
 
+        masses_inlets *= time_flows
+
+        fracs = np.array(fracs)
+
+        inlet_comp_mass = (fracs.T * masses_inlets).T
+
+        # Holdups
+        fracs = []
+        masses_holdups = np.zeros(len(raw_holdups))
+        for ind, obj in enumerate(raw_holdups):
+            masses_holdups[ind] = obj.mass
             fracs.append(obj.mass_frac)
 
         fracs = np.array(fracs)
 
-        raw_materials = (fracs.T * masses).T
+        holdup_comp_mass = (fracs.T * masses_holdups).T
 
-        total_raw = raw_materials.sum(axis=0)
-        raw_materials = np.vstack((raw_materials, total_raw))
+        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
+                               columns=self.NamesSpecies)
 
-        index = input_names + ['total']
+        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
+                                 columns=self.NamesSpecies)
 
-        raw_amounts = pd.DataFrame(raw_materials, index=index,
-                                   columns=self.NamesSpecies)
+        raw_df = pd.concat((flow_df, holdup_df), axis=0,
+                           keys=('flows', 'holdups'))
+        raw_total = raw_df.sum(axis=0)
 
-        # ---------- OPEX
-        # Utilities
+        return raw_df, raw_total
 
-        return raw_amounts
+    def GetUtilities(self):
+        pass
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)

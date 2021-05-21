@@ -17,6 +17,7 @@ class PCR_calibration:
         self.data = data
         self.standarize = standarize
 
+        self.data_mean = data.mean(axis=0)
         self.data_centered = self.__center_data()
 
         (self.projections, self.explained_variance,
@@ -31,13 +32,13 @@ class PCR_calibration:
         if data is None:
             data = self.data
 
-        data_mean = data.mean(axis=0)
-        data_centered = data - data_mean
+        # data_mean = data.mean(axis=0)
+        data_centered = data - self.data_mean
 
         if self.standarize:
             data_centered *= 1 / data.std(axis=0)
 
-        self.data_mean = data_mean
+        # self.data_mean = data_mean
 
         return data_centered
 

@@ -81,6 +81,8 @@ class _BaseCryst:
         # ---------- Building objects
         self._Phases = None
         self._Kinetics = None
+        self.material_from_upstream = False
+
         self.jac_type = jac_type
 
         self.target_ind = target_ind
@@ -191,12 +193,15 @@ class _BaseCryst:
                 self.__original_solid__ = copy.deepcopy(
                     self.Slurry.Solid_1.__dict__)
 
-                self.__original_phases__ = (self.__original_liquid__,
-                                            self.__original_solid__)
+                self.__original_phase_dict__ = (self.__original_liquid__,
+                                                self.__original_solid__)
 
         if self.Slurry is not None:
             self.vol_slurry = copy.copy(self.Slurry.vol_slurry)
             classify_phases(self)  # Solid_1, Liquid_1...
+
+            self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
+                                     copy.deepcopy(self.Solid_1)]
 
             self.kron_jtg = np.zeros_like(self.Liquid_1.mass_frac)
             self.kron_jtg[self.target_ind] = 1
@@ -243,7 +248,7 @@ class _BaseCryst:
         copy_dict = copy.deepcopy(self.__original_prof__)
         self.__dict__.update(copy_dict)
 
-        for phase, di in zip(self.Phases, self.__original_phases__):
+        for phase, di in zip(self.Phases, self.__original_phase_dict__):
             phase.__dict__.update(di)
 
     def method_of_moments(self, mu, conc, temp, params, rho_cry, vol=1):
