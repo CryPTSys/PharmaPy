@@ -269,12 +269,13 @@ class SimulationExec:
     def get_raw_objects(self):
         raw_inlets = []
         inlets_ids = []
-        time_inlets = []
 
         raw_holdups = []
         holdups_ids = []
 
-        for uo in self.execution_order:
+        time_inlets = []
+
+        for ind, uo in enumerate(self.execution_order):
             # Inlets (flows)
             if hasattr(uo, 'Inlet'):
                 if uo.Inlet is not None:
@@ -282,7 +283,11 @@ class SimulationExec:
                         inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
                         raw_inlets.append(inlet)
 
-                        time_inlets.append(uo.timeProf[-1])
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
                         inlets_ids.append(uo.id_uo)
 
             elif hasattr(uo, 'Inlets'):
@@ -290,7 +295,11 @@ class SimulationExec:
                     if inlet.y_upstream is None:
                         raw_inlets.append(inlet)
 
-                        time_inlets.append(uo.timeProf[-1])
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
                         inlets_ids.append(uo.id_uo)
 
             # Initial holdups
@@ -311,7 +320,7 @@ class SimulationExec:
 
         # Flows
         fracs = []
-        masses_inlets = np.zeros_like(time_flows)
+        masses_inlets = np.zeros(len(raw_flows))
         for ind, obj in enumerate(raw_flows):
             try:
                 masses_inlets[ind] = obj.mass_flow
