@@ -277,12 +277,13 @@ class SimulationExec:
         for uo in self.execution_order:
             # Inlets (flows)
             if hasattr(uo, 'Inlet'):
-                if uo.Inlet.y_upstream is None:
-                    inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
-                    raw_inlets.append(inlet)
+                if uo.Inlet is not None:
+                    if uo.Inlet.y_upstream is None:
+                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+                        raw_inlets.append(inlet)
 
-                    time_inlets.append(uo.timeProf[-1])
-                    inlets_ids.append(uo.id_uo)
+                        time_inlets.append(uo.timeProf[-1])
+                        inlets_ids.append(uo.id_uo)
 
             elif hasattr(uo, 'Inlets'):
                 for inlet in uo.Inlets:
@@ -308,14 +309,15 @@ class SimulationExec:
         # Raw materials
         raw_flows, raw_holdups, time_flows, flow_idx, holdup_idx = self.get_raw_objects()
 
-        # Names
-        inlet_names = list(self.uos_instances.keys())[0]
-
         # Flows
         fracs = []
         masses_inlets = np.zeros_like(time_flows)
         for ind, obj in enumerate(raw_flows):
-            masses_inlets[ind] = obj.mass_flow
+            try:
+                masses_inlets[ind] = obj.mass_flow
+            except:
+                masses_inlets[ind] = obj.mass
+
             fracs.append(obj.mass_frac)
 
         masses_inlets *= time_flows
@@ -342,7 +344,7 @@ class SimulationExec:
                                  columns=self.NamesSpecies)
 
         raw_df = pd.concat((flow_df, holdup_df), axis=0,
-                           keys=('flows', 'holdups'))
+                           keys=('inlets', 'holdups'))
         raw_total = raw_df.sum(axis=0)
 
         return raw_df, raw_total

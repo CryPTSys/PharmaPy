@@ -293,12 +293,12 @@ class AdiabaticFlash:
 
 
 class Evaporator:
-    def __init__(self, vol_drum, phase=None, inlet=None,
+    def __init__(self, vol_drum, phase=None,
                  pres=101325, diam_out=2.54e-2,
                  ht_coeff=1000, temp_ht=298.15,
                  activity_model='ideal'):
 
-        self._Inlet = inlet
+        self._Inlet = None
         self._Phases = phase
         self.material_from_upstream = False
 
