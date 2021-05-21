@@ -330,8 +330,21 @@ class SimulationExec:
         fracs = []
         masses_holdups = np.zeros(len(raw_holdups))
         for ind, obj in enumerate(raw_holdups):
-            masses_holdups[ind] = obj.mass
-            fracs.append(obj.mass_frac)
+            if isinstance(obj, list):
+                masa = [elem.mass for elem in obj]
+                masa = np.array(masa)
+
+                frac = [elem.mass_frac for elem in obj]
+                frac = (np.array(frac).T * masa).T
+                frac = frac.sum(axis=0)
+
+                mass = 1
+            else:
+                mass = obj.mass
+                frac = obj.mass_frac
+
+            masses_holdups[ind] = mass
+            fracs.append(frac)
 
         fracs = np.array(fracs)
 
