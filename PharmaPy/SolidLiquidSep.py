@@ -58,13 +58,13 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     if csd is None:
         csd = solid_phase.distrib
 
-    x_grid = solid_phase.x_distrib * 1e-6
+    x_grid = solid_phase.x_distrib
 
     alpha_x = 180 * (1 - porosity) / \
-        (porosity**3 * x_grid**2 * rho_sol * sphericity**2)
+        (porosity**3 * (x_grid*1e-6)**2 * rho_sol * sphericity**2)
 
     numerator = trapezoidal_rule(x_grid, csd * alpha_x)
-    denominator = trapezoidal_rule(x_grid, csd)
+    denominator = solid_phase.moments[0]
 
     alpha = numerator / denominator
 
@@ -622,9 +622,13 @@ class Filter:
         self.cake_dry = self.c_solids * states[:, 0] / dens_liq
         self.cake_wet = self.cake_dry * \
             (1 + epsilon/(1 - epsilon) * dens_liq/dens_sol)
-        self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
-            / (2 * self.area_filt**2 * self.deltaP)\
-            + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
+            
+        self.time_filt = visc_liq/self.deltaP * (
+            self.alpha*self.c_solids/2 * (vol_filtrate/self.area_filt)**2 +
+            self.r_medium * (vol_filtrate/self.area_filt))
+        # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
+        #     / (2 * self.area_filt**2 * self.deltaP)\
+        #     + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
         self.retrieve_results(time, states)
 
         return time, states

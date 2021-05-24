@@ -762,6 +762,7 @@ class SolidPhase(ThermoPhysicalManager):
                 if distrib_type == 'vol_perc':
                     distr = (mass / dens) * distrib / kv / x_distrib**3 \
                         * 1e18 / self.dx   # number/um
+                        
                 elif distrib_type == 'mass_perc':
                     distr = mass*distrib / x_distrib**3 / kv * 1e18
 
