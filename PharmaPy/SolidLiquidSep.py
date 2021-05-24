@@ -54,13 +54,14 @@ def upwind_fvm(f, boundary_cond):
     return f_aug
 
 
-def get_alpha(solid_phase, porosity, rho_sol, csd=None):
+def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     if csd is None:
         csd = solid_phase.distrib
 
     x_grid = solid_phase.x_distrib * 1e-6
 
-    alpha_x = 180 * (1 - porosity) / (porosity**3 * x_grid**2 * rho_sol)
+    alpha_x = 180 * (1 - porosity) / \
+        (porosity**3 * x_grid**2 * rho_sol * sphericity**2)
 
     numerator = trapezoidal_rule(x_grid, csd * alpha_x)
     denominator = trapezoidal_rule(x_grid, csd)
@@ -573,7 +574,7 @@ class Filter:
         epsilon = self.Solid_1.getPorosity(diam_filter=self.station_diam)
         dens_sol = self.Solid_1.getDensity()
 
-        self.alpha = get_alpha(self.Solid_1, porosity=epsilon,
+        self.alpha = get_alpha(self.Solid_1, sphericity=1, porosity=epsilon,
                                rho_sol=dens_sol)
 
         solid_conc = self.SlurryPhase.getSolidsConcentr()
@@ -586,7 +587,7 @@ class Filter:
         vol_liq_slur = vol_slurry * frac_liq
 
         vol_filtrate = vol_liq_slur - vol_liq_cake
-
+        
         self.c_solids = vol_slurry * solid_conc / vol_filtrate
 
         # Physical properties
@@ -621,7 +622,9 @@ class Filter:
         self.cake_dry = self.c_solids * states[:, 0] / dens_liq
         self.cake_wet = self.cake_dry * \
             (1 + epsilon/(1 - epsilon) * dens_liq/dens_sol)
-
+        self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
+            / (2 * self.area_filt**2 * self.deltaP)\
+            + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
         self.retrieve_results(time, states)
 
         return time, states

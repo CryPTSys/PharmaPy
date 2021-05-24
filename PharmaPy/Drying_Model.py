@@ -27,6 +27,30 @@ gas_ct = 8.314
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
                  resist_medium=2.22e9, eta_fun=None, mass_eta=False):
+        """
+        
+
+        Parameters
+        ----------
+        number_nodes : TYPE
+            DESCRIPTION.
+        idx_supercrit : TYPE
+            DESCRIPTION.
+        diam_unit : TYPE, optional
+            DESCRIPTION. The default is 0.01.
+        resist_medium : TYPE, optional
+            DESCRIPTION. The default is 2.22e9.
+        eta_fun : TYPE, optional
+            DESCRIPTION. The default is None.
+        mass_eta : bool, optional
+            If true, drying rate limiting factor is a function of mass fractional saturation value.
+            The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
 
         self.idx_supercrit = np.atleast_1d(idx_supercrit)
 
@@ -46,13 +70,13 @@ class Drying:
 
         self._Phases = None
         self._Inlet = None
-        self.porosity = 0.35
 
         # Limiting factor
         if eta_fun is None:
             eta_fun = lambda sat, mass_frac: 1
 
         self.eta_fun = eta_fun
+        self.mass_eta = mass_eta
 
     @property
     def Phases(self):
@@ -116,16 +140,9 @@ class Drying:
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
         
-        # Drying periods
-        dry_correction = 1            
-        
-        # Limiter factor
-        Lim_factor = 0.1
-
         y_volat = y_gas[:, self.idx_volatiles]
-        dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat) * \
-            dry_correction * Lim_factor
-
+        dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat)
+        
         dry_rates = np.zeros_like(y_gas)
         dry_rates[:, self.idx_volatiles] = dry_volatiles
 
@@ -162,7 +179,7 @@ class Drying:
         if self.mass_eta:
             rho_liq = self.rho_liq
             sat_eta = satur * rho_liq / (satur*rho_liq + (1 - satur)*rho_gas)
-            w_eta = self.Liquid_1.frac_to_frac(mole_frac=x_liq)
+            w_eta = x_liq
         else:
             sat_eta = satur
             w_eta = x_liq
@@ -172,8 +189,8 @@ class Drying:
         # Dry rate
 
         dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
-        dry_rate *= limiter_factor
-
+        dry_rate *= limiter_factor[..., np.newaxis]
+        
         # ---------- Model equations
         inputs = self.get_inputs(time)
 

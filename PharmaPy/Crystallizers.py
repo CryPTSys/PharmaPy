@@ -1874,8 +1874,8 @@ class MSMPR(_BaseCryst):
 
             liquid_out = copy.deepcopy(self.Liquid_1)
             solid_out = copy.deepcopy(self.Solid_1)
-            solid_out.updatePhase(distrib=self.distribProf[-1][-1] / vol_div)
-
+            #solid_out.updatePhase(distrib=self.distribProf[-1][-1] / vol_div)
+            #solid_out.updatePhase(distrib=self.distribProf[-1][-1])
             # if self.method == '1D-FVM':
             #     solid_out = SolidPhase(path, x_distrib=self.x_grid,
             #                            distrib=self.distribProf[-1][-1]/vol_div,

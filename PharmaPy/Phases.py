@@ -690,7 +690,7 @@ class VaporPhase(ThermoPhysicalManager):
     
     def getDensity(self, pres_gas=None, temp_gas=None, phase ='gas', basis='mole'):
         
-        if pres_gas is None and temp is None:
+        if pres_gas is None and temp_gas is None:
         
             pres_gas = self.pres_gas
             temp_gas = self.temp
@@ -854,8 +854,8 @@ class SolidPhase(ThermoPhysicalManager):
         return densSolid
     
 
-
-    def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
+    def getPorosity(self, distrib=None, diam_filter=1, AR=None, sphericity=None):  # x_distrib is the x
+    
         if distrib is None:
             distrib = self.distrib
             mom_zero = self.moments[0]
@@ -865,39 +865,109 @@ class SolidPhase(ThermoPhysicalManager):
 
         # mom_one *= 1e-6  # m
         x_dist = self.x_distrib * 1e-6  # m
+        
+        if AR is None:
+            AR = 2  
+        
+        if sphericity is None:
+            sphericity = 0.7
+         
+        # Yu, Zou et al (1996) and Yu,Zou, Stnadish (1996) model
+        kv = 0.524  # Volumetric shape coefficient 
+        ks = 3.142  # Surface shape coefficient 
+        
+        del_x_dist = np.diff(x_dist)
+        node_x_dist = (x_dist[:-1] + x_dist[1:])/ 2
+        node_CSD = (distrib[:-1] + distrib[1:])/ 2
+        
+        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3) # Volume of crystals in each bin
+        frac_vol_cry = vol_cry/ np.sum(vol_cry)
+        
+        vol_particle = kv * node_x_dist**3
+        d_part_sphere = (6 * vol_particle/ np.pi)**(1/3)
+        d_part_equiv_pack = d_part_sphere/ (sphericity**2.785 * 
+                                            np.exp(2.946 * (1 - sphericity)))
+        
+        #Initial porosity
+        D_mean = mom_one/ mom_zero
+        E_0_Jeschar = 0.375 + 0.34 * D_mean/ diam_filter # # average porosity of packing of uniform sized spheres [-]
+        
+        initial_porosity = E_0_Jeschar
+        
+        V = 1/ (1 - initial_porosity) * np.ones_like(node_x_dist)   #Specific Volume for initial porosity 
+        
+        # Evaluate specific volume using modified linear packing model
+        V_T_node = np.zeros(len(node_x_dist))
+        
+        for i in range(len(node_x_dist)):
+            
+            sum_V_large_term= 0
+            sum_V_small_term = 0
+            
+            for j in range(i):
+                r = d_part_equiv_pack[j]/ d_part_equiv_pack[i]
+                g_r = (1 - r)**2 + 0.4*r*(1-r)**3.7
+                V_large_j = V[j] - (V[j] - 1) * g_r - V[i]
+                sum_V_large_term += V_large_j * frac_vol_cry[j] 
+            
+            for j in range(i+1, len(node_x_dist)):
+                r = d_part_equiv_pack[i]/ d_part_equiv_pack[j]
+                f_r = (1 -r)**3.3 + 2.8*r*(1 - r)**2.7
+                V_small_j = V[j] * (1 - f_r) - V[i]
+                sum_V_small_term += V_small_j * frac_vol_cry[j]
+                
+            #V_T_node[i] = vol_cry[i] * frac_vol_cry[i] + sum_V_large_term + sum_V_small_term
+            V_T_node[i] = V[i] + sum_V_large_term + sum_V_small_term
+        V_T = max(V_T_node)
+        
+        porosity = 1 - 1/V_T
+        
+        return porosity        
+        
+       
+    # def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
+    #     if distrib is None:
+    #         distrib = self.distrib
+    #         mom_zero = self.moments[0]
+    #         mom_one = self.moments[1]
+    #     else:
+    #         mom_zero, mom_one = self.getMoments(mom_num=(0, 1))
 
-        # Ouchiyiama model
-        E_denom = np.zeros_like(x_dist)
+    #     # mom_one *= 1e-6  # m
+    #     x_dist = self.x_distrib * 1e-6  # m
 
-        for p in range(4, len(E_denom)):
-            xx = x_dist[:p]
-            CSD = distrib[:p]
+    #     # Ouchiyiama model
+    #     E_denom = np.zeros_like(x_dist)
 
-            D_mean = mom_one / mom_zero
+    #     for p in range(4, len(E_denom)):
+    #         xx = x_dist[:p]
+    #         CSD = distrib[:p]
 
-            # average porosity of packing of uniform sized spheres [-]
-            E_0_Jeschar = 0.375 + 0.34 * D_mean / diam_filter
+    #         D_mean = mom_one / mom_zero
 
-            DD = xx - D_mean
-            DD[DD <= 0] = 0
+    #         # average porosity of packing of uniform sized spheres [-]
+    #         E_0_Jeschar = 0.375 + 0.34 * D_mean / diam_filter
 
-            # n value
-            n_num = np.dot((xx + D_mean)**2,
-                           (1 - 3/8*(D_mean/(xx + D_mean)))*CSD)
+    #         DD = xx - D_mean
+    #         DD[DD <= 0] = 0
 
-            n_denom = np.dot((xx**3 - DD**3), CSD)
+    #         # n value
+    #         n_num = np.dot((xx + D_mean)**2,
+    #                        (1 - 3/8*(D_mean/(xx + D_mean)))*CSD)
 
-            n_bar = 1 + 4/13*D_mean*(7 - 8*E_0_Jeschar)*(n_num/n_denom)
+    #         n_denom = np.dot((xx**3 - DD**3), CSD)
 
-            E_denom[p] = np.dot((DD**3 + (1/n_bar)*((xx + D_mean)**3 - DD**3)),
-                                CSD)
+    #         n_bar = 1 + 4/13*D_mean*(7 - 8*E_0_Jeschar)*(n_num/n_denom)
 
-        E_denom = max(E_denom)
-        E_num = np.dot(x_dist**3, distrib)
+    #         E_denom[p] = np.dot((DD**3 + (1/n_bar)*((xx + D_mean)**3 - DD**3)),
+    #                             CSD)
 
-        porosity = max(0, 1 - E_num/E_denom)
+    #     E_denom = max(E_denom)
+    #     E_num = np.dot(x_dist**3, distrib)
 
-        return porosity
+    #     porosity = max(0, 1 - E_num/E_denom)
+
+    #     return porosity
 
     def getCp(self, temp=None, mass_frac=None, mole_frac=None, basis='mass'):
         if temp is None:

@@ -155,7 +155,7 @@ class Slurry:
 
         vol_solid = mom_three * self.Solid_1.kv
         vol_fracs = np.array([1 - vol_solid, vol_solid])
-
+        
         if vol_basis:
             return vol_fracs
 
