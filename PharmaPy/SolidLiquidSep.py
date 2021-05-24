@@ -248,11 +248,14 @@ class DeliquoringStep:
         # self.rho_j = np.ones_like(self.rho_j)
         conc_upstream = self.CakePhase.mass_concentr
 
-        z_dim = self.z_centers * self.cake_height
-        interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
-        conc_init = interp.evalSpline(z_dim)
-        # conc_init = conc_upstream
-
+        if conc_upstream.ndim == 1:  # also for saturation
+            pass  # code conc_init
+        else:
+            z_dim = self.z_centers * self.cake_height
+            interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
+            conc_init = interp.evalSpline(z_dim)
+            # conc_init = conc_upstream
+    
         self.conc_mean_init = trapezoidal_rule(z_dim, conc_init) / \
             self.cake_height
 
