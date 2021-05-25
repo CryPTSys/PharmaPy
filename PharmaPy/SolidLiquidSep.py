@@ -248,15 +248,19 @@ class DeliquoringStep:
         # self.rho_j = np.ones_like(self.rho_j)
         conc_upstream = self.CakePhase.mass_concentr
 
-        if conc_upstream.ndim == 1:  # also for saturation
-            pass  # code conc_init
+        if conc_upstream == None:  # also for saturation : Daniel
+            z_dim = self.z_centers * self.cake_height
+            conc_liq = self.Liquid_1.concentr  #Lets check how the mass conc is calculated: Daniel
+            conc_init = np.tile(conc_liq, (self.num_nodes, 1))
         else:
             z_dim = self.z_centers * self.cake_height
             interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
             conc_init = interp.evalSpline(z_dim)
             # conc_init = conc_upstream
-    
-        self.conc_mean_init = trapezoidal_rule(z_dim, conc_init) / \
+        
+        self.conc_mean_init = np.zeros_like(conc_init)
+        for i in range(len(conc_liq)):
+            self.conc_mean_init[:,i] = trapezoidal_rule(z_dim, conc_init[:,i]) / \
             self.cake_height
 
         conc_star_init = (conc_init - self.conc_mean_init) / \
@@ -302,7 +306,7 @@ class DeliquoringStep:
         for ind in range(num_species):
             conc_sp = states[:, (ind + 1)::(num_species + 1)]
 
-            conc_sp = conc_sp * conc_diff[ind] + self.conc_mean_init[ind]
+            conc_sp = conc_sp * conc_diff[:,ind] + self.conc_mean_init[:,ind]
             mass_sp = porosity * satProf * conc_sp
             massbar = porosity * satProf * conc_sp / \
                 ((1 - porosity)*self.rho_s + porosity*satProf*self.rho_j[ind])
@@ -321,7 +325,7 @@ class DeliquoringStep:
 
         concPerVolElement = np.split(states, self.num_nodes, axis=1)
         concPerVolElement = [
-            array[:, 1:] * conc_diff + self.conc_mean_init
+            array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
             for ind, array in enumerate(concPerVolElement)]
 
         self.concPerSpecies = concPerSpecies
@@ -702,7 +706,6 @@ class Filter:
 class DisplacementWashing:
     def __init__(self, solvent_idx, diam_unit=None, resist_medium=0, k_ads=0):
         self.max_exp = np.log(np.finfo('d').max)
-        self.epsilon = 0.3
         self.satur = 1
 
         self.solvent_idx = solvent_idx
@@ -807,6 +810,7 @@ class DisplacementWashing:
         # Liquid
         visc_liq = self.Liquid_1.getViscosity()
         diff = self.Liquid_1.getDiffusivity(wrt=self.solvent_idx)
+        epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         lambd_ads = 1 / (1 - self.k_ads + self.k_ads/self.epsilon)
         c_zero = self.Liquid_1.mass_conc
 
