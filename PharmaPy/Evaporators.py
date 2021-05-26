@@ -19,6 +19,7 @@ from matplotlib.ticker import AutoMinorLocator
 
 from assimulo.problem import Implicit_Problem
 from assimulo.solvers import IDA
+from assimulo.exception import TerminateSimulation
 
 from pathlib import Path
 import copy
@@ -296,11 +297,16 @@ class Evaporator:
     def __init__(self, vol_drum, phase=None,
                  pres=101325, diam_out=2.54e-2,
                  ht_coeff=1000, temp_ht=298.15,
-                 activity_model='ideal'):
+                 activity_model='ideal', state_events=None):
 
         self._Inlet = None
         self._Phases = phase
         self.material_from_upstream = False
+
+        if isinstance(state_events, dict):
+            self.state_events = [state_events]
+        elif state_events is None:
+            self.state_events = []
 
         self.vol_tot = vol_drum
         self.area_out = np.pi / 4 * diam_out**2
@@ -380,6 +386,8 @@ class Evaporator:
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'moles', 'temp']
+        self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+                            'pres', 'u_int', 'temp']
 
     def get_inputs(self, time):
         if self.Inlet is None:
@@ -470,7 +478,7 @@ class Evaporator:
 
         return out_energy
 
-    def unit_model(self, time, states, states_dot, params=None):
+    def unit_model(self, time, states, states_dot, sw, params=None):
 
         n_comp = self.num_species + 1
 
@@ -628,7 +636,47 @@ class Evaporator:
 
         return states_init, sdot_init
 
-    def solve_unit(self, runtime, solve=True):
+    def __state_event(self, time, states, sdot, switch):
+        events = []
+
+        states_trim = np.split(states, self.trim_idx)
+        dict_states = dict(zip(self.name_states, states_trim))
+
+        if any(switch):  # TODO: generalize for several state events
+
+            for di in self.state_events:
+                state_name = di['state_name']
+                state_idx = di['state_idx']
+                ref_value = di['value']
+
+                checked_value = dict_states[state_name][state_idx]
+
+                event_flag = ref_value - checked_value
+                events.append(event_flag)
+
+            # Maximum liquid constraint
+            rho_liq = self.LiqEvap.getDensity(mole_frac=dict_states['x_liq'],
+                                              temp=dict_states['temp'][0],
+                                              basis='mole')
+            vol_liq = dict_states['mol_liq'][0] / rho_liq / 1000  # m**3
+
+            events.append(self.vol_tot - vol_liq)
+
+        return np.array(events)
+
+    def __handle_event(self, solver, event_info):
+        state_event = event_info[0]
+
+        for ind, val in enumerate(state_event[:-1]):
+            if val:
+                print('State event %i was reached' % ind)
+                raise TerminateSimulation
+
+        if state_event[-1]:
+            print('Liquid volume reached a maximum')
+            raise TerminateSimulation
+
+    def solve_unit(self, runtime, verbose=True):
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
@@ -638,30 +686,40 @@ class Evaporator:
                                   [1, 0])
                                  )
 
+        # ---------- Count states
+        len_states = [n_comp] * 3 + [1] * 5
+        self.trim_idx = np.cumsum(len_states)[:-1]
+
         # ---------- Solve problem
-        if solve:
-            # Create problem
-            problem = Implicit_Problem(self.unit_model,
-                                       states_initial, sdev_initial,
-                                       t0=0)
+        # Create problem
+        switches = [True] * len(self.state_events) + [True]
+        problem = Implicit_Problem(self.unit_model,
+                                   states_initial, sdev_initial,
+                                   t0=0, sw0=switches)
 
-            problem.algvar = alg_map
-            # problem.jac = self.unit_jacobian
+        problem.state_events = self.__state_event
+        problem.handle_event = self.__handle_event
 
-            # Set solver
-            solver = IDA(problem)
-            solver.make_consistent('IDA_YA_YDP_INIT')
-            solver.suppress_alg = True
+        if len(self.state_events) >= 1:
+            runtime = 1e15
 
-            # Solve
-            time, states, sdot = solver.simulate(runtime)
+        problem.algvar = alg_map
+        # problem.jac = self.unit_jacobian
 
-            self.retrieve_results(time, states)
+        # Set solver
+        solver = IDA(problem)
+        solver.make_consistent('IDA_YA_YDP_INIT')
+        solver.suppress_alg = True
 
-            return time, states
-        else:
-            fun_eval = self.unit_model(0, states_initial, sdev_initial)
-            return fun_eval
+        if not verbose:
+            solver.verbosity = 50
+
+        # Solve
+        time, states, sdot = solver.simulate(runtime)
+
+        self.retrieve_results(time, states)
+
+        return time, states
 
     def retrieve_results(self, time, states):
         n_comp = self.num_species + 1
@@ -854,6 +912,8 @@ class ContinuousEvaporator:
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'mole_flow', 'temp']
+        self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+                            'pres', 'temp']
 
     def get_inputs(self, time):
         if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:

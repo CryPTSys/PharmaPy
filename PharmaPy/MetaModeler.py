@@ -28,7 +28,7 @@ class MetaModelingClass:
             self.method_arguments['energy_balances'] += name_states
 
     def __write_method(self, open_object, method_name, arg_names,
-                         internals=None):
+                       internals=None):
 
         arguments = ', '.join(arg_names)
         open_object.write(' ' * 4 + 'def {}(self, {}):\n\n'.format(
@@ -139,8 +139,8 @@ class MetaModelingClass:
         elif self.model_type == 'ODE':
             args_init = []
 
-        displayed_args_init = [' '*8 + 'self.{} = {}\n'.format(arg, arg) 
-            for arg in args_init]
+        displayed_args_init = [' '*8 + 'self.{} = {}\n'.format(arg, arg)
+                               for arg in args_init]
 
         args_init = ', '.join(args_init)
 

@@ -1382,7 +1382,7 @@ class PlugFlowReactor(_BaseReactor):
 
         return balances
 
-    def solve_unit(self, runtime, num_discr):
+    def solve_unit(self, runtime, num_discr, verbose=True):
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
@@ -1407,6 +1407,9 @@ class PlugFlowReactor(_BaseReactor):
         problem = Explicit_Problem(self.unit_model, states_init, t0=0)
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
+        
+        if not verbose:
+            solver.verbosity = 50
 
         time, states_solver = solver.simulate(runtime)
 

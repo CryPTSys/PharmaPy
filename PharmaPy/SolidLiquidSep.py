@@ -566,7 +566,7 @@ class Filter:
         if state_event:
             raise TerminateSimulation
 
-    def solve_unit(self, runtime=None, deltaP=1e5, slurry_div=1):
+    def solve_unit(self, runtime=None, deltaP=1e5, slurry_div=1, verbose=True):
 
         # Filtration parameters (constant)
         self.deltaP = deltaP
@@ -578,6 +578,7 @@ class Filter:
                                rho_sol=dens_sol)
 
         solid_conc = self.SlurryPhase.getSolidsConcentr()
+        solid_conc = max(0, solid_conc)
 
         # Initial state
         vol_slurry = self.SlurryPhase.vol_slurry / slurry_div
@@ -613,6 +614,9 @@ class Filter:
 
         solver = CVode(problem)
 
+        if not verbose:
+            solver.verbosity = 50
+            
         if runtime is None:
             runtime = 1e10
 

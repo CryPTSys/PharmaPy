@@ -560,7 +560,7 @@ class DynamicCollector:
 
         return dtemp_dt
 
-    def solve_unit(self, runtime=None, time_grid=None):
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
         init_dict = self.get_inputs(0)
         temp_init = init_dict['temp']
@@ -591,8 +591,9 @@ class DynamicCollector:
 
             SemiCryst.names_upstream = self.names_upstream
             SemiCryst.bipartite = self.bipartite
-
-            time, states = SemiCryst.solve_unit(runtime, time_grid)
+            
+            time, states = SemiCryst.solve_unit(runtime, time_grid,
+                                                verbose=verbose)
 
             # Retrieve crystallizer results
             output_names = ['timeProf', 'wConcProf', 'tempProf', 'Outlet',

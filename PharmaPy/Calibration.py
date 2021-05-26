@@ -13,12 +13,21 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 class PCR_calibration:
-    def __init__(self, data, num_comp=None, standarize=False):
+    def __init__(self, data, num_comp=None, standarize=False, snv=False):
         self.data = data
         self.standarize = standarize
+        self.snv = snv
 
-        self.data_mean = data.mean(axis=0)
-        self.data_centered = self.__center_data()
+        data_mean = data.mean(axis=0)
+        data_std = data.std(axis=0)
+        
+        if snv:
+            self.data_centered = self.__center_data(data)
+        else:
+            self.data_centered = self.__center_data(data, data_mean, data_std)
+            
+        self.data_mean = data_mean
+        self.data_std = data_std
 
         (self.projections, self.explained_variance,
          self.svd_dict) = self.__get_projections()
@@ -28,17 +37,15 @@ class PCR_calibration:
         else:
             self.num_comp = num_comp
 
-    def __center_data(self, data=None):
-        if data is None:
-            data = self.data
+    def __center_data(self, data=None, mean=None, std=None):
+        if mean is None and std is None:
+            mean = data.mean(axis=1)[..., np.newaxis]
+            std = data.std(axis=1)[..., np.newaxis]
 
-        # data_mean = data.mean(axis=0)
-        data_centered = data - self.data_mean
+        data_centered = data - mean
 
-        if self.standarize:
-            data_centered *= 1 / data.std(axis=0)
-
-        # self.data_mean = data_mean
+        if self.snv or self.standarize:
+            data_centered *= 1 / std
 
         return data_centered
 
@@ -89,11 +96,12 @@ class PCR_calibration:
             data_plot = self.projections[:, combs[ind]].T
             axis.scatter(data_plot[0], data_plot[1],
                          # 'o', mfc='None',
-                         s=30/(num_axes/2), c=range(data_plot.shape[1]), cmap=my_map,
+                         s=30/(num_axes/2), c=range(data_plot.shape[1]),
+                         cmap=my_map,
                          marker='o', edgecolor='k')
 
-            axis.text(0.5, -0.08, 'PC%i' % (pc_one + 1), transform=axis.transAxes,
-                      ha='center')
+            axis.text(0.5, -0.08, 'PC%i' % (pc_one + 1),
+                      transform=axis.transAxes, ha='center')
 
             axis.text(-0.08, 0.5, 'PC%i' % (pc_two + 1), rotation=90,
                       transform=axis.transAxes, va='center')
@@ -144,8 +152,13 @@ class PCR_calibration:
         return regression_coeff
 
     def predict(self, inputs, regression_coeff=None):
-        inputs_centered = self.__center_data(inputs)
-        # inputs_centered = inputs - self.data_mean
+        inputs = np.atleast_2d(inputs)
+        
+        if self.snv:
+            inputs_centered = self.__center_data(inputs)
+        else:
+            inputs_centered = self.__center_data(inputs, self.data_mean,
+                                                 self.data_std)
 
         if regression_coeff is None:
             coeff = self.regression_coeff
@@ -205,5 +218,8 @@ class PCR_calibration:
 
         axis.xaxis.set_minor_locator(AutoMinorLocator(2))
         axis.yaxis.set_minor_locator(AutoMinorLocator(2))
+        
+        axis.text(1, 1.04, 'num_components = %i' % self.num_comp,
+                  transform=axis.transAxes, ha='right')
 
         return fig, axis

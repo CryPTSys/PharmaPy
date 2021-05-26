@@ -59,26 +59,21 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
-                       run_subset=None):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None):
 
         # Set connectivity
         self.LoadUOs()
         self.LoadConnections()
 
         # Pick specific units, if given
-        if pick_units is None:
-            picked = self.uos_instances
-        else:
-            picked = pick_units
-
         if kwargs_run is None:
             if pick_units is None:
                 keys = self.uos_instances.keys()
             else:
-                keys = pick_units.keys()
+                keys = pick_units
 
             kwargs_run = {key: {} for key in keys}
+
 
         # isbatch = [elem == 'Batch' for elem in self.oper_mode]
 
@@ -92,8 +87,11 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
-        if run_subset is not None:
-            execution_order = [execution_order[i] for i in run_subset]
+        if pick_units is not None:
+            uos_names = list(uos.keys())
+            idx = [uos_names.index(name) for name in pick_units]
+            idx.sort()
+            execution_order = [execution_order[i] for i in idx]
 
         # Run loop
         for instance in execution_order:
@@ -127,6 +125,9 @@ class SimulationExec:
         self.execution_order = execution_order
 
     def GetStreamTable(self, basis='mass'):
+
+        # # TODO: include inlets and holdups in the stream table
+        # inlets, holdups, _, inlets_id, holdups_id = self.get_raw_objects()
 
         if basis == 'mass':
             fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
