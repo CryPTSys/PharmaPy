@@ -248,18 +248,20 @@ class DeliquoringStep:
         # self.rho_j = np.ones_like(self.rho_j)
         conc_upstream = self.CakePhase.mass_concentr
 
-        if conc_upstream == None:  # also for saturation : Daniel
+        if conc_upstream is None:  # also for saturation : Daniel
             z_dim = self.z_centers * self.cake_height
             conc_liq = self.Liquid_1.concentr  #Lets check how the mass conc is calculated: Daniel
             conc_init = np.tile(conc_liq, (self.num_nodes, 1))
+            
+        # if type(conc_upstream) == list:
         else:
             z_dim = self.z_centers * self.cake_height
             interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
             conc_init = interp.evalSpline(z_dim)
             # conc_init = conc_upstream
-        
+            
         self.conc_mean_init = np.zeros_like(conc_init)
-        for i in range(len(conc_liq)):
+        for i in range(len(self.Liquid_1.name_species)):
             self.conc_mean_init[:,i] = trapezoidal_rule(z_dim, conc_init[:,i]) / \
             self.cake_height
 
@@ -704,7 +706,7 @@ class Filter:
 
 
 class DisplacementWashing:
-    def __init__(self, solvent_idx, diam_unit=None, resist_medium=0, k_ads=0):
+    def __init__(self, solvent_idx, diam_unit=None, resist_medium=1e9, k_ads=0):
         self.max_exp = np.log(np.finfo('d').max)
         self.satur = 1
 
@@ -755,7 +757,7 @@ class DisplacementWashing:
 
     def get_diffusivity(self, vel, diff_pure):
         distr = self.Solid_1.distrib
-        size = self.Solid_1.x_grid
+        size = self.Solid_1.x_distrib
 
         re_sc = vel * np.dot(distr, size)/diff_pure
         diff_ratio = np.ones_like(re_sc) * 1/np.sqrt(2)
@@ -809,14 +811,13 @@ class DisplacementWashing:
         # ---------- Physical properties
         # Liquid
         visc_liq = self.Liquid_1.getViscosity()
-        diff = self.Liquid_1.getDiffusivity(wrt=self.solvent_idx)
+        diff_pure = self.Liquid_1.getDiffusivityPure(wrt=self.solvent_idx)
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
-        lambd_ads = 1 / (1 - self.k_ads + self.k_ads/self.epsilon)
+        lambd_ads = 1 / (1 - self.k_ads + self.k_ads/epsilon)
         c_zero = self.Liquid_1.mass_conc
 
-        diff = np.atleast_1d(diff)
-
-        c_inlet = self.Inlet.mass_conc
+        c_inlet = np.zeros(self.Liquid_1.num_species)
+        c_inlet[self.solvent_idx] = self.Liquid_1.rho_liq[self.solvent_idx]
 
         # Solid
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
@@ -827,7 +828,7 @@ class DisplacementWashing:
         cake_height = self.CakePhase.cake_vol / self.cross_area  # m
         vel_liq = deltaP / visc_liq / (alpha * dens_sol * cake_height *
                                        (1 - epsilon) + self.resist_medium)
-
+        diff = self.get_diffusivity(vel_liq, diff_pure)
         # ---------- Solve
         time_total = wash_ratio * cake_height / vel_liq
 
@@ -935,7 +936,9 @@ class DisplacementWashing:
                         ha='right', transform=ax.transAxes)
 
         ax.set_ylabel('$C_i$ $(\mathregular{kg \ m^{-3}})$')
-        ax.legend(self.Liquid_1.name_species, loc='best')
+        
+        for ind in pick_idx:
+            ax.legend(self.Liquid_1.name_species[ind], loc='best')
 
         ax.xaxis.set_minor_locator(AutoMinorLocator(2))
         ax.yaxis.set_minor_locator(AutoMinorLocator(2))

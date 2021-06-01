@@ -337,10 +337,9 @@ class ThermoPhysicalManager:
 
         return viscMix
 
-    def getDiffusivity(self, wrt, temp=None):
-        idx_diff = np.where(self.diffusivity_wrt == wrt)[0]
-        diffusivity = self.diffusivity[idx_diff]
-
+    def getDiffusivityPure(self, wrt, temp=None):
+        diffusivity = self.diffusivity[:, wrt]
+       # diffusivity =  0.00442005
         return diffusivity
 
     def frac_to_conc(self, mass_frac=None, mole_frac=None, basis='mole'):

@@ -100,7 +100,6 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
-
         self.ind_solv = ind_solv
 
         self.temp = np.float(temp)
