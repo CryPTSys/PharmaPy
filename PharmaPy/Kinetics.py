@@ -482,15 +482,28 @@ class CrystKinetics:
 
     """
 
-    def __init__(self, coeff_solub,
+    def __init__(self, coeff_solub=None, solub_fn=None,
                  nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
                  solubility_type='polynomial', rel_super=True,
                  reformulate_kin=False, alpha_fn=None,
                  temp_ref=298.15, secondary_fn=None):
 
+        """
+        Parameters
+        ----------
+        solub_fn : callable, optional
+            function with the signature solub_fn(temp, conc)
+
+        """
+
         self.temp_ref = temp_ref
         self.rel_super = rel_super
         self.reformulate_kin = reformulate_kin
+
+        if solub_fn is None:
+            self.get_solubility = self.solubility_temp
+        else:
+            self.get_solubility = solub_fn
 
         self.custom_sec = False
 
@@ -606,7 +619,7 @@ class CrystKinetics:
         params_conc = np.concatenate(params)
         return params_conc
 
-    def get_solubility(self, temp):
+    def solubility_temp(self, temp, conc):
         if self.solub_type == 'polynomial':
             int_coeff = np.arange(len(self.coeff_solub))
 
@@ -626,11 +639,11 @@ class CrystKinetics:
 
         return c_satur
 
-    def get_kinetics(self, conc_target, temp, kv_cry,
+    def get_kinetics(self, conc_target, conc, temp, kv_cry,
                      moments=None, nucl_sec_out=False):
 
         # Supersaturation
-        conc_sat = self.get_solubility(temp)
+        conc_sat = self.get_solubility(temp, conc)
         sup_sat = (conc_target - conc_sat)
 
         if self.rel_super:
@@ -710,9 +723,9 @@ class CrystKinetics:
             nucl = nucl_prim + nucl_sec
             return nucl, growth, dissol
 
-    def deriv_cryst(self, conc, temp):
-        conc_sat = self.get_solubility(temp)
-        ssat = max(eps, (conc - conc_sat) / conc_sat)
+    def deriv_cryst(self, conc_tg, conc, temp):
+        conc_sat = self.get_solubility(temp, conc)
+        ssat = max(eps, (conc_tg - conc_sat) / conc_sat)
 
         def dmech_dparam(mech, params):
             if self.reformulate_kin:

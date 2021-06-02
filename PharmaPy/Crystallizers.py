@@ -53,8 +53,8 @@ class _BaseCryst:
 
     def __init__(self, mask_params,
                  method, target_ind, scale,
-                 isothermal, controls, params_control, adiabatic,
-                 rad_zero,
+                 isothermal, controls, params_control, cfun_solub,
+                 adiabatic, rad_zero,
                  reset_states, name_species,
                  u_ht, vol_ht, ht_media, basis, jac_type):
         """ Construct a Crystallizer object
@@ -77,6 +77,11 @@ class _BaseCryst:
         self.mask_params = mask_params
         self.basis = basis
         self.adiabatic = adiabatic
+
+        if cfun_solub is None:
+            self.cfun_solub = lambda conc: 1
+        else:
+            self.cfun_solub = cfun_solub
 
         # ---------- Building objects
         self._Phases = None
@@ -299,7 +304,7 @@ class _BaseCryst:
             comp_kin = conc
 
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv_cry, moms)
+            comp_kin[self.target_ind], conc, temp, kv_cry, moms)
 
         nucl = nucl * self.scale * vol
         impurity_factor = self.Kinetics.alpha_fn(conc)
@@ -808,7 +813,7 @@ class _BaseCryst:
 
         self.flatten_states()
 
-        sat_conc = self.Kinetics.get_solubility(self.tempProf)
+        sat_conc = self.Kinetics.get_solubility(self.tempProf, self.wConcProf)
         supersat = self.wConcProf[:, self.target_ind] - sat_conc
 
         if self.Kinetics.rel_super:
@@ -1167,13 +1172,14 @@ class BatchCryst(_BaseCryst):
     def __init__(self, target_ind, mask_params=None,
                  method='1D-FVM', scale=1,
                  isothermal=False, controls=None, params_control=None,
+                 cfun_solub=None,
                  adiabatic=False,
                  rad_zero=0, reset_states=False, name_species=None,
                  u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, params_control,
+                         scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
@@ -1335,7 +1341,7 @@ class BatchCryst(_BaseCryst):
 
         b_sec = self.Kinetics.sec_nucl
 
-        dbp, dbs, dg, _, _ = self.Kinetics.deriv_cryst(conc_tg, temp)
+        dbp, dbs, dg, _, _ = self.Kinetics.deriv_cryst(conc_tg, w_conc, temp)
         dbs_ds2 = b_sec * np.log(max(eps, kv * moms[3]*1e-18))
         dbs = np.append(dbs, dbs_ds2)
 
@@ -1555,7 +1561,7 @@ class MSMPR(_BaseCryst):
     def __init__(self, target_ind,
                  mask_params=None,
                  method='1D-FVM', scale=1,
-                 isothermal=False, controls=None, params_control=None,
+                 isothermal=False, controls=None, params_control=None, cfun_solub=None,
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
                  name_species=None,
@@ -1563,7 +1569,7 @@ class MSMPR(_BaseCryst):
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, params_control,
+                         scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic, rad_zero,
                          reset_states, name_species, u_ht, vol_ht, ht_media,
                          basis, jac_type)
