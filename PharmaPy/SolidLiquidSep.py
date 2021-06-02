@@ -10,6 +10,7 @@ from PharmaPy.Commons import trapezoidal_rule, series_erfc
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.Interpolation import SplineInterpolation
+from PharmaPy.general_interpolation import define_initial_state
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
@@ -83,7 +84,7 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
             (rho_liq*grav*height + deltaP)/(1 - porosity)**2 / height / surf_tens
             )
 
-    s_inf = 0.155 * (1 + 0.31*capillary_number)
+    s_inf = 0.155 * (1 + 0.031*capillary_number**(-0.49))
     integrand = s_inf.T * csd
     s_inf = trapezoidal_rule(x_vec, integrand.T) / mu_zero
 
@@ -212,10 +213,12 @@ class DeliquoringStep:
         # Irreducible saturation
         epsilon = self.Solid_1.getPorosity()
 
-        rho_liq = self.Liquid_1.getDensity()
-        self.visc_liq = self.Liquid_1.getViscosity()
-        surf_tens = self.Liquid_1.getSurfTension()
-
+        rho_liq_per_node = self.Liquid_1.getDensity()
+        rho_liq = np.mean(rho_liq_per_node)
+        self.visc_liq_per_node = self.Liquid_1.getViscosity()
+        self.visc_liq = np.mean(self.visc_liq_per_node)
+        surf_tens_per_node = self.Liquid_1.getSurfTension()
+        surf_tens = np.mean(surf_tens_per_node)
         s_inf = get_sat_inf(diam_i, csd, deltaP, epsilon, self.cake_height,
                             mom_zero, (surf_tens, rho_liq))
 
@@ -246,19 +249,20 @@ class DeliquoringStep:
         # Concentration
         self.rho_j = self.Liquid_1.getDensityPure()[0]
         # self.rho_j = np.ones_like(self.rho_j)
-        conc_upstream = self.CakePhase.mass_concentr
-
-        if conc_upstream is None:  # also for saturation : Daniel
-            z_dim = self.z_centers * self.cake_height
-            conc_liq = self.Liquid_1.concentr  #Lets check how the mass conc is calculated: Daniel
-            conc_init = np.tile(conc_liq, (self.num_nodes, 1))
-            
-        # if type(conc_upstream) == list:
-        else:
-            z_dim = self.z_centers * self.cake_height
-            interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
-            conc_init = interp.evalSpline(z_dim)
-            # conc_init = conc_upstream
+        conc_upstream = self.CakePhase.Liquid_1.mass_conc
+        
+        z_dim = self.z_centers * self.cake_height
+        conc_init = define_initial_state(state=conc_upstream, z_after=z_dim, 
+                     z_before=self.CakePhase.z_external, indexed_state=True)
+        
+        # if conc_upstream.ndim == 1:     # also for saturation : Daniel
+        #     z_dim = self.z_centers * self.cake_height
+        #     conc_liq = self.Liquid_1.mass_conc  # Lets check how the mass conc is calculated: Daniel
+        #     conc_init = np.tile(conc_liq, (self.num_nodes, 1))
+        # elif conc_upstream.ndim == 2:
+        #     z_dim = self.z_centers * self.cake_height
+        #     interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
+        #     conc_init = interp.evalSpline(z_dim)
             
         self.conc_mean_init = np.zeros_like(conc_init)
         for i in range(len(self.Liquid_1.name_species)):
@@ -329,13 +333,27 @@ class DeliquoringStep:
         concPerVolElement = [
             array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
             for ind, array in enumerate(concPerVolElement)]
-
+        
         self.concPerSpecies = concPerSpecies
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
-
+        
+        last_state = []
+        for array in self.concPerSpecies:
+            last_state.append(array[-1])
+            
+        self.mass_conc_T = np.array(last_state).transpose()                
+        
+        self.Liquid_1.updatePhase(mass_conc=self.mass_conc_T)
+        
+        
+        liquid_out = copy.deepcopy(self.Liquid_1)
+        solid_out = copy.deepcopy(self.Solid_1)
+        
         self.Outlet = self.CakePhase
+        self.CakePhase.saturation = self.satProf[-1]
+        self.Outlet.Phases = (liquid_out, solid_out)
         self.outputs = states
 
     def plot_profiles(self, fig_size=None, mean_sat=True,
@@ -706,9 +724,11 @@ class Filter:
 
 
 class DisplacementWashing:
-    def __init__(self, solvent_idx, diam_unit=None, resist_medium=1e9, k_ads=0):
+    def __init__(self, solvent_idx, num_nodes, diam_unit=None,
+                 resist_medium=1e9, k_ads=0):
         self.max_exp = np.log(np.finfo('d').max)
         self.satur = 1
+        self.num_nodes = num_nodes
 
         self.solvent_idx = solvent_idx
         self.k_ads = k_ads
@@ -805,35 +825,52 @@ class DisplacementWashing:
 
         return conc_star
 
-    def solve_unit(self, deltaP, wash_ratio=1, time_vals=None, z_vals=None,
+    def solve_unit(self, deltaP, wash_ratio=1, time_vals=None,
                    dynamic=True):
 
         # ---------- Physical properties
         # Liquid
-        visc_liq = self.Liquid_1.getViscosity()
+        visc_liq_per_node = self.Liquid_1.getViscosity()
+        visc_liq = np.mean(visc_liq_per_node)
         diff_pure = self.Liquid_1.getDiffusivityPure(wrt=self.solvent_idx)
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         lambd_ads = 1 / (1 - self.k_ads + self.k_ads/epsilon)
-        c_zero = self.Liquid_1.mass_conc
-
-        c_inlet = np.zeros(self.Liquid_1.num_species)
-        c_inlet[self.solvent_idx] = self.Liquid_1.rho_liq[self.solvent_idx]
-
+        
+        c_zero = self.CakePhase.Liquid_1.mass_conc
+        
         # Solid
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         dens_sol = self.Solid_1.getDensity()
         alpha = self.CakePhase.alpha
-
+        
         # Cake
         cake_height = self.CakePhase.cake_vol / self.cross_area  # m
         vel_liq = deltaP / visc_liq / (alpha * dens_sol * cake_height *
                                        (1 - epsilon) + self.resist_medium)
         diff = self.get_diffusivity(vel_liq, diff_pure)
+        
+        z_vals = np.linspace(0, cake_height, self.num_nodes)
+        c_zero = define_initial_state(state=c_zero, z_after=z_vals, 
+                     z_before=self.CakePhase.z_external, indexed_state=True)
+        # if c_zero.ndim == 1:     # also for saturation : Daniel
+        #     c_zero = np.tile(c_zero, (self.num_nodes, 1))
+        # elif c_zero.ndim == 2:
+        #     interp = SplineInterpolation(self.CakePhase.z_external, c_zero)
+        #     c_zero = interp.evalSpline(z_vals)
+            
+        # self.conc_mean_init = np.zeros_like(conc_init)
+        # for i in range(len(self.Liquid_1.name_species)):
+        #     self.conc_mean_init[:,i] = trapezoidal_rule(z_dim, conc_init[:,i]) / \
+        #     self.cake_height
+        # c_zero = self.Liquid_1.mass_conc
+
+        c_inlet = np.zeros(self.Liquid_1.num_species)
+        c_inlet[self.solvent_idx] = self.Liquid_1.rho_liq[self.solvent_idx]
+        
         # ---------- Solve
         time_total = wash_ratio * cake_height / vel_liq
 
-        if z_vals is None:
-            z_vals = np.linspace(0, cake_height)
+        
 
         if time_vals is None:
             time_vals = np.linspace(eps, time_total)
@@ -892,13 +929,18 @@ class DisplacementWashing:
 
         self.CakePhase.mass_concentr = self.concPerSpecies[-1]  # TODO
         self.CakePhase.z_external = self.zProf
-
-        self.CakePhase.Liquid_1.updatePhase()
+        
+        last_state = self.concPerSpecies[-1]
+        self.Liquid_1.updatePhase(mass_conc=last_state)
+        
+        liquid_out = copy.deepcopy(self.Liquid_1)
+        solid_out = copy.deepcopy(self.Solid_1)
+        
         self.Outlet = self.CakePhase
-
+        self.Outlet.Phases = (liquid_out, solid_out)
         if conc.ndim == 3:
             self.outputs = concPerVolElem[-1]
-
+                
     def flatten_states(self):
         pass
 

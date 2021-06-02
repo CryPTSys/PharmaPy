@@ -67,14 +67,15 @@ class NewtonInterpolation:
 
 class SplineInterpolation:
     def __init__(self, x_data, y_data):
+           
         self.Spline = CubicSpline(x_data, y_data)
-
+        
     def evalSpline(self, x):
+        
         y_interp = self.Spline(x)
+        
         return y_interp
-
-
-
+    
 if __name__ == '__main__':
     from scipy.interpolate import interp1d
 

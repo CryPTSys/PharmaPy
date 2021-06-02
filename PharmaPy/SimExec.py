@@ -37,7 +37,7 @@ class SimulationExec:
 
     def LoadUOs(self):
         uos_modules = ('Reactors', 'Crystallizers', 'Containers',
-                       'Evaporators', 'SolidLiquidSep')
+                       'Evaporators', 'SolidLiquidSep', 'Drying_Model')
 
         modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
         for key, value in self.__dict__.items():

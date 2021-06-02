@@ -10,12 +10,14 @@ from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
 import scipy
+from scipy.interpolate import CubicSpline
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Cake
 from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
+from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import reorder_pde_outputs
 # from pathlib import Path
 
@@ -77,7 +79,9 @@ class Drying:
 
         self.eta_fun = eta_fun
         self.mass_eta = mass_eta
-
+        self.oper_mode = 'Batch'
+        self.is_continuous = False
+        
     @property
     def Phases(self):
         return self._Phases
@@ -323,34 +327,61 @@ class Drying:
         num_comp = self.Liquid_1.num_species
 
         # Molar fractions
+        # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
+        # x_liq_init = self.CakePhase.Liquid_1.mole_frac[:, idx_volatiles]
+        
         y_gas_init = self.Vapor_1.mole_frac
-        x_liq_init = self.CakePhase.Liquid_1.mole_frac[:, idx_volatiles]
+        x_liq_init = self.CakePhase.Liquid_1.mole_frac
+        
         satur_init = self.CakePhase.saturation
-
+        
         # Temperatures
         temp_cond_init = self.CakePhase.Solid_1.temp
         temp_gas_init = self.Vapor_1.temp
-
-        if isinstance(temp_cond_init, float):
-            temp_cond_init = np.ones_like(satur_init) * temp_cond_init
-
-        if isinstance(temp_gas_init, float):
-            temp_gas_init = np.ones_like(satur_init) * temp_gas_init
-
+        z_cake = self.CakePhase.z_external
+        
+        if x_liq_init.ndim == 1:
+            x_liq_init = x_liq_init[idx_volatiles]
+            states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
+            
+            states_stacked = np.hstack(states_tuple)
+            states_prev = np.tile(states_stacked, (self.num_nodes, 1))
+            
+        else:
+            x_liq_init = x_liq_init[:, idx_volatiles]
+            if y_gas_init.ndim == 1:
+                y_gas_init = np.tile(y_gas_init, (self.num_nodes, 1))
+            if isinstance(temp_cond_init, float):
+                temp_cond_init = np.ones_like(satur_init) * temp_cond_init
+            if isinstance(temp_gas_init, float):
+                temp_gas_init = np.ones_like(satur_init) * temp_gas_init
+                # temp_gas_init = np.tile(temp_gas_init, (self.num_nodes,1))
+                # temp_cond_init = np.tile(temp_cond_init, (self.num_nodes,1))
+                
+            states_stacked = np.column_stack(
+                (satur_init, y_gas_init, x_liq_init, temp_gas_init,
+                 temp_cond_init))
+            
+            interp_obj = CubicSpline(z_cake, states_stacked)
+            states_prev = interp_obj(self.z_centers)
+                  
+        # states_init = states_prev
         # Merge states and interpolate in the grid nodes
-        states_prev = np.column_stack((satur_init, y_gas_init, x_liq_init,
-                                       temp_gas_init, temp_cond_init))
+        # states_prev = np.column_stack((satur_init, y_gas_init, x_liq_init,
+        #                                temp_gas_init, temp_cond_init))
+        
+        # states_init = define_initial_state(state=states_stacked, z_after=self.z_centers, 
+        #              z_before=z_cake, indexed_state=True)
 
-        z_cake = self.cake_height * self.CakePhase.z_external
-        interp = SplineInterpolation(z_cake, states_prev)
-        states_init = interp.evalSpline(self.z_centers)
-
+        #z_cake = self.cake_height * self.CakePhase.z_external
+        
         # Physical properties
         alpha = self.CakePhase.alpha
         rho_sol = self.Solid_1.getDensity()
         porosity = self.CakePhase.porosity
-
-        xliq = states_init[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
+        
+        xliq = states_prev[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
+        # xliq = states_init[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
 
         xliq_init = np.zeros((self.num_nodes, num_comp))
         xliq_init[:, self.idx_volatiles] = xliq
@@ -375,7 +406,7 @@ class Drying:
         deltaP_media = deltaP*self.resist_medium / \
             (alpha*rho_sol*(1 - porosity)*self.cake_height +
              self.resist_medium)
-        deltaP -= deltaP_media
+        # deltaP -= deltaP_media
 
         p_top = p_atm + deltaP
 
@@ -394,7 +425,7 @@ class Drying:
                                  (np.mean(surf_tens), rholiq_mass))
 
         # ---------- Solve model
-        model = Explicit_Problem(self.unit_model, y0=states_init.ravel(),
+        model = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                  t0=0)
 
         model.name = 'Drying Model'
@@ -429,7 +460,12 @@ class Drying:
 
         self.num_gas = num_gas
         self.num_liq = num_liq
-
+    
+    
+    def flatten_states(self):
+        pass
+    
+    
     def plot_profiles(self, time=None, z_pos=None, fig_size=None, jump=5,
                       pick_idx=None):
         if pick_idx is None:
