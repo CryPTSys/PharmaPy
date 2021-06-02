@@ -642,16 +642,21 @@ class Evaporator:
         states_trim = np.split(states, self.trim_idx)
         dict_states = dict(zip(self.name_states, states_trim))
 
-        if any(switch):  # TODO: generalize for several state events
+        if any(switch):
 
             for di in self.state_events:
-                state_name = di['state_name']
-                state_idx = di['state_idx']
-                ref_value = di['value']
+                if 'state_fn' in di.keys():
+                    event_flag = di['state_fn'](time, self.Phases,
+                                                **dict_states)
+                else:
+                    state_name = di['state_name']
+                    state_idx = di['state_idx']
+                    ref_value = di['value']
 
-                checked_value = dict_states[state_name][state_idx]
+                    checked_value = dict_states[state_name][state_idx]
 
-                event_flag = ref_value - checked_value
+                    event_flag = ref_value - checked_value
+
                 events.append(event_flag)
 
             # Maximum liquid constraint
@@ -669,7 +674,12 @@ class Evaporator:
 
         for ind, val in enumerate(state_event[:-1]):
             if val:
-                print('State event %i was reached' % ind)
+                id_event = self.state_events[ind].get('event_name')
+                if id_event is None:
+                    print('State event %i was reached' % (ind + 1))
+                else:
+                    print("State event '%s' was reached" % id_event)
+
                 raise TerminateSimulation
 
         if state_event[-1]:
