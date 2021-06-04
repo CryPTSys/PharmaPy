@@ -438,6 +438,8 @@ class BatchReactor(_BaseReactor):
         self.is_continuous = False
         self.nomenclature()
 
+        self.vol_offset = 0.75
+
         self.material_from_upstream = False
 
     def nomenclature(self):
@@ -683,6 +685,8 @@ class CSTR(_BaseReactor):
         self.oper_mode = 'Continuous'
         self.is_continuous = True
         self.nomenclature()
+
+        self.vol_offset = 0.75
 
     def nomenclature(self):
         if not self.isothermal:
@@ -1124,6 +1128,7 @@ class PlugFlowReactor(_BaseReactor):
         self.is_continuous = True
         self.oper_mode = 'Continuous'
         self.diam = diam_in
+        self.vol_offset = 1
 
         self.adiabatic = adiabatic
 
@@ -1407,7 +1412,7 @@ class PlugFlowReactor(_BaseReactor):
         problem = Explicit_Problem(self.unit_model, states_init, t0=0)
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
-        
+
         if not verbose:
             solver.verbosity = 50
 

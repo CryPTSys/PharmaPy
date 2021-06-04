@@ -29,12 +29,12 @@ eps = np.finfo(float).eps
 
 
 class IsothermalFlash:
-    def __init__(self, Inlet=None, temp_drum=None, pres_drum=None,
+    def __init__(self, temp_drum=None, pres_drum=None,
                  gamma_method='ideal'):
 
         self.temp = temp_drum
         self.pres = pres_drum
-        self._Inlet = Inlet
+        self._Inlet = None
 
         self.gamma_method = gamma_method
 
@@ -142,6 +142,9 @@ class IsothermalFlash:
         y_flash = fracs[self.num_comp:]
 
         path = self.Inlet.path_data
+
+        self.result = {'phi': solution[[0, -1]],
+                       'x_out': x_flash, 'y_out': y_flash}
 
         # Store in objects
         if self.Inlet.__module__ == 'PharmaPy.Streams':
@@ -335,6 +338,8 @@ class Evaporator:
         self.activity_model = activity_model
 
         self.nomenclature()
+
+        self.vol_offset = 1
 
     @property
     def Phases(self):
@@ -848,7 +853,8 @@ class Evaporator:
 
 class ContinuousEvaporator:
     def __init__(self, vol_drum, phase=None, inlet=None, adiabatic=True,
-                 pres=101325, diam_out=2.54e-2, frac_liq=0.5, k_liq=1,
+                 pres=101325, diam_out=2.54e-2, frac_liq=0.5, k_liq=1, k_vap=1,
+                 cv_gas=0.8,
                  ht_coeff=1000, temp_ht=298.15,
                  activity_model='ideal'):
 
@@ -856,11 +862,15 @@ class ContinuousEvaporator:
         self._Phases = phase
 
         self.vol_tot = vol_drum
-        self.vol_liq_set = frac_liq * vol_drum
-        self.k_liq = k_liq
-        self.adiabatic = adiabatic
 
-        self.diam_tank = (4/np.pi * self.vol_liq_set)**(1/3)
+        # Control
+        self.k_liq = k_liq
+        self.k_vap = k_vap
+        self.cv_gas = cv_gas
+
+        self.vol_offset = 1
+
+        self.adiabatic = adiabatic
 
         self.area_out = np.pi / 4 * diam_out**2
 
@@ -942,7 +952,7 @@ class ContinuousEvaporator:
 
         return input_dict
 
-    def material_balances(self, moles_i, x_i, y_i,
+    def material_balances(self, time, moles_i, x_i, y_i,
                           mol_liq, mol_vap, pres, temp, u_inputs,
                           flows_out=False):
 
@@ -952,20 +962,21 @@ class ContinuousEvaporator:
         mw_vap = np.dot(self.VapPhase.mw, y_i.T)
 
         rho_liq = self.LiqPhase.getDensity(mole_frac=x_i, temp=temp,
-                                           basis='mole')
+                                           basis='mole')  # mol/L
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
         vol_vap = mol_vap * gas_ct * temp / pres
         vol_eqn = vol_liq + vol_vap - self.vol_tot
 
-        rho_gas = pres / gas_ct / temp * (mw_vap / 1000)  # kg/m**3
-        flow_vap = self.area_out / mw_vap * 1000 *\
-            np.sqrt(2*rho_gas * np.maximum(eps, pres - self.pres))  # mol/s
+        rho_mol = pres / gas_ct / temp  # mol/m**3
+        rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
 
-        # flow_vap = 0.1 * (pres - self.pres)
+        vel_vap = np.sqrt(np.maximum(eps, 2 * (pres - self.pres)/rho_gas))
 
-        flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) * rho_liq * 1000 \
-            + input_flow*1  # mol/s
+        flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
+
+        flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + input_flow
+        flow_liq = np.maximum(0, flow_liq)
 
         if flows_out:
             return flow_liq, flow_vap, vol_liq
@@ -993,8 +1004,8 @@ class ContinuousEvaporator:
 
             return dmoli_dt, alg_balances, flow_liq, flow_vap, vol_liq
 
-    def energy_balances(self, u_int, temp, x_i, y_i, mol_liq, mol_vap, vol_liq,
-                        flow_liq, flow_vap, pres, u_inputs):
+    def energy_balances(self, time, u_int, temp, x_i, y_i, mol_liq, mol_vap,
+                        vol_liq, flow_liq, flow_vap, pres, u_inputs):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -1050,7 +1061,7 @@ class ContinuousEvaporator:
         u_inputs = self.get_inputs(time)
 
         # Material balance
-        material_bces = self.material_balances(moles_i,
+        material_bces = self.material_balances(time, moles_i,
                                                x_liq, y_vap, mol_liq, mol_vap,
                                                pres, temp,
                                                u_inputs)
@@ -1059,7 +1070,7 @@ class ContinuousEvaporator:
         flow_liq, flow_vap, vol_liq = material_bces[-3:]
 
         # Energy balance
-        energy_bce = self.energy_balances(u_int, temp, x_liq, y_vap,
+        energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
                                           mol_liq, mol_vap, vol_liq,
                                           flow_liq, flow_vap,
                                           pres, u_inputs)
@@ -1108,6 +1119,9 @@ class ContinuousEvaporator:
         mol_liq = self.LiqPhase.moles
         vol_liq = self.LiqPhase.vol
 
+        self.diam_tank = (4/np.pi * vol_liq)**(1/3)
+        self.vol_liq_set = vol_liq
+
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
             raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
@@ -1126,10 +1140,10 @@ class ContinuousEvaporator:
         # Liquid flow
         rho_liq = self.LiqPhase.getDensity(mole_frac=x_init,
                                            temp=temp_bubble_init,
-                                           basis='mole')
+                                           basis='mole')  # mol/L
 
-        flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) * rho_liq * 1000 \
-            + inlet_flow*1  # mol/s
+        flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + inlet_flow
+        flow_liq = np.maximum(0, flow_liq)
 
         dm_init = inlet_flow * u_inlet['mole_frac'] - flow_liq * x_init
 
@@ -1226,6 +1240,7 @@ class ContinuousEvaporator:
 
         inputs_all = self.get_inputs(time)
         flow_liq, flow_vap, vol_liq = self.material_balances(
+            time,
             states[:, :n_comp],
             self.xliqProf[-1], self.yvapProf[-1],
             self.molLiqProf, self.molVapProf,

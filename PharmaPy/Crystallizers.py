@@ -1197,6 +1197,8 @@ class BatchCryst(_BaseCryst):
 
         self.nomenclature()
 
+        self.vol_offset = 0.75
+
     def nomenclature(self):
         if not self.isothermal:
             if 'temp' not in self.controls.keys():
@@ -1406,7 +1408,7 @@ class BatchCryst(_BaseCryst):
         # Balance for target
         self.Liquid_1.updatePhase(mass_conc=w_conc, vol=vol_liq)
 
-        dvol_liq = -transf/rho_liq
+        dvol_liq = -transf/rho_liq  # TODO: results not consistent with mu_3
         dcomp_dt = -transf/vol_liq * (self.kron_jtg - w_conc/rho_liq)
 
         dliq_dt = np.append(dcomp_dt, dvol_liq)
@@ -1588,6 +1590,8 @@ class MSMPR(_BaseCryst):
         self._Inlet = None
 
         self.nomenclature()
+
+        self.vol_offset = 0.75
 
     @property
     def Inlet(self):

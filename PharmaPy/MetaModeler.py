@@ -8,20 +8,23 @@ Created on Thu Mar 11 11:18:25 2021
 
 
 class MetaModelingClass:
-    def __init__(self, file_name, class_name, model_type='ODE',
+    def __init__(self, file_name, class_name, model_type='ODE', oper_mode='batch',
                  name_states=None):
 
         self.file_name = file_name
         self.class_name = class_name
 
         self.model_type = model_type
+        self.oper_mode = oper_mode
         self.name_states = name_states
 
-        self.method_arguments = {'unit_model': ('time', 'states'),
-                                 'material_balances': ['time'],
-                                 'energy_balances': ['time'],
-                                 'solve_model': ('runtime=None', ),
-                                 'retrieve_results': ('time', 'states')}
+        self.method_arguments = {
+            'Phases': ('phases', ),
+            'unit_model': ('time', 'states'),
+            'material_balances': ['time'],
+            'energy_balances': ['time'],
+            'solve_model': ('runtime=None', ),
+            'retrieve_results': ('time', 'states')}
 
         if name_states is not None:
             self.method_arguments['material_balances'] += name_states
@@ -31,21 +34,38 @@ class MetaModelingClass:
                        internals=None):
 
         arguments = ', '.join(arg_names)
-        open_object.write(' ' * 4 + 'def {}(self, {}):\n\n'.format(
-            method_name, arguments))
+        if method_name == 'Phases':
+            phases_prop = [' ' * 4 + '@property\n',
+                           ' ' * 4 + 'def Phases(self):\n',
+                           ' ' * 8 + 'return self._Phases\n\n']
+
+            phases_set = [' ' * 4 + '@Phases.setter\n',
+                          ' ' * 4 + 'def {}(self, {}):\n\n'.format(
+                              method_name, arguments),
+                          ' ' * 8 + 'classify_phases(self)\n\n']
+
+            open_object.writelines(phases_prop)
+            open_object.writelines(phases_set)
+        else:
+            open_object.write(' ' * 4 + 'def {}(self, {}):\n\n'.format(
+                method_name, arguments))
 
         if method_name == 'unit_model' and self.name_states is not None:
-            if self.model_type == 'ODE' or self.model_type  == 'DAE':
+            if self.model_type == 'ODE' or self.model_type == 'DAE':
                 prefix = ''
+                assign_snippet = [
+                ' '*8 + 'states_split = np.split(states, self.acum_len)\n',
+                ' '*8 + 'dict_states = dict(zip(self.name_states, states_split))\n',
+                '\n'
+                ]
             elif self.model_type == 'PDE':
                 prefix = ':, '
-
-            assign_snippet = [
-                ' '*8 + 'dict_states = {}\n',
-                ' '*8 + 'count = 0\n',
-                ' '*8 + 'for name, idx in zip(self.acum_len, self.name_states):\n',
-                ' '*12 + 'dict_states[name] = states[{}count:idx]\n'.format(prefix),
-                ' '*12 + 'count = idx\n\n']
+                assign_snippet = [
+                ' '*8 + 'states_reord = states.reshape(-1, self.num_states)\n',
+                ' '*8 + 'states_split = np.split(states_reord, self.acum_len, axis=1)\n\n',
+                ' '*8 + 'dict_states = dict(zip(self.name_states, states_split))\n',
+                '\n'
+                ]
 
             open_object.write(' ' * 8 + '# Create a dictionary of states\n')
             open_object.writelines(assign_snippet)
@@ -79,10 +99,21 @@ class MetaModelingClass:
                     len_states))
 
             open_object.write(
-                ' '*8 + 'self.acum_len = len_states.cumsum()\n')
+                ' '*8 + 'self.acum_len = len_states.cumsum()[:-1]\n')
 
             open_object.write(
                 ' '*8 + 'self.len_states = len_states\n\n')
+
+            open_object.write(
+                ' '*8 + 'self.num_states = len_states.sum()\n\n')
+
+            if self.model_type == 'ODE':
+                init_states = [' ' * 8 + 'init_states = np.hstack(())\n\n']
+            else:
+                init_states = [' ' * 8 + 'init_states = np.hstack(())\n',
+                               ' ' * 8 + 'init_states = init_states.T.ravel()\n\n']
+
+            open_object.writelines(init_states)
 
             assimulo_snippet = [
                 ' '*8 + 'problem = Explicit_Problem(self.unit_model)\n',
@@ -96,11 +127,8 @@ class MetaModelingClass:
         elif method_name == 'retrieve_results' and self.name_states is not None:
             if self.model_type == 'ODE':
                 assign_outputs = [
-                    ' '*8 + 'model_outputs = {}\n',
-                    ' '*8 + 'count = 0\n',
-                    ' '*8 + 'for idx, name in zip(self.acum_len, self.name_states):\n',
-                    ' '*12 + 'model_outputs[name] = states[:, count:idx]\n',
-                    ' '*12 + 'count = idx\n'
+                    ' '*8 + 'outputs_split = np.split(states, np.acum_len, axis=1)\n',
+                    ' '*8 + 'model_outputs = dict(zip(self.name_states, outputs_split))\n',
                     ]
             elif self.model_type == 'PDE':
                 assign_outputs = [
@@ -108,7 +136,7 @@ class MetaModelingClass:
 
             open_object.writelines(assign_outputs)
 
-        else:
+        elif method_name != 'Phases':
             open_object.write(' '*8 + 'return\n\n')
 
     def CreatePharmaPyTemplate(self):
@@ -128,7 +156,9 @@ class MetaModelingClass:
         packages = [
             'import numpy as np\n',
             'from assimulo.problem import Explicit_Problem\n',
-            solver]
+            'from PharmaPy.Phases import classify_phases\n',
+            solver,
+            '\n']
 
         packages += pharmapy_modules
 
@@ -145,7 +175,15 @@ class MetaModelingClass:
         args_init = ', '.join(args_init)
 
         op.write('class {}:\n'.format(self.class_name))
-        op.write(' ' * 4 + 'def __init__(self, {}):\n\n'.format(args_init))
+
+        init_lines = [' ' * 4 + 'def __init__(self, {}):\n\n'.format(args_init),
+                      ' ' * 8 + 'self.nomenclature()\n',
+                      ' ' * 8 + 'self._Phases = None\n']
+
+        if self.oper_mode != 'batch':
+            init_lines.append(' ' * 8 + 'self._Inlet = None\n')
+
+        op.writelines(init_lines)
         op.writelines(displayed_args_init)
 
         op.write(' ' * 8 + 'return\n\n')
@@ -157,6 +195,19 @@ class MetaModelingClass:
             ' '*8 + 'self.name_states = {}\n\n'.format(name_states)]
 
         op.writelines(nomenclature)
+
+        # Inlets (if any)
+        if self.oper_mode != 'batch':
+            inlet_prop = [' ' * 4 + '@property\n',
+                          ' ' * 4 + 'def Inlet(self):\n',
+                          ' ' * 8 + 'return self._Inlet\n\n']
+
+            inlet_set = [' ' * 4 + '@Inlet.setter\n',
+                         ' ' * 4 + 'def Inlet(self, inlet):\n',
+                         ' ' * 8 + 'self._Inlet = inlet\n\n']
+
+            op.writelines(inlet_prop)
+            op.writelines(inlet_set)
 
         for method, args in self.method_arguments.items():
             self.__write_method(op, method, args)
@@ -171,4 +222,12 @@ if __name__ == '__main__':
 
     meta_object = MetaModelingClass(name_file, name_class, name_states=states,
                                     model_type='ODE')
+    meta_object.CreatePharmaPyTemplate()
+
+    name_file = 'test_pde.py'
+    name_class = 'DistillationColumn'
+    states = ['x_liq', 'liq_holdup', 'temp', 'vap_flows']
+
+    meta_object = MetaModelingClass(name_file, name_class, name_states=states,
+                                    model_type='PDE', oper_mode='continuous')
     meta_object.CreatePharmaPyTemplate()
