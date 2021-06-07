@@ -9,7 +9,7 @@ from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.Commons import reorder_sens, plot_sens
+from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.NameAnalysis import get_dict_states
 
@@ -157,7 +157,6 @@ class _BaseReactor:
         # Heat transfer area
         diam = (4/np.pi * vol)**(1/3)  # m
         area_ht = np.pi * diam**2  # m**2
-        # self.area_ht = area_ht
 
         if self.ht_mode == 'coil':  # Half pipe heat transfer
             pass
@@ -478,6 +477,7 @@ class BatchReactor(_BaseReactor):
 
     def energy_balances(self, conc, vol, temp, temp_ht, inputs,
                         heat_prof=False):
+
         temp = np.atleast_1d(temp)
         conc = np.atleast_2d(conc)
 
@@ -517,6 +517,7 @@ class BatchReactor(_BaseReactor):
             else:
                 ht_term = self.heat_transfer(temp, temp_ht, vol)
                 heat_profile = np.column_stack((source_term, -ht_term))
+
             return heat_profile
         else:
             ht_term = self.heat_transfer(temp, temp_ht, vol)
@@ -646,6 +647,14 @@ class BatchReactor(_BaseReactor):
         self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
                                               tht_prof, None,
                                               heat_prof=True)
+
+        if 'temp_ht' in self.states_uo:
+            q_ht = self.heat_prof[:, 1]
+        else:
+            q_ht = self.heat_prof[:, 0]
+
+        # Heat duty
+        self.heat_duty = trapezoidal_rule(time, q_ht)
 
         self.tempProf.append(temp_prof)
         self.concProf.append(conc_prof)
@@ -1277,7 +1286,9 @@ class PlugFlowReactor(_BaseReactor):
 
         return dconc_dt
 
-    def energy_balances(self, time, conc, vol_diff, temp, flow_in, rate_i):
+    def energy_balances(self, time, conc, vol_diff, temp, flow_in, rate_i,
+                        heat_profile=False):
+
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         # Volumetric heat capacity
@@ -1304,10 +1315,13 @@ class PlugFlowReactor(_BaseReactor):
             heat_transfer = self.u_ht * a_prime * \
                 (temp - self.ht_media.temp_in) / cp_vol
 
-        # -------- Energy balance
-        dtemp_dt = flow_term + source_term[1:] - heat_transfer[1:]
+        if heat_profile:
+            return flow_term, source_term, heat_transfer
 
-        return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant!!
+        else:
+            dtemp_dt = flow_term + source_term[1:] - heat_transfer[1:]
+
+            return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant
 
     def unravel_states(self, states):
         if 'temp' in self.states_uo:
@@ -1489,6 +1503,9 @@ class PlugFlowReactor(_BaseReactor):
 
         # Adjust discretization
         self.vol_centers = vol_centers
+
+        # Energy balance
+
 
     def flatten_states(self):
         if type(self.timeProf) is list:

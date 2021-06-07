@@ -352,7 +352,7 @@ class _BaseCryst:
 
             return dcsd_dt, np.array(mass_transfer)
 
-    def unit_model(self, time, states, params):
+    def unit_model(self, time, states, params, mat_bce=False, enrgy_bce=False):
 
         # ---------- Prepare inputs
         if len(self.params_fixed) > 1:
@@ -446,18 +446,31 @@ class _BaseCryst:
                                                            params, u_input,
                                                            rhos, moms, phis_in)
 
-        if 'temp' in self.states_uo:
+        if mat_bce:
+            return material_bces
+        elif enrgy_bce:
             energy_bce = self.energy_balances(time, distr, w_conc,
                                               temp, temp_ht, vol,
                                               params, cryst_rate,
                                               u_input,
                                               rhos, moms, h_in)
 
-            balances = np.append(material_bces, energy_bce)
-        else:
-            balances = material_bces
+            return energy_bce
 
-        return balances
+        else:
+
+            if 'temp' in self.states_uo:
+                energy_bce = self.energy_balances(time, distr, w_conc,
+                                                  temp, temp_ht, vol,
+                                                  params, cryst_rate,
+                                                  u_input,
+                                                  rhos, moms, h_in)
+
+                balances = np.append(material_bces, energy_bce)
+            else:
+                balances = material_bces
+
+            return balances
 
     def unit_jacobians(self, time, states, sens, params, fy, v_vector):
         if sens is not None:
@@ -1428,7 +1441,7 @@ class BatchCryst(_BaseCryst):
 
     def energy_balances(self, time, distr, conc, temp, temp_ht, vol_liq,
                         params, cryst_rate, u_inputs, rhos, moms,
-                        h_in=None):
+                        h_in=None, heat_prof=False):
 
         vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol_liq + vol_solid
@@ -1452,27 +1465,31 @@ class BatchCryst(_BaseCryst):
         source_term = dh_cryst*cryst_rate
 
         if self.adiabatic:
-            ht_term = 0
-        else:
+            ht_term = np.zeros_like(temp)
+        elif 'temp' in self.states_uo:
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
-        # Balance inside the tank
-        dtemp_dt = (-source_term - ht_term) / capacitance / vol_liq
-
-        if temp_ht is not None:
-            tht_in = self.temp_ht_in  # degC
-            flow_ht = self.flow_ht
-            cp_ht = 4180  # J/kg/K
-            rho_ht = 1000
-            vol_ht = vol*0.14  # m**3
-
-            dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
-                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
-
-            return dtemp_dt, dtht_dt
-
+        if heat_prof:
+            heat_components = np.column_stack((source_term, ht_term))
+            return heat_components
         else:
-            return dtemp_dt
+            # Balance inside the tank
+            dtemp_dt = (-source_term - ht_term) / capacitance / vol_liq
+
+            if temp_ht is not None:
+                tht_in = self.temp_ht_in  # degC
+                flow_ht = self.flow_ht
+                cp_ht = 4180  # J/kg/K
+                rho_ht = 1000
+                vol_ht = vol*0.14  # m**3
+
+                dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
+                    self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+
+                return dtemp_dt, dtht_dt
+
+            else:
+                return dtemp_dt
 
     def retrieve_results(self, time, states):
         self.statesProf = states
@@ -1563,6 +1580,23 @@ class BatchCryst(_BaseCryst):
         self.Outlet.Phases = (liquid_out, solid_out)
 
         self.outputs = y_outputs
+
+        # q_heat = np.zeros((len(time), 2))
+
+        # if self.params_iter is None:
+        #     merged_params = self.Kinetics.concat_params()[self.mask_params]
+        # else:
+        #     merged_params = self.params_iter
+
+        # for ind, row in enumerate(states):
+        #     q_heat[ind] = self.unit_model(time[ind], row, merged_params,
+        #                                   enrgy_bce=True)
+
+        # Heat profiles
+        if 'temp_ht' in self.states_uo:
+            pass
+        else:
+            q_liq = 2
 
 
 class MSMPR(_BaseCryst):
