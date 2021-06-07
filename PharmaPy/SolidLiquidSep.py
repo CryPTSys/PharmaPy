@@ -85,6 +85,9 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
             )
 
     s_inf = 0.155 * (1 + 0.031*capillary_number**(-0.49))
+    
+    s_inf = np.where(s_inf > 1, 1, s_inf)
+        
     integrand = s_inf.T * csd
     s_inf = trapezoidal_rule(x_vec, integrand.T) / mu_zero
 

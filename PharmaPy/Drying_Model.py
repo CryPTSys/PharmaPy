@@ -67,7 +67,8 @@ class Drying:
         # Transfer coefficients
         self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
         self.h_T_j = 30  # W/m**2/K
-
+        self.h_T_j = 10  # W/m**2/K
+        
         self.nomenclature()
 
         self._Phases = None
@@ -173,7 +174,6 @@ class Drying:
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)
         sat_red = np.maximum(0, sat_red)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
-
         vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
 
         # ---------- Drying rate term
@@ -192,19 +192,19 @@ class Drying:
 
         # Dry rate
 
-        dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
-        dry_rate *= limiter_factor[..., np.newaxis]
+        self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
+        self.dry_rate *= limiter_factor[..., np.newaxis]
         
         # ---------- Model equations
         inputs = self.get_inputs(time)
 
         material_eqns = self.material_balance(
             time, satur, temp_gas, temp_sol, y_gas, x_liq,
-            vel_gas, rho_gas, dry_rate, inputs)
+            vel_gas, rho_gas, self.dry_rate, inputs)
 
         energy_eqns = self.energy_balance(time, temp_gas, temp_sol,
                                           satur, y_gas, x_liq, vel_gas,
-                                          rho_gas, dry_rate, inputs)
+                                          rho_gas, self.dry_rate, inputs)
 
         # print(satur.min())
 
@@ -264,7 +264,6 @@ class Drying:
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
         heat_loss = 14626.86 * (temp_gas - 295)
-
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
@@ -338,7 +337,8 @@ class Drying:
         # Temperatures
         temp_cond_init = self.CakePhase.Solid_1.temp
         temp_gas_init = self.Vapor_1.temp
-        z_cake = self.CakePhase.z_external
+        z_cake = self.CakePhase.z_external # For drying_script_inyoung
+        # z_cake = self.CakePhase.z_external # This line for 2MSMPR_Filter.py
         
         if x_liq_init.ndim == 1:
             x_liq_init = x_liq_init[idx_volatiles]
@@ -401,12 +401,15 @@ class Drying:
         sauter_diam = moments[1] / moments[0]  # m
 
         self.a_V = 6 / sauter_diam  # m**2/m**3
-
-        # Pressure
+        
+        # Gas pressure
         deltaP_media = deltaP*self.resist_medium / \
-            (alpha*rho_sol*(1 - porosity)*self.cake_height +
-             self.resist_medium)
-        # deltaP -= deltaP_media
+            (alpha*rho_sol*self.cake_height + self.resist_medium)
+            
+        # deltaP_media = deltaP*self.resist_medium / \
+        #     (alpha*rho_sol*(1 - porosity)*self.cake_height +
+        #      self.resist_medium)
+        deltaP -= deltaP_media
 
         p_top = p_atm + deltaP
 
@@ -512,11 +515,11 @@ class Drying:
 
         gas_pressure = self.pres_gas[z_idx]
 
-        dry_rate = self.get_drying_rate(x_liq, temp_cond, y_gas, gas_pressure)
+        self.dry_rate = self.get_drying_rate(x_liq, temp_cond, y_gas, gas_pressure)
 
         fig, axis = plt.subplots()
 
-        axis.plot(self.timeProf, dry_rate)
+        axis.plot(self.timeProf, self.dry_rate)
         axis.set_xlabel('time (s)')
         axis.set_ylabel('drying rate ($\mathregular{mol_i \ s^{-1}}$)')
 
