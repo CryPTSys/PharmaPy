@@ -485,10 +485,9 @@ class DeliquoringStep:
 
 
 class Filter:
-    def __init__(self, Phases=None, resist_medium=1e9,
-                 station_diam=0.01):
+    def __init__(self, station_diam, resist_medium=1e9):
 
-        self._Phases = Phases
+        self._Phases = None
         self.material_from_upstream = False
 
         self.r_medium = resist_medium
@@ -616,7 +615,7 @@ class Filter:
 
         if not verbose:
             solver.verbosity = 50
-            
+
         if runtime is None:
             runtime = 1e10
 

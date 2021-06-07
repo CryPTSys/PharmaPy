@@ -203,7 +203,13 @@ class _BaseCryst:
 
         if self.Slurry is not None:
             self.vol_slurry = copy.copy(self.Slurry.vol_slurry)
+            if isinstance(self.vol_slurry, np.ndarray):
+                self.vol_phase = self.vol_slurry[0]
+            else:
+                self.vol_phase = self.vol_slurry
+
             classify_phases(self)  # Solid_1, Liquid_1...
+
 
             self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
                                      copy.deepcopy(self.Solid_1)]

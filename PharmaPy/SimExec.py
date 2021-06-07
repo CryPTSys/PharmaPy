@@ -372,6 +372,51 @@ class SimulationExec:
 
         return raw_df, raw_total
 
+    def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
+                 f_pres=None, f_mat=None):
+
+        size_equipment = {}
+
+        for key, instance in self.uos_instances.items():
+            if hasattr(instance, 'vol_tot'):
+                size_equipment[key] = instance.vol_tot
+            elif hasattr(instance, 'vol_phase'):
+                off_vol = instance.vol_offset
+                size_equipment[key] = instance.vol_phase / off_vol
+
+            elif hasattr(instance, 'area_filt'):
+                size_equipment[key] = instance.area_filt
+
+        num_equip = len(size_equipment)
+        name_equip = size_equipment.keys()
+        if cepci_vals is None:
+            cepci_vals = np.ones(2)
+
+        if f_pres is None:
+            f_pres = np.ones(num_equip)
+
+        if f_mat is None:
+            f_mat = np.ones(num_equip)
+
+        if k_vals is None:
+            return size_equipment
+        else:
+            capacities = np.array(list(size_equipment.values()))
+
+            k1, k2, k3 = k_vals.T
+            cost_zero = 10**(k1 + k2*np.log10(capacities) +
+                             k3*np.log10(capacities)**2)
+
+            b1, b2 = b_vals.T
+
+            f_bare = b1 + b2 * f_mat * f_pres
+            cost_equip = cost_zero * f_bare
+
+            cost_equip = dict(zip(name_equip, cost_equip))
+
+            return size_equipment, cost_equip
+
+
     def GetUtilities(self):
         pass
 

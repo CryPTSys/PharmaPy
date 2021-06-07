@@ -116,6 +116,8 @@ class _BaseReactor:
             raise RuntimeError('Please provide a list or tuple of phases '
                                'objects')
         classify_phases(self)
+
+        self.vol_phase = copy.copy(self.Liquid_1.vol)
         self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
         self.__original_phase__ = copy.deepcopy(self.Liquid_1)
 

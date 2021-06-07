@@ -474,6 +474,7 @@ class DynamicCollector:
         #     classify_phases(self.inlet)
 
         self.tau = tau
+        self.vol_offset = 0.75
 
         self.oper_mode = 'Dynamic'
         self.time_shift = timeshift_factor
@@ -591,7 +592,7 @@ class DynamicCollector:
 
             SemiCryst.names_upstream = self.names_upstream
             SemiCryst.bipartite = self.bipartite
-            
+
             time, states = SemiCryst.solve_unit(runtime, time_grid,
                                                 verbose=verbose)
 
@@ -604,6 +605,12 @@ class DynamicCollector:
 
             self.CrystInst = SemiCryst
             self.Outlet = SemiCryst.Outlet
+
+            vol_phase = self.Outlet.vol_slurry
+            if isinstance(vol_phase, np.ndarray):
+                vol_phase = vol_phase[0]
+
+            self.vol_phase = vol_phase
         else:
             path = self.Inlet.path_data
             mass_init = init_dict['mass_flow'] / 10
@@ -621,6 +628,12 @@ class DynamicCollector:
             time, states = solver.simulate(runtime, ncp_list=time_grid)
 
             self.retrieve_results(time, states)
+
+            vol_liq = self.Liquid_1.vol
+            if isinstance(vol_liq, np.ndarray):
+                vol_liq = vol_liq[0]
+
+            self.vol_phase = vol_liq
 
         return time, states
 
