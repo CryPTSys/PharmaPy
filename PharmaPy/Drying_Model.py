@@ -30,7 +30,7 @@ class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
                  resist_medium=2.22e9, eta_fun=None, mass_eta=False):
         """
-        
+
 
         Parameters
         ----------
@@ -68,7 +68,7 @@ class Drying:
         self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
         self.h_T_j = 30  # W/m**2/K
         self.h_T_j = 10  # W/m**2/K
-        
+
         self.nomenclature()
 
         self._Phases = None
@@ -82,7 +82,7 @@ class Drying:
         self.mass_eta = mass_eta
         self.oper_mode = 'Batch'
         self.is_continuous = False
-        
+
     @property
     def Phases(self):
         return self._Phases
@@ -144,10 +144,10 @@ class Drying:
 
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq)
         y_equil = (gamma * x_liq * p_sat[:, self.idx_volatiles]).T / p_gas
-        
+
         y_volat = y_gas[:, self.idx_volatiles]
         dry_volatiles = self.k_y * self.a_V * (y_equil.T - y_volat)
-        
+
         dry_rates = np.zeros_like(y_gas)
         dry_rates[:, self.idx_volatiles] = dry_volatiles
 
@@ -194,7 +194,7 @@ class Drying:
 
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
         self.dry_rate *= limiter_factor[..., np.newaxis]
-        
+
         # ---------- Model equations
         inputs = self.get_inputs(time)
 
@@ -328,25 +328,25 @@ class Drying:
         # Molar fractions
         # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
         # x_liq_init = self.CakePhase.Liquid_1.mole_frac[:, idx_volatiles]
-        
+
         y_gas_init = self.Vapor_1.mole_frac
         x_liq_init = self.CakePhase.Liquid_1.mole_frac
-        
+
         satur_init = self.CakePhase.saturation
-        
+
         # Temperatures
         temp_cond_init = self.CakePhase.Solid_1.temp
         temp_gas_init = self.Vapor_1.temp
         z_cake = self.CakePhase.z_external # For drying_script_inyoung
         # z_cake = self.CakePhase.z_external # This line for 2MSMPR_Filter.py
-        
+
         if x_liq_init.ndim == 1:
             x_liq_init = x_liq_init[idx_volatiles]
             states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
-            
+
             states_stacked = np.hstack(states_tuple)
             states_prev = np.tile(states_stacked, (self.num_nodes, 1))
-            
+
         else:
             x_liq_init = x_liq_init[:, idx_volatiles]
             if y_gas_init.ndim == 1:
@@ -357,29 +357,29 @@ class Drying:
                 temp_gas_init = np.ones_like(satur_init) * temp_gas_init
                 # temp_gas_init = np.tile(temp_gas_init, (self.num_nodes,1))
                 # temp_cond_init = np.tile(temp_cond_init, (self.num_nodes,1))
-                
+
             states_stacked = np.column_stack(
                 (satur_init, y_gas_init, x_liq_init, temp_gas_init,
                  temp_cond_init))
-            
+
             interp_obj = CubicSpline(z_cake, states_stacked)
             states_prev = interp_obj(self.z_centers)
-                  
+
         # states_init = states_prev
         # Merge states and interpolate in the grid nodes
         # states_prev = np.column_stack((satur_init, y_gas_init, x_liq_init,
         #                                temp_gas_init, temp_cond_init))
-        
-        # states_init = define_initial_state(state=states_stacked, z_after=self.z_centers, 
+
+        # states_init = define_initial_state(state=states_stacked, z_after=self.z_centers,
         #              z_before=z_cake, indexed_state=True)
 
         #z_cake = self.cake_height * self.CakePhase.z_external
-        
+
         # Physical properties
         alpha = self.CakePhase.alpha
         rho_sol = self.Solid_1.getDensity()
         porosity = self.CakePhase.porosity
-        
+
         xliq = states_prev[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
         # xliq = states_init[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
 
@@ -401,11 +401,11 @@ class Drying:
         sauter_diam = moments[1] / moments[0]  # m
 
         self.a_V = 6 / sauter_diam  # m**2/m**3
-        
+
         # Gas pressure
         deltaP_media = deltaP*self.resist_medium / \
             (alpha*rho_sol*self.cake_height + self.resist_medium)
-            
+
         # deltaP_media = deltaP*self.resist_medium / \
         #     (alpha*rho_sol*(1 - porosity)*self.cake_height +
         #      self.resist_medium)
@@ -463,12 +463,12 @@ class Drying:
 
         self.num_gas = num_gas
         self.num_liq = num_liq
-    
-    
+
+
     def flatten_states(self):
         pass
-    
-    
+
+
     def plot_profiles(self, time=None, z_pos=None, fig_size=None, jump=5,
                       pick_idx=None):
         if pick_idx is None:

@@ -85,9 +85,9 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
             )
 
     s_inf = 0.155 * (1 + 0.031*capillary_number**(-0.49))
-    
+
     s_inf = np.where(s_inf > 1, 1, s_inf)
-        
+
     integrand = s_inf.T * csd
     s_inf = trapezoidal_rule(x_vec, integrand.T) / mu_zero
 
@@ -253,11 +253,11 @@ class DeliquoringStep:
         self.rho_j = self.Liquid_1.getDensityPure()[0]
         # self.rho_j = np.ones_like(self.rho_j)
         conc_upstream = self.CakePhase.Liquid_1.mass_conc
-        
+
         z_dim = self.z_centers * self.cake_height
-        conc_init = define_initial_state(state=conc_upstream, z_after=z_dim, 
+        conc_init = define_initial_state(state=conc_upstream, z_after=z_dim,
                      z_before=self.CakePhase.z_external, indexed_state=True)
-        
+
         # if conc_upstream.ndim == 1:     # also for saturation : Daniel
         #     z_dim = self.z_centers * self.cake_height
         #     conc_liq = self.Liquid_1.mass_conc  # Lets check how the mass conc is calculated: Daniel
@@ -266,7 +266,7 @@ class DeliquoringStep:
         #     z_dim = self.z_centers * self.cake_height
         #     interp = SplineInterpolation(self.CakePhase.z_external, conc_upstream)
         #     conc_init = interp.evalSpline(z_dim)
-            
+
         self.conc_mean_init = np.zeros_like(conc_init)
         for i in range(len(self.Liquid_1.name_species)):
             self.conc_mean_init[:,i] = trapezoidal_rule(z_dim, conc_init[:,i]) / \
@@ -336,24 +336,24 @@ class DeliquoringStep:
         concPerVolElement = [
             array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
             for ind, array in enumerate(concPerVolElement)]
-        
+
         self.concPerSpecies = concPerSpecies
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
-        
+
         last_state = []
         for array in self.concPerSpecies:
             last_state.append(array[-1])
-            
-        self.mass_conc_T = np.array(last_state).transpose()                
-        
+
+        self.mass_conc_T = np.array(last_state).transpose()
+
         self.Liquid_1.updatePhase(mass_conc=self.mass_conc_T)
-        
-        
+
+
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
-        
+
         self.Outlet = self.CakePhase
         self.CakePhase.saturation = self.satProf[-1]
         self.Outlet.Phases = (liquid_out, solid_out)
@@ -617,7 +617,7 @@ class Filter:
         vol_liq_slur = vol_slurry * frac_liq
 
         vol_filtrate = vol_liq_slur - vol_liq_cake
-        
+
         self.c_solids = vol_slurry * solid_conc / vol_filtrate
 
         # Physical properties
@@ -652,7 +652,7 @@ class Filter:
         self.cake_dry = self.c_solids * states[:, 0] / dens_liq
         self.cake_wet = self.cake_dry * \
             (1 + epsilon/(1 - epsilon) * dens_liq/dens_sol)
-            
+
         self.time_filt = visc_liq/self.deltaP * (
             self.alpha*self.c_solids/2 * (vol_filtrate/self.area_filt)**2 +
             self.r_medium * (vol_filtrate/self.area_filt))
@@ -669,13 +669,12 @@ class Filter:
 
         solid_cake = copy.deepcopy(self.Solid_1)
         solid_cake.updatePhase(
-            mass=self.cake_dry[-1],
-            distrib=self.Solid_1.distrib * self.SlurryPhase.vol_slurry)
+            mass=self.cake_dry[-1], distrib=self.Solid_1.distrib)
 
         liquid_cake = copy.deepcopy(self.Liquid_1)
         liquid_cake.updatePhase(mass=self.massProf[-1, 1])  # TODO: the other outlet
 
-        self.Solid_1.mass = self.cake_dry[-1]
+        # self.Solid_1.mass = self.cake_dry[-1]
 
         self.Outlet = Cake()
         self.Outlet.Phases = (liquid_cake, solid_cake)
@@ -838,29 +837,29 @@ class DisplacementWashing:
         diff_pure = self.Liquid_1.getDiffusivityPure(wrt=self.solvent_idx)
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         lambd_ads = 1 / (1 - self.k_ads + self.k_ads/epsilon)
-        
+
         c_zero = self.CakePhase.Liquid_1.mass_conc
-        
+
         # Solid
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         dens_sol = self.Solid_1.getDensity()
         alpha = self.CakePhase.alpha
-        
+
         # Cake
         cake_height = self.CakePhase.cake_vol / self.cross_area  # m
         vel_liq = deltaP / visc_liq / (alpha * dens_sol * cake_height *
                                        (1 - epsilon) + self.resist_medium)
         diff = self.get_diffusivity(vel_liq, diff_pure)
-        
+
         z_vals = np.linspace(0, cake_height, self.num_nodes)
-        c_zero = define_initial_state(state=c_zero, z_after=z_vals, 
+        c_zero = define_initial_state(state=c_zero, z_after=z_vals,
                      z_before=self.CakePhase.z_external, indexed_state=True)
         # if c_zero.ndim == 1:     # also for saturation : Daniel
         #     c_zero = np.tile(c_zero, (self.num_nodes, 1))
         # elif c_zero.ndim == 2:
         #     interp = SplineInterpolation(self.CakePhase.z_external, c_zero)
         #     c_zero = interp.evalSpline(z_vals)
-            
+
         # self.conc_mean_init = np.zeros_like(conc_init)
         # for i in range(len(self.Liquid_1.name_species)):
         #     self.conc_mean_init[:,i] = trapezoidal_rule(z_dim, conc_init[:,i]) / \
@@ -869,11 +868,11 @@ class DisplacementWashing:
 
         c_inlet = np.zeros(self.Liquid_1.num_species)
         c_inlet[self.solvent_idx] = self.Liquid_1.rho_liq[self.solvent_idx]
-        
+
         # ---------- Solve
         time_total = wash_ratio * cake_height / vel_liq
 
-        
+
 
         if time_vals is None:
             time_vals = np.linspace(eps, time_total)
@@ -932,18 +931,18 @@ class DisplacementWashing:
 
         self.CakePhase.mass_concentr = self.concPerSpecies[-1]  # TODO
         self.CakePhase.z_external = self.zProf
-        
+
         last_state = self.concPerSpecies[-1]
         self.Liquid_1.updatePhase(mass_conc=last_state)
-        
+
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
-        
+
         self.Outlet = self.CakePhase
         self.Outlet.Phases = (liquid_out, solid_out)
         if conc.ndim == 3:
             self.outputs = concPerVolElem[-1]
-                
+
     def flatten_states(self):
         pass
 
@@ -981,7 +980,7 @@ class DisplacementWashing:
                         ha='right', transform=ax.transAxes)
 
         ax.set_ylabel('$C_i$ $(\mathregular{kg \ m^{-3}})$')
-        
+
         for ind in pick_idx:
             ax.legend(self.Liquid_1.name_species[ind], loc='best')
 

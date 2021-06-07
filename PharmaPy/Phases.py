@@ -686,16 +686,16 @@ class VaporPhase(ThermoPhysicalManager):
                                          phase='vapor')
 
         return viscosity
-    
+
     def getDensity(self, pres_gas=None, temp_gas=None, phase ='gas', basis='mole'):
-        
+
         if pres_gas is None and temp_gas is None:
-        
+
             pres_gas = self.pres_gas
             temp_gas = self.temp
-            
-        densGas = pres_gas/ (8.314 * temp_gas) 
-            
+
+        densGas = pres_gas/ (8.314 * temp_gas)
+
         return densGas
 
 
@@ -761,7 +761,7 @@ class SolidPhase(ThermoPhysicalManager):
                 if distrib_type == 'vol_perc':
                     distr = (mass / dens) * distrib / kv / x_distrib**3 \
                         * 1e18 / self.dx   # number/um
-                        
+
                 elif distrib_type == 'mass_perc':
                     distr = mass*distrib / x_distrib**3 / kv * 1e18
 
@@ -806,6 +806,7 @@ class SolidPhase(ThermoPhysicalManager):
 
         if mass is not None:
             self.mass = mass
+            self.vol = mass / self.getDensity()
 
     def getMoments(self, distrib=None, mom_num=None):
         if distrib is None:
@@ -852,10 +853,10 @@ class SolidPhase(ThermoPhysicalManager):
                                        temp=temp, basis=basis)
 
         return densSolid
-    
+
 
     def getPorosity(self, distrib=None, diam_filter=1, AR=None, sphericity=None):  # x_distrib is the x
-    
+
         if distrib is None:
             distrib = self.distrib
             mom_zero = self.moments[0]
@@ -865,66 +866,66 @@ class SolidPhase(ThermoPhysicalManager):
 
         # mom_one *= 1e-6  # m
         x_dist = self.x_distrib * 1e-6  # m
-        
+
         if AR is None:
-            AR = 2  
-        
+            AR = 2
+
         if sphericity is None:
             sphericity = 0.7
-         
+
         # Yu, Zou et al (1996) and Yu,Zou, Stnadish (1996) model
-        kv = 0.524  # Volumetric shape coefficient 
-        ks = 3.142  # Surface shape coefficient 
-        
+        kv = 0.524  # Volumetric shape coefficient
+        ks = 3.142  # Surface shape coefficient
+
         del_x_dist = np.diff(x_dist)
         node_x_dist = (x_dist[:-1] + x_dist[1:])/ 2
         node_CSD = (distrib[:-1] + distrib[1:])/ 2
-        
+
         vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3) # Volume of crystals in each bin
         frac_vol_cry = vol_cry/ np.sum(vol_cry)
-        
+
         vol_particle = kv * node_x_dist**3
         d_part_sphere = (6 * vol_particle/ np.pi)**(1/3)
-        d_part_equiv_pack = d_part_sphere/ (sphericity**2.785 * 
+        d_part_equiv_pack = d_part_sphere/ (sphericity**2.785 *
                                             np.exp(2.946 * (1 - sphericity)))
-        
+
         #Initial porosity
         D_mean = mom_one/ mom_zero
         E_0_Jeschar = 0.375 + 0.34 * D_mean/ diam_filter # # average porosity of packing of uniform sized spheres [-]
-        
+
         initial_porosity = E_0_Jeschar
-        
-        V = 1/ (1 - initial_porosity) * np.ones_like(node_x_dist)   #Specific Volume for initial porosity 
-        
+
+        V = 1/ (1 - initial_porosity) * np.ones_like(node_x_dist)   #Specific Volume for initial porosity
+
         # Evaluate specific volume using modified linear packing model
         V_T_node = np.zeros(len(node_x_dist))
-        
+
         for i in range(len(node_x_dist)):
-            
+
             sum_V_large_term= 0
             sum_V_small_term = 0
-            
+
             for j in range(i):
                 r = d_part_equiv_pack[j]/ d_part_equiv_pack[i]
                 g_r = (1 - r)**2 + 0.4*r*(1-r)**3.7
                 V_large_j = V[j] - (V[j] - 1) * g_r - V[i]
-                sum_V_large_term += V_large_j * frac_vol_cry[j] 
-            
+                sum_V_large_term += V_large_j * frac_vol_cry[j]
+
             for j in range(i+1, len(node_x_dist)):
                 r = d_part_equiv_pack[i]/ d_part_equiv_pack[j]
                 f_r = (1 -r)**3.3 + 2.8*r*(1 - r)**2.7
                 V_small_j = V[j] * (1 - f_r) - V[i]
                 sum_V_small_term += V_small_j * frac_vol_cry[j]
-                
+
             #V_T_node[i] = vol_cry[i] * frac_vol_cry[i] + sum_V_large_term + sum_V_small_term
             V_T_node[i] = V[i] + sum_V_large_term + sum_V_small_term
         V_T = max(V_T_node)
-        
+
         porosity = 1 - 1/V_T
-        
-        return porosity        
-        
-       
+
+        return porosity
+
+
     # def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
     #     if distrib is None:
     #         distrib = self.distrib
