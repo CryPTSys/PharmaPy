@@ -8,7 +8,7 @@ Created on Tue May 26 16:37:29 2020
 import numpy as np
 from autograd import numpy as np
 from autograd import jacobian as jacauto
-from PharmaPy.Commons import mid_fn
+from PharmaPy.Commons import mid_fn, trapezoidal_rule
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
 from PharmaPy.NameAnalysis import get_dict_states
@@ -408,8 +408,9 @@ class Evaporator:
 
         return input_dict
 
-    def material_balances(self, dmoli_dt, moles_i, x_i, y_i,
-                          mol_liq, mol_vap, pres, temp, u_inputs):
+    def material_balances(self, moles_i, x_i, y_i,
+                          mol_liq, mol_vap, pres, temp, u_inputs,
+                          dmoli_dt=None):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -420,38 +421,42 @@ class Evaporator:
         flow_vap = self.area_out / mw_vap * 1000 *\
             np.sqrt(2*dens_gas * np.max([eps, pres - self.pres]))  # mol/s
 
-        # Differential eqns
-        diff_i = input_flow * input_fracs - flow_vap * y_i - dmoli_dt  # bce - dMi_dt
-
-        # Algebraic eqns
-        component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
-        global_bce = mol_liq + mol_vap - sum(moles_i)
-
         rho_liq = self.LiqEvap.getDensity(mole_frac=x_i, temp=temp,
                                           basis='mole')
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
         vol_vap = mol_vap * gas_ct * temp / pres
-        vol_eqn = vol_liq + vol_vap - self.vol_tot
 
-        k_i = self.LiqEvap.getKeqVLE(temp, pres, x_i, self.activity_model)
-        equilibria = y_i - k_i * x_i
+        if dmoli_dt is None:
+            return flow_vap, vol_liq
+        else:
+            # Differential eqns
+            diff_i = input_flow * input_fracs - flow_vap * y_i - dmoli_dt  # bce - dMi_dt
 
-        p_sat = self.LiqEvap.AntoineEquation(temp=temp)
-        pres_eqn = np.dot(x_i, p_sat) - pres
+            # Algebraic eqns
+            component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
+            global_bce = mol_liq + mol_vap - sum(moles_i)
 
-        alg_balances = np.concatenate((component_bce,  # x_i
-                                       equilibria,  # y_i
-                                       np.array([global_bce]),  # M_L
-                                       np.array([vol_eqn]),  # M_V
-                                       np.array([pres_eqn])  # P
-                                       )
-                                      )
+            vol_eqn = vol_liq + vol_vap - self.vol_tot
 
-        return diff_i, alg_balances, flow_vap, vol_liq
+            k_i = self.LiqEvap.getKeqVLE(temp, pres, x_i, self.activity_model)
+            equilibria = y_i - k_i * x_i
 
-    def energy_balances(self, du_dt, u_int, temp, x_i, y_i, mol_liq, mol_vap,
-                        vol_liq, flow_vap, pres, u_inputs):
+            p_sat = self.LiqEvap.AntoineEquation(temp=temp)
+            pres_eqn = np.dot(x_i, p_sat) - pres
+
+            alg_balances = np.concatenate((component_bce,  # x_i
+                                           equilibria,  # y_i
+                                           np.array([global_bce]),  # M_L
+                                           np.array([vol_eqn]),  # M_V
+                                           np.array([pres_eqn])  # P
+                                           )
+                                          )
+
+            return diff_i, alg_balances, flow_vap, vol_liq
+
+    def energy_balances(self, u_int, temp, x_i, y_i, mol_liq, mol_vap,
+                        vol_liq, flow_vap, pres, u_inputs, du_dt=None):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -474,12 +479,15 @@ class Evaporator:
 
         heat_transfer = -self.ht_coeff * area_ht * (temp - self.temp_ht)
 
-        # Compute balances
-        diff_bce = heat_transfer + input_flow * h_in - flow_vap * h_vap - du_dt
-        pv_term = pres * self.vol_tot
-        internal_energy = mol_liq * h_liq + mol_vap * h_vap - pv_term - u_int
+        if du_dt is None:
+            return heat_transfer
+        else:
+            # Compute balances
+            diff_bce = heat_transfer + input_flow * h_in - flow_vap * h_vap - du_dt
+            pv_term = pres * self.vol_tot
+            internal_energy = mol_liq * h_liq + mol_vap * h_vap - pv_term - u_int
 
-        out_energy = np.array([diff_bce, internal_energy])
+            out_energy = np.array([diff_bce, internal_energy])
 
         return out_energy
 
@@ -503,39 +511,60 @@ class Evaporator:
         temp = states[-1]
 
         # Decompose derivatives
-        dmoli_dt = states_dot[:n_comp]
-        du_dt = states_dot[-2]
+        if states_dot is None:
+            dmoli_dt = None
+            du_dt = None
+        else:
+            dmoli_dt = states_dot[:n_comp]
+            du_dt = states_dot[-2]
 
         # Inputs
         u_inputs = self.get_inputs(time)
 
-        # Material balance
-        material_bces = self.material_balances(dmoli_dt,
-                                               moles_i,
-                                               x_liq, y_vap, mol_liq, mol_vap,
-                                               pres, temp,
-                                               u_inputs)
+        if states_dot is None:
+            # Material balance
+            material_bces = self.material_balances(moles_i,
+                                                   x_liq, y_vap, mol_liq, mol_vap,
+                                                   pres, temp,
+                                                   u_inputs, dmoli_dt)
 
-        material_bce = np.concatenate(material_bces[:-2])
-        flow_vap, vol_liq = material_bces[-2:]
+            flow_vap, vol_liq = material_bces
 
-        # Energy balance
-        energy_bce = self.energy_balances(du_dt, u_int, temp, x_liq, y_vap,
-                                          mol_liq, mol_vap,
-                                          vol_liq, flow_vap,
-                                          pres, u_inputs)
+            # Energy balance
+            energy_bce = self.energy_balances(u_int, temp, x_liq, y_vap,
+                                              mol_liq, mol_vap,
+                                              vol_liq, flow_vap,
+                                              pres, u_inputs, du_dt)
 
-        # Concatenate balances
-        balances = np.concatenate((material_bce, energy_bce))
+            return material_bces, energy_bce
+        else:
 
-        # Update output objects
-        self.LiqEvap.temp = temp
-        self.VapEvap.temp = temp
+            # Material balance
+            material_bces = self.material_balances(moles_i,
+                                                   x_liq, y_vap, mol_liq, mol_vap,
+                                                   pres, temp,
+                                                   u_inputs, dmoli_dt)
 
-        self.LiqEvap.mole_frac = x_liq
-        self.VapEvap.mole_flow = y_vap
+            material_bce = np.concatenate(material_bces[:-2])
+            flow_vap, vol_liq = material_bces[-2:]
 
-        return balances
+            # Energy balance
+            energy_bce = self.energy_balances(u_int, temp, x_liq, y_vap,
+                                              mol_liq, mol_vap,
+                                              vol_liq, flow_vap,
+                                              pres, u_inputs, du_dt)
+
+            # Concatenate balances
+            balances = np.concatenate((material_bce, energy_bce))
+
+            # Update output objects
+            self.LiqEvap.temp = temp
+            self.VapEvap.temp = temp
+
+            self.LiqEvap.mole_frac = x_liq
+            self.VapEvap.mole_flow = y_vap
+
+            return balances
 
     def unit_jacobian(self, c, time, states, sdot, params=None):
         jac_states = self.jac_states(time, states, sdot, params)
@@ -765,6 +794,15 @@ class Evaporator:
         self.Outlet = self.LiqPhase
         self.outputs = np.column_stack((self.xliqProf[-1][:, :-1],
                                         self.molLiqProf, self.tempProf[-1]))
+
+        # Heat balance
+        heat_bce = np.zeros_like(time)
+        for ind, row in enumerate(states):
+            _, q_ht = self.unit_model(time, row, None, False)
+            heat_bce[ind] = q_ht
+
+        self.heat_profile = heat_bce
+        self.heat_duty = trapezoidal_rule(time, heat_bce)
 
     def flatten_states(self):
         if type(self.timeProf) is list:
