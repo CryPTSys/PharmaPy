@@ -194,8 +194,8 @@ class Slurry:
 
     def getCp(self, temp, volfracs=None, density=None, times_vliq=False):
         # Individual phases
-        cpLiq = self.Liquid_1.getCp(temp=temp)
-        cpSol = self.Solid_1.getCp(temp=temp)
+        cpLiq = self.Liquid_1.getCp(temp=temp, basis='mass')
+        cpSol = self.Solid_1.getCp(temp=temp, basis='mass')
 
         cpPhases = np.array([cpLiq, cpSol])
 

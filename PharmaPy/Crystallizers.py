@@ -390,6 +390,7 @@ class _BaseCryst:
             temp = self.controls['temp'](time, self.temp,
                                          *self.params_control['temp'],
                                          t_zero=self.elapsed_time)
+            temp_ht = None
         else:
             temp = self.Liquid_1.temp
 
@@ -401,6 +402,11 @@ class _BaseCryst:
         rhos_susp = self.Slurry.getDensity(temp=temp)
 
         name_unit = self.__class__.__name__
+
+        if self.method == 'moments':
+            moms = distr * (1e-6)**np.array(len(distr))
+        else:
+            moms = self.Solid_1.getMoments(distr / self.scale)
 
         if name_unit == 'BatchCryst':
             rhos = rhos_susp
@@ -435,11 +441,6 @@ class _BaseCryst:
 
             rhos = [rhos_susp, rhos_in]
 
-        if self.method == 'moments':
-            moms = distr * (1e-6)**np.array(len(distr))
-        else:
-            moms = self.Solid_1.getMoments(distr / self.scale)
-
         # Balances
         material_bces, cryst_rate = self.material_balances(time, distr, w_conc,
                                                            temp, vol,
@@ -453,7 +454,7 @@ class _BaseCryst:
                                               temp, temp_ht, vol,
                                               params, cryst_rate,
                                               u_input,
-                                              rhos, moms, h_in)
+                                              rhos, moms, h_in, heat_prof=True)
 
             return energy_bce
 
@@ -1443,7 +1444,7 @@ class BatchCryst(_BaseCryst):
                         params, cryst_rate, u_inputs, rhos, moms,
                         h_in=None, heat_prof=False):
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol_liq + vol_solid
 
         phi = vol_liq / vol_total
@@ -1465,12 +1466,14 @@ class BatchCryst(_BaseCryst):
         source_term = dh_cryst*cryst_rate
 
         if self.adiabatic:
-            ht_term = np.zeros_like(temp)
+            ht_term = 0
+        elif 'temp' in self.controls.keys():
+            ht_term = capacitance * vol  # return capacitance
         elif 'temp' in self.states_uo:
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
         if heat_prof:
-            heat_components = np.column_stack((source_term, ht_term))
+            heat_components = np.array([source_term, ht_term])
             return heat_components
         else:
             # Balance inside the tank
@@ -1581,22 +1584,26 @@ class BatchCryst(_BaseCryst):
 
         self.outputs = y_outputs
 
-        # q_heat = np.zeros((len(time), 2))
-
-        # if self.params_iter is None:
-        #     merged_params = self.Kinetics.concat_params()[self.mask_params]
-        # else:
-        #     merged_params = self.params_iter
-
-        # for ind, row in enumerate(states):
-        #     q_heat[ind] = self.unit_model(time[ind], row, merged_params,
-        #                                   enrgy_bce=True)
-
         # Heat profiles
-        if 'temp_ht' in self.states_uo:
-            pass
+        q_heat = np.zeros((len(time), 2))
+
+        if self.params_iter is None:
+            merged_params = self.Kinetics.concat_params()[self.mask_params]
         else:
-            q_liq = 2
+            merged_params = self.params_iter
+
+        for ind, row in enumerate(states):
+            q_heat[ind] = self.unit_model(time[ind], row, merged_params,
+                                          enrgy_bce=True)
+
+        if 'temp' in self.controls.keys():
+            q_gen, capacitance = q_heat.T
+
+            dT_dt = self.params_control['temp'][0]  # linear T profile
+
+            q_instant = dT_dt * capacitance + q_gen
+
+        self.heat_duty = trapezoidal_rule(time, q_instant)
 
 
 class MSMPR(_BaseCryst):
