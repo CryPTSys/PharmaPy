@@ -795,14 +795,35 @@ class Evaporator:
         self.outputs = np.column_stack((self.xliqProf[-1][:, :-1],
                                         self.molLiqProf, self.tempProf[-1]))
 
-        # Heat balance
+        # ---------- Heat balance
+        # Heating duty
         heat_bce = np.zeros_like(time)
+        flow_vap = np.zeros_like(time)
+        h_liq = np.zeros_like(time)
+        h_vap = np.zeros_like(time)
         for ind, row in enumerate(states):
-            _, q_ht = self.unit_model(time, row, None, False)
-            heat_bce[ind] = q_ht
+            mass_bce, q_ht = self.unit_model(time, row, None, False)
 
-        self.heat_profile = heat_bce
-        self.heat_duty = trapezoidal_rule(time, heat_bce)
+            heat_bce[ind] = q_ht
+            flow_vap[ind] = mass_bce[0]
+
+            temp_bubble = self.LiqPhase.getBubblePoint(
+                pres=self.presProf[-1][ind],
+                mole_frac=self.xliqProf[-1][ind, :-1])
+
+            h_liq[ind] = self.LiqPhase.getEnthalpy(
+                temp=temp_bubble,
+                mole_frac=self.xliqProf[-1][ind, :-1], basis='mole')
+
+            h_vap[ind] = self.VaporOut.getEnthalpy(
+                temp=self.tempProf[-1][ind],
+                mole_frac=self.yvapProf[-1][ind, :-1], basis='mole')
+
+        # Condensation duty
+        heat_cond_prof = flow_vap * (h_liq - h_vap)
+
+        self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
+        self.heat_duty = trapezoidal_rule(time, self.heat_profile)
 
     def flatten_states(self):
         if type(self.timeProf) is list:
