@@ -1303,23 +1303,25 @@ class PlugFlowReactor(_BaseReactor):
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
         # ---------- Balance terms (W)
-        source_term = -inner1d(deltah_rxn, rate_i) * 1000 / cp_vol  # W/m**3
+        source_term = -inner1d(deltah_rxn, rate_i * 1000)  # W/m**3
 
         temp_diff = np.diff(temp)
-        flow_term = -flow_in * temp_diff / vol_diff
+        flow_term = -flow_in * temp_diff / vol_diff  # K/s
 
         if self.adiabatic:
             heat_transfer = np.zeros_like(self.vol_discr)
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
             heat_transfer = self.u_ht * a_prime * \
-                (temp - self.ht_media.temp_in) / cp_vol
+                (temp - self.ht_media.temp_in)  # W/m**3
 
         if heat_profile:
-            return flow_term, source_term, heat_transfer
+            ht_total = trapezoidal_rule(self.vol_centers, heat_transfer)  # W
+            return ht_total
 
         else:
-            dtemp_dt = flow_term + source_term[1:] - heat_transfer[1:]
+            dtemp_dt = flow_term + \
+                (source_term[1:] - heat_transfer[1:])/cp_vol[1:]
 
             return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant
 
@@ -1354,7 +1356,7 @@ class PlugFlowReactor(_BaseReactor):
 
         return input_dict
 
-    def unit_model(self, time, states):
+    def unit_model(self, time, states, enrgy_bce=False):
 
         conc, temp = self.unravel_states(states)
 
@@ -1393,11 +1395,20 @@ class PlugFlowReactor(_BaseReactor):
                                                temp_all, flow_in, rates_j)
 
         if 'temp' in self.states_uo:
-            energy_bce = self.energy_balances(time, conc_all, vol_diff,
-                                              temp_all,
-                                              flow_in, rates_i)
+            if enrgy_bce:
+                ht_inst = self.energy_balances(time, conc_all, vol_diff,
+                                               temp_all,
+                                               flow_in, rates_i,
+                                               heat_profile=True)
+                return ht_inst
 
-            balances = np.column_stack((material_bces, energy_bce)).ravel()
+            else:
+                energy_bce = self.energy_balances(time, conc_all, vol_diff,
+                                                  temp_all,
+                                                  flow_in, rates_i,
+                                                  heat_profile=False)
+
+                balances = np.column_stack((material_bces, energy_bce)).ravel()
         else:
             balances = material_bces.ravel()
 
@@ -1505,7 +1516,12 @@ class PlugFlowReactor(_BaseReactor):
         self.vol_centers = vol_centers
 
         # Energy balance
+        ht_time = np.zeros_like(time)
+        for ind, row in enumerate(states):
+            ht_time[ind] = -self.unit_model(time[ind], row, enrgy_bce=True)
 
+        self.heat_profile = ht_time
+        self.heat_duty = trapezoidal_rule(time, ht_time)
 
     def flatten_states(self):
         if type(self.timeProf) is list:
