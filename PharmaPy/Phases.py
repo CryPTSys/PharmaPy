@@ -630,7 +630,7 @@ class VaporPhase(ThermoPhysicalManager):
         else:
             hSens = super().getEnthalpy(
                 temp, temp_ref, mass_frac, mole_frac, phase='liquid',
-                total_h=total_h)
+                total_h=total_h, basis=basis)
 
         # Phase change
         deltaVap = self.getHeatVaporization(temp, basis=basis)

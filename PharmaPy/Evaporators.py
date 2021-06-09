@@ -795,6 +795,9 @@ class Evaporator:
         self.outputs = np.column_stack((self.xliqProf[-1][:, :-1],
                                         self.molLiqProf, self.tempProf[-1]))
 
+        self.get_heat_duty(time, states)
+
+    def get_heat_duty(self, time, states):
         # ---------- Heat balance
         # Heating duty
         heat_bce = np.zeros_like(time)
@@ -824,6 +827,7 @@ class Evaporator:
 
         self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
         self.heat_duty = trapezoidal_rule(time, self.heat_profile)
+
 
     def flatten_states(self):
         if type(self.timeProf) is list:
@@ -1064,7 +1068,8 @@ class ContinuousEvaporator:
             return dmoli_dt, alg_balances, flow_liq, flow_vap, vol_liq
 
     def energy_balances(self, time, u_int, temp, x_i, y_i, mol_liq, mol_vap,
-                        vol_liq, flow_liq, flow_vap, pres, u_inputs):
+                        vol_liq, flow_liq, flow_vap, pres, u_inputs,
+                        heat_prof=False):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -1086,18 +1091,22 @@ class ContinuousEvaporator:
 
             heat_transfer = self.ht_coeff * area_ht * (temp - self.temp_ht)
 
-        # Compute balances
-        duint_dt = input_flow * h_in - flow_liq * h_liq - flow_vap * h_vap - \
-            heat_transfer
+        flow_term = input_flow * h_in - flow_liq * h_liq - flow_vap * h_vap
+        if heat_prof:
+            return flow_term, heat_transfer
+        else:
+            # Compute balances
+            duint_dt = flow_term - heat_transfer
 
-        pv_term = pres * self.vol_tot
-        internal_energy = mol_liq * h_liq + mol_vap * h_vap - pv_term - u_int
+            pv_term = pres * self.vol_tot
+            internal_energy = mol_liq * h_liq + mol_vap * h_vap - pv_term - u_int
 
-        out_energy = np.array([duint_dt, internal_energy])
+            out_energy = np.array([duint_dt, internal_energy])
 
-        return out_energy
+            return out_energy
 
-    def unit_model(self, time, states, states_dot=None, params=None):
+    def unit_model(self, time, states, states_dot=None, params=None,
+                   enrgy_bce=False):
 
         n_comp = self.num_species
 
@@ -1128,31 +1137,39 @@ class ContinuousEvaporator:
         material_bce = np.concatenate(material_bces[:-3])
         flow_liq, flow_vap, vol_liq = material_bces[-3:]
 
-        # Energy balance
-        energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
-                                          mol_liq, mol_vap, vol_liq,
-                                          flow_liq, flow_vap,
-                                          pres, u_inputs)
+        if enrgy_bce:
+            energy_terms = self.energy_balances(time, u_int, temp, x_liq, y_vap,
+                                                mol_liq, mol_vap, vol_liq,
+                                                flow_liq, flow_vap,
+                                                pres, u_inputs, heat_prof=True)
 
-        # Concatenate balances
-        balances = np.concatenate((material_bce, energy_bce))
+            return (flow_liq, flow_vap, vol_liq), energy_terms
+        else:
+            # Energy balance
+            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
+                                              mol_liq, mol_vap, vol_liq,
+                                              flow_liq, flow_vap,
+                                              pres, u_inputs)
 
-        if states_dot is not None:
-            # Decompose derivatives
-            dmolesi_dt = states_dot[:n_comp]
-            duint_dt = states_dot[-2]
+            # Concatenate balances
+            balances = np.concatenate((material_bce, energy_bce))
 
-            balances[:n_comp] = balances[:n_comp] - dmolesi_dt
-            balances[-2] = balances[-2] - duint_dt
+            if states_dot is not None:
+                # Decompose derivatives
+                dmolesi_dt = states_dot[:n_comp]
+                duint_dt = states_dot[-2]
 
-        # Update output objects
-        self.LiqPhase.temp = temp
-        self.VapPhase.temp = temp
+                balances[:n_comp] = balances[:n_comp] - dmolesi_dt
+                balances[-2] = balances[-2] - duint_dt
 
-        self.LiqPhase.mole_frac = x_liq
-        self.VapPhase.mole_flow = y_vap
+            # Update output objects
+            self.LiqPhase.temp = temp
+            self.VapPhase.temp = temp
 
-        return balances
+            self.LiqPhase.mole_frac = x_liq
+            self.VapPhase.mole_flow = y_vap
+
+            return balances
 
     def unit_jacobian(self, c, time, states, sdot, params=None):
         jac_states = self.jac_states(time, states, sdot, params)
@@ -1319,6 +1336,45 @@ class ContinuousEvaporator:
 
         self.outputs = np.column_stack((self.xliqProf[-1],
                                         self.flowLiqProf, self.tempProf[-1]))
+
+        # Heat duties
+        self.get_heat_duty(time, states)
+
+    def get_heat_duty(self, time, states):
+        heat_bce = np.zeros(len(time))
+        h_liq = np.zeros_like(heat_bce)
+        h_vap = np.zeros_like(heat_bce)
+
+        flow_liq = np.zeros_like(heat_bce)
+        flow_vap = np.zeros_like(heat_bce)
+
+        for ind, row in enumerate(states):
+            mat, energy = self.unit_model(time[ind], row, enrgy_bce=True)
+            heat_bce[ind] = energy[1]
+
+            temp_bubble = self.LiqPhase.getBubblePoint(
+                pres=self.presProf[-1][ind],
+                mole_frac=self.xliqProf[-1][ind])
+
+            h_liq[ind] = self.LiqPhase.getEnthalpy(
+                temp=temp_bubble,
+                mole_frac=self.xliqProf[-1][ind], basis='mole')
+
+            h_vap[ind] = self.VapPhase.getEnthalpy(
+                temp=self.tempProf[-1][ind],
+                mole_frac=self.yvapProf[-1][ind], basis='mole')
+
+            flow_liq[ind] = mat[0]
+            flow_vap[ind] = mat[1]
+
+        # Condensation duty
+        heat_cond_prof = flow_vap * (h_liq - h_vap)
+
+        self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
+        self.heat_duty = trapezoidal_rule(time, self.heat_profile)
+
+        self.liqFlowProf = flow_liq
+        self.vapFlowProf = flow_vap
 
     def flatten_states(self):
         if type(self.timeProf) is list:
