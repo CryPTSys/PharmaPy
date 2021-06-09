@@ -176,8 +176,8 @@ class Slurry:
 
     def getEnthalpy(self, temp, volfracs=None, densMass=None):
         # Individual phases
-        hLiq = self.Liquid_1.getEnthalpy(temp=temp)
-        hSol = self.Solid_1.getEnthalpy(temp=temp)
+        hLiq = self.Liquid_1.getEnthalpy(temp=temp, basis='mass')
+        hSol = self.Solid_1.getEnthalpy(temp=temp, basis='mass')
 
         hMass = np.array([hLiq, hSol])
 
@@ -192,10 +192,12 @@ class Slurry:
 
         return hSlurry
 
-    def getCp(self, temp, volfracs=None, density=None, times_vliq=False):
+    def getCp(self, temp, volfracs=None, density=None, times_vliq=False,
+              basis='mass'):
+
         # Individual phases
-        cpLiq = self.Liquid_1.getCp(temp=temp, basis='mass')
-        cpSol = self.Solid_1.getCp(temp=temp, basis='mass')
+        cpLiq = self.Liquid_1.getCp(temp=temp, basis=basis)
+        cpSol = self.Solid_1.getCp(temp=temp, basis=basis)
 
         cpPhases = np.array([cpLiq, cpSol])
 

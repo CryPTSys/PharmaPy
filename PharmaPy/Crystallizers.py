@@ -1584,7 +1584,9 @@ class BatchCryst(_BaseCryst):
 
         self.outputs = y_outputs
 
-        # Heat profiles
+        self.get_heat_duty(time, states)
+
+    def get_heat_duty(self, time, states):
         q_heat = np.zeros((len(time), 2))
 
         if self.params_iter is None:
@@ -1602,6 +1604,9 @@ class BatchCryst(_BaseCryst):
             dT_dt = self.params_control['temp'][0]  # linear T profile
 
             q_instant = dT_dt * capacitance + q_gen
+
+        else:
+            q_instant = q_heat  # TODO: write for other scenarios
 
         self.heat_duty = trapezoidal_rule(time, q_instant)
 
@@ -1781,7 +1786,8 @@ class MSMPR(_BaseCryst):
         return dmaterial_dt, transf
 
     def energy_balances(self, time, distr, conc, temp, temp_ht, vol, params,
-                        cryst_rate, u_inputs, rhos, moms, h_in):
+                        cryst_rate, u_inputs, rhos, moms, h_in,
+                        heat_prof=False):
 
         rho_susp, rho_in = rhos
 
@@ -1806,23 +1812,31 @@ class MSMPR(_BaseCryst):
         # Energy terms (W)
         flow_term = input_flow * (h_in - h_sp)
         source_term = dh_cryst*cryst_rate * vol
-        ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
-        # Balance inside the tank
-        dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
+        if 'temp' in self.controls.keys():
+            ht_term = capacitance * vol  # return capacitance
+        elif 'temp' in self.states_uo:
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
-        # Balance in the jacket
-        flow_ht = self.ht_media.vol_flow
-        tht_in = self.ht_media.temp_in
-        cp_ht = self.ht_media.cp
-        rho_ht = self.ht_media.rho
+        if heat_prof:
+            heat_components = np.array([source_term, ht_term, flow_term])
+            return heat_components
+        else:
+            # Balance inside the tank
+            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
 
-        vol_ht = vol*0.14  # m**3
+            # Balance in the jacket
+            flow_ht = self.ht_media.vol_flow
+            tht_in = self.ht_media.temp_in
+            cp_ht = self.ht_media.cp
+            rho_ht = self.ht_media.rho
 
-        dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
-            self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+            vol_ht = vol*0.14  # m**3
 
-        return dtemp_dt, dtht_dt
+            dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
+                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+
+            return dtemp_dt, dtht_dt
 
     def retrieve_results(self, time, states):
         self.statesProf = states
@@ -1965,6 +1979,30 @@ class MSMPR(_BaseCryst):
 
         self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
+
+        self.get_heat_duty(time, states)
+
+    def get_heat_duty(self, time, states):
+        q_heat = np.zeros((len(time), 3))
+
+        if self.params_iter is None:
+            merged_params = self.Kinetics.concat_params()[self.mask_params]
+        else:
+            merged_params = self.params_iter
+
+        for ind, row in enumerate(states):
+            row[:self.num_distr] *= self.scale
+            q_heat[ind] = self.unit_model(time[ind], row, merged_params,
+                                          enrgy_bce=True)
+
+        if 'temp' in self.controls.keys():
+            q_gen, q_ht, flow_term = q_heat.T
+        else:
+            q_ht = q_heat  # TODO: write for other scenarios
+
+        q_heat[:, 0] *= -1
+        self.heat_prof = q_heat
+        self.heat_duty = trapezoidal_rule(time, q_ht)
 
 
 class SemibatchCryst(MSMPR):
