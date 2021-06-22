@@ -625,6 +625,9 @@ class DynamicCollector:
             problem = Explicit_Problem(self.unit_model, states_init, t0=0)
             solver = CVode(problem)
 
+            if not verbose:
+                solver.verbosity = 50
+
             time, states = solver.simulate(runtime, ncp_list=time_grid)
 
             self.retrieve_results(time, states)

@@ -759,7 +759,7 @@ class SolidPhase(ThermoPhysicalManager):
                     distr = mass*distrib / x_distrib**3 / kv * 1e18
 
             else:
-                mom_three = self.getMoments(distrib=distrib, mom_num=3)  # m**3
+                mom_three = self.getMoments(distrib=distrib, mom_num=3)[0]
                 mass = mom_three * self.kv * dens
                 distr = distrib
 

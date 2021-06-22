@@ -36,12 +36,12 @@ def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
     mom_3 = moms[3]
 
     if reformulate:
-        pre_exp = np.exp(phi_1 + phi_2*(1/temp_ref - 1/temp))
+        pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
     else:
         pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     nucl_sec = pre_exp * sup_sat * absup**(s_1 - 1) * \
-        kv_cry**s_1 * max(0, mom_3)**s_2
+        kv_cry**s_2 * max(0, mom_3)**s_2
 
     return nucl_sec
 
@@ -536,10 +536,10 @@ class CrystKinetics:
         self.solub_type = solubility_type
 
         if reformulate_kin:
-            self.name_params = ('log(k_{bp})', 'log(E_{bp}/R)', 'b',
-                                'log(k_{bs})', 'log(E_{bs})', 's_1', 's_2',
-                                'log(k_{g})', 'log(E_{g})', 'g',
-                                '\log(k_{d})', 'log(E_{d})', 'd')
+            self.name_params = ('\log(k_{bp})', '\log(E_{bp}/R)', 'b',
+                                '\log(k_{bs})', '\log(E_{bs}/R)', 's_1', 's_2',
+                                '\log(k_{g})', '\log(E_{g}/R)', 'g',
+                                '\log(k_{d})', '\log(E_{d}/R)', 'd')
         else:
             self.name_params = ('k_{bp}', 'E_{bp}', 'b',
                                 'k_{bs}', 'E_{bs}', 's_1', 's_2',
@@ -619,7 +619,7 @@ class CrystKinetics:
         params_conc = np.concatenate(params)
         return params_conc
 
-    def solubility_temp(self, temp, conc):
+    def solubility_temp(self, temp, conc=None):
         if self.solub_type == 'polynomial':
             int_coeff = np.arange(len(self.coeff_solub))
 

@@ -59,7 +59,7 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True):
 
         # Set connectivity
         self.LoadUOs()
@@ -97,11 +97,12 @@ class SimulationExec:
         for instance in execution_order:
             uo_id = list(uos.keys())[list(uos.values()).index(instance)]
 
-            print()
-            print('{}'.format('-'*30))
-            print('Running {}'.format(uo_id))
-            print('{}'.format('-'*30))
-            print()
+            if verbose:
+                print()
+                print('{}'.format('-'*30))
+                print('Running {}'.format(uo_id))
+                print('{}'.format('-'*30))
+                print()
 
             for conn in self.connection_instances:
                 if conn.destination_uo is instance:
@@ -113,9 +114,10 @@ class SimulationExec:
             if uo_type != 'PharmaPy.Containers':
                 instance.flatten_states()
 
-            print()
-            print('Done!')
-            print()
+            if verbose:
+                print()
+                print('Done!')
+                print()
 
             # Connectivity
             for conn in self.connection_instances:
@@ -185,7 +187,8 @@ class SimulationExec:
     def SetParamEstimation(self, x_data,
                            param_seed=None, y_data=None, spectra=None,
                            fit_spectra=False, global_analysis=True,
-                           phase_modifiers=None, control_modifiers = None,
+                           wrapper_args=[],
+                           phase_modifiers=None, control_modifiers=None,
                            measured_ind=None, optimize_flags=None,
                            jac_fun=None,
                            covar_data=None,
@@ -219,6 +222,8 @@ class SimulationExec:
 
         if len(args_wrapper) == 1:
             args_wrapper = args_wrapper[0]
+
+        args_wrapper = list(args_wrapper) + wrapper_args
 
         # Get 1D array of parameters from the UO class
         if param_seed is not None:
@@ -312,12 +317,14 @@ class SimulationExec:
                     raw_holdups.append(uo.__original_phase__)
                     holdups_ids.append(uo.id_uo)
 
-        return raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids, holdups_ids
+        return (raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids,
+                holdups_ids)
 
     def GetRawMaterials(self):
         # ---------- CAPEX
         # Raw materials
-        raw_flows, raw_holdups, time_flows, flow_idx, holdup_idx = self.get_raw_objects()
+        (raw_flows, raw_holdups, time_flows,
+         flow_idx, holdup_idx) = self.get_raw_objects()
 
         # Flows
         fracs = []
@@ -373,7 +380,7 @@ class SimulationExec:
         return raw_df, raw_total
 
     def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
-                 f_pres=None, f_mat=None):
+                 f_pres=None, f_mat=None, min_capacity=None):
 
         size_equipment = {}
 
@@ -403,22 +410,40 @@ class SimulationExec:
         else:
             capacities = np.array(list(size_equipment.values()))
 
+            if min_capacity is None:
+                a_corr = capacities
+            else:
+                a_corr = np.maximum(min_capacity, capacities)
+
             k1, k2, k3 = k_vals.T
-            cost_zero = 10**(k1 + k2*np.log10(capacities) +
-                             k3*np.log10(capacities)**2)
+            cost_zero = 10**(k1 + k2*np.log10(a_corr) + k3*np.log10(a_corr)**2)
 
             b1, b2 = b_vals.T
 
             f_bare = b1 + b2 * f_mat * f_pres
             cost_equip = cost_zero * f_bare
 
+            scale_corr = np.ones_like(capacities)
+            if min_capacity is not None:
+                for ind, capac in enumerate(capacities):
+                    if capac < min_capacity[ind]:
+                        scale_corr[ind] = (capac / min_capacity[ind])**0.6
+
+            cost_equip *= scale_corr
+
             cost_equip = dict(zip(name_equip, cost_equip))
 
             return size_equipment, cost_equip
 
 
-    def GetUtilities(self):
-        pass
+    def GetDuties(self):
+        heat_duties = {}
+
+        for key, instance in self.uos_instances.items():
+            if hasattr(instance, 'heat_duty'):
+                heat_duties[key] = instance.heat_duty
+
+        return heat_duties
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)

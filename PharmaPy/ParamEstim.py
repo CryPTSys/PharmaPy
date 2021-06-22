@@ -102,7 +102,7 @@ class ParameterEstimation:
             param_seed = param_seed[np.newaxis]
 
         # --------------- Data
-        self.measured_ind = measured_ind
+        self.measured_ind = np.atleast_1d(measured_ind)
         self.experim_names = None
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):

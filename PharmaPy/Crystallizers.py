@@ -192,16 +192,10 @@ class _BaseCryst:
                 # self.init_mass = self.Liquid_1.mass + self.Solid_1.mass
                 # self.init_liq = copy.copy(self.Liquid_1.mass)
 
-                self.__original_liquid__ = copy.deepcopy(
-                    self.Slurry.Liquid_1.__dict__)
-
-                self.__original_solid__ = copy.deepcopy(
-                    self.Slurry.Solid_1.__dict__)
-
-                self.__original_phase_dict__ = (self.__original_liquid__,
-                                                self.__original_solid__)
-
         if self.Slurry is not None:
+            self.__original_phase_dict__ = [
+                copy.deepcopy(phase.__dict__) for phase in self.Slurry.Phases]
+
             self.vol_slurry = copy.copy(self.Slurry.vol_slurry)
             if isinstance(self.vol_slurry, np.ndarray):
                 self.vol_phase = self.vol_slurry[0]
@@ -210,9 +204,8 @@ class _BaseCryst:
 
             classify_phases(self)  # Solid_1, Liquid_1...
 
-
             self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
-                                     copy.deepcopy(self.Solid_1)]
+                                       copy.deepcopy(self.Solid_1)]
 
             self.kron_jtg = np.zeros_like(self.Liquid_1.mass_frac)
             self.kron_jtg[self.target_ind] = 1
@@ -274,7 +267,7 @@ class _BaseCryst:
 
         # Kinetic terms
         nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], temp, kv,
+            comp_kin[self.target_ind], comp_kin, temp, kv,
             mu*(1e-6)**np.arange(self.num_distr))
 
         growth = growth * self.Kinetics.alpha_fn(conc)
@@ -743,7 +736,8 @@ class _BaseCryst:
             return time, states
 
     def paramest_wrapper(self, params, t_vals,
-                         modify_phase=None, modify_controls=None):
+                         modify_phase=None, modify_controls=None,
+                         scale_factor=1e-3):
         self.reset()
         self.params_iter = params
 
@@ -765,9 +759,9 @@ class _BaseCryst:
                                                verbose=False)
 
         sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
-        if self.method == 'moments':
+        if self.method == 'moment':
             mu = states[:, :self.num_distr]
-            factor = (1e-3)**np.arange(self.num_distr)  # convert to mm**n
+            factor = (scale_factor)**np.arange(self.num_distr)  # convert to mm**n
 
             sens_mom = [elem * fact for elem, fact in zip(sens_sep, factor)]
             sens_sep = sens_mom + sens_sep[self.num_distr:]
@@ -1387,15 +1381,14 @@ class BatchCryst(_BaseCryst):
         jacobian[0, :num_bp] = vol_liq * dbp
         jacobian[0, num_bp:num_bp + num_bs] = vol_liq * dbs
 
-        jacobian[0] *= vol_liq
+        # jacobian[0] *= vol_liq
 
         # 1 and higher order moments eqns
         jacobian[1:1 + g_section.shape[0],
                  num_nucl:num_nucl + g_section.shape[1]] = g_section
 
         # ----- Concentration eqns
-        dtr_g = 3 * kv * rho_c * moms[2] * dg * \
-            (1e-6)**3  # factor from material bce
+        dtr_g = 3 * kv * rho_c * moms[2] * dg * (1e-6)**3  # factor from material bce
         dconc_dg = -1/vol_liq * np.outer(self.kron_jtg - w_conc/rho_l, dtr_g)
 
         jacobian[self.num_distr:self.num_distr + dconc_dg.shape[0],
@@ -1595,6 +1588,7 @@ class BatchCryst(_BaseCryst):
             merged_params = self.params_iter
 
         for ind, row in enumerate(states):
+            row[:self.num_distr] *= self.scale  # scale distribution
             q_heat[ind] = self.unit_model(time[ind], row, merged_params,
                                           enrgy_bce=True)
 
@@ -1819,7 +1813,7 @@ class MSMPR(_BaseCryst):
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
         if heat_prof:
-            heat_components = np.array([source_term, ht_term, flow_term])
+            heat_components = np.hstack([source_term, ht_term, flow_term])
             return heat_components
         else:
             # Balance inside the tank
@@ -1958,6 +1952,8 @@ class MSMPR(_BaseCryst):
                                        x_distrib=self.x_grid,
                                        distrib=self.distribProf[-1][-1])
 
+            self.get_heat_duty(time, states)
+
         else:
             # liquid_out = LiquidPhase(path, mass_conc=self.w_conc,
             #                          temp=self.temp)
@@ -1980,8 +1976,6 @@ class MSMPR(_BaseCryst):
         self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
 
-        self.get_heat_duty(time, states)
-
     def get_heat_duty(self, time, states):
         q_heat = np.zeros((len(time), 3))
 
@@ -1991,16 +1985,13 @@ class MSMPR(_BaseCryst):
             merged_params = self.params_iter
 
         for ind, row in enumerate(states):
-            row[:self.num_distr] *= self.scale
+            row[:self.num_distr] *= self.scale  # scale distribution
             q_heat[ind] = self.unit_model(time[ind], row, merged_params,
                                           enrgy_bce=True)
 
-        if 'temp' in self.controls.keys():
-            q_gen, q_ht, flow_term = q_heat.T
-        else:
-            q_ht = q_heat  # TODO: write for other scenarios
+        # q_heat[:, 0] *= -1
+        q_gen, q_ht, flow_term = q_heat.T  # TODO: controlled temperature
 
-        q_heat[:, 0] *= -1
         self.heat_prof = q_heat
         self.heat_duty = trapezoidal_rule(time, q_ht)
 

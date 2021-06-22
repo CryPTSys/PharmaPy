@@ -306,7 +306,9 @@ class Evaporator:
         self._Phases = phase
         self.material_from_upstream = False
 
-        if isinstance(state_events, dict):
+        if isinstance(state_events, list):
+            self.state_events = state_events
+        elif isinstance(state_events, dict):
             self.state_events = [state_events]
         elif state_events is None:
             self.state_events = []
@@ -674,14 +676,17 @@ class Evaporator:
         events = []
 
         states_trim = np.split(states, self.trim_idx)
+        sdot_trim = np.split(sdot, self.trim_idx)
+
         dict_states = dict(zip(self.name_states, states_trim))
+        dict_sdot = dict(zip(self.name_states, sdot_trim))
 
         if any(switch):
 
             for di in self.state_events:
                 if 'state_fn' in di.keys():
                     event_flag = di['state_fn'](time, self.Phases,
-                                                **dict_states)
+                                                dict_states, dict_sdot)
                 else:
                     state_name = di['state_name']
                     state_idx = di['state_idx']
@@ -704,17 +709,26 @@ class Evaporator:
         return np.array(events)
 
     def __handle_event(self, solver, event_info):
+        # pass
         state_event = event_info[0]
 
         for ind, val in enumerate(state_event[:-1]):
+            direction = self.state_events[ind].get('direction')
+            terminate = False
+            id_event = self.state_events[ind].get('event_name')
             if val:
-                id_event = self.state_events[ind].get('event_name')
-                if id_event is None:
-                    print('State event %i was reached' % (ind + 1))
-                else:
-                    print("State event '%s' was reached" % id_event)
+                if direction is None:
+                    terminate = True
+                elif direction == val:
+                    terminate = True
 
-                raise TerminateSimulation
+                if terminate:
+                    if id_event is None:
+                        print('State event %i was reached' % (ind + 1))
+                    else:
+                        print("State event '%s' was reached" % id_event)
+
+                    raise TerminateSimulation
 
         if state_event[-1]:
             print('Liquid volume reached a maximum')
@@ -744,8 +758,8 @@ class Evaporator:
         problem.state_events = self.__state_event
         problem.handle_event = self.__handle_event
 
-        if len(self.state_events) >= 1:
-            runtime = 1e15
+        # if len(self.state_events) >= 1:
+        #     runtime = 1e15
 
         problem.algvar = alg_map
         # problem.jac = self.unit_jacobian
@@ -916,7 +930,8 @@ class Evaporator:
 
 class ContinuousEvaporator:
     def __init__(self, vol_drum, phase=None, inlet=None, adiabatic=True,
-                 pres=101325, diam_out=2.54e-2, frac_liq=0.5, k_liq=1, k_vap=1,
+                 pres=101325, diam_out=2.54e-2, frac_liq=0.5,
+                 k_liq=100, k_vap=1,
                  cv_gas=0.8,
                  ht_coeff=1000, temp_ht=298.15,
                  activity_model='ideal'):
@@ -1249,7 +1264,7 @@ class ContinuousEvaporator:
 
         return states_init, sdot_init
 
-    def solve_unit(self, runtime, solve=True, steady_state=False):
+    def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True):
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
@@ -1278,6 +1293,9 @@ class ContinuousEvaporator:
             solver = IDA(problem)
             solver.make_consistent('IDA_YA_YDP_INIT')
             solver.suppress_alg = True
+
+            if not verbose:
+                solver.verbosity = 50
 
             # Solve
             time, states, sdot = solver.simulate(runtime)
