@@ -16,7 +16,7 @@ eps = np.finfo(float).eps
 
 def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
-    absup = max(eps, sup_sat)
+    absup = np.maximum(eps, sup_sat)
 
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
@@ -32,8 +32,12 @@ def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
                          reformulate):
 
     phi_1, phi_2, s_1, s_2 = params
-    absup = max(eps, sup_sat)
-    mom_3 = moms[3]
+    absup = np.maximum(eps, sup_sat)
+
+    if moms.ndim == 1:
+        mom_3 = moms[3]
+    else:
+        mom_3 = moms[:, 3]
 
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
@@ -41,7 +45,7 @@ def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
         pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     nucl_sec = pre_exp * sup_sat * absup**(s_1 - 1) * \
-        kv_cry**s_2 * max(0, mom_3)**s_2
+        kv_cry**s_2 * np.maximum(0, mom_3)**s_2
 
     return nucl_sec
 
@@ -299,7 +303,8 @@ class RxnKinetics:
 
         if self.reformulate_kin:
             drate_dphi1 = np.diag(temp_term)
-            dphi_2 = temp_term * (1/self.temp_ref - 1/temp) * np.exp(self.phi_2)
+            dphi_2 = temp_term * (1/self.temp_ref - 1 /
+                                  temp) * np.exp(self.phi_2)
         else:
             drate_dphi1 = np.diag(np.exp(-self.phi_2/gas_ct/temp))
             dphi_2 = -temp_term/gas_ct/temp
@@ -367,7 +372,8 @@ class RxnKinetics:
         else:
             r_term = np.zeros((n_conc, self.num_rxns))
             for ind in range(self.num_rxns):
-                r_term[:, ind] = np.prod(conc**(orders[ind]), axis=1) / keq_temp[ind]
+                r_term[:, ind] = np.prod(
+                    conc**(orders[ind]), axis=1) / keq_temp[ind]
 
         overall_rate = f_term - r_term
 
@@ -413,7 +419,7 @@ class RxnKinetics:
 
             if self.fit_paramsf:
                 dr_dthetaf = self.df_dthetaf(
-                        conc, *self.args_kin) * temp_terms
+                    conc, *self.args_kin) * temp_terms
 
                 dr_dparams = np.hstack((dr_dthetak, dr_dthetaf))
 
@@ -487,7 +493,6 @@ class CrystKinetics:
                  solubility_type='polynomial', rel_super=True,
                  reformulate_kin=False, alpha_fn=None,
                  temp_ref=298.15, secondary_fn=None):
-
         """
         Parameters
         ----------
@@ -698,12 +703,14 @@ class CrystKinetics:
             # Primary nucleation
             nucl_prim = np.zeros_like(sup_sat)
             nucl_prim[positive_map] = cryst_mechanism(
-                sup_positive, temp_positive, self.temp_ref, par_p)
+                sup_positive, temp_positive, self.temp_ref, par_p,
+                self.reformulate_kin)
 
             # Growth
             growth = np.zeros_like(sup_sat)
             growth[positive_map] = cryst_mechanism(
-                sup_positive, temp_positive, self.temp_ref, par_g)
+                sup_positive, temp_positive, self.temp_ref, par_g,
+                self.reformulate_kin)
 
             # Secondary nucleation
             nucl_sec = np.zeros_like(sup_sat)
@@ -715,7 +722,8 @@ class CrystKinetics:
             # Dissolution
             dissol = np.zeros_like(sup_sat)
             dissol[~positive_map] = cryst_mechanism(
-                sup_negative, temp_negative, self.temp_ref, par_d)
+                sup_negative, temp_negative, self.temp_ref, par_d,
+                self.reformulate_kin)
 
         if nucl_sec_out:
             return nucl_prim, nucl_sec, growth, dissol
