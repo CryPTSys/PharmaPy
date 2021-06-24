@@ -287,8 +287,8 @@ class ParameterEstimation:
 
         return np.vstack(selected_sens)
 
-    def select_sens(self, sens_ordered, num_xs, times=None):
-        parts = np.vsplit(sens_ordered, len(sens_ordered)//num_xs)
+    def select_sens(self, sens_ordered, num_states, times=None):
+        parts = np.split(sens_ordered, num_states, axis=0)
 
         if times is None:
             selected = [parts[ind] for ind in self.measured_ind]
@@ -350,17 +350,18 @@ class ParameterEstimation:
                 sens_run = sens
             else:
                 y_run = y_prof[:, self.measured_ind]
+                num_states = y_prof.shape[1]
 
                 if self.x_match[ind] is None:
                     y_run = y_run.T.ravel()
-                    sens_run = self.select_sens(sens, self.num_xs[ind])
+                    sens_run = self.select_sens(sens, num_states)
                 else:
                     y_run = [y_run[idx, col]
                              for col, idx in enumerate(self.x_match[ind])]
                     y_run = np.concatenate(y_run)
 
                     x_sens = self.x_match[ind]
-                    sens_run = self.select_sens(sens, self.num_xs[ind], x_sens)
+                    sens_run = self.select_sens(sens, num_states, x_sens)
 
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
 

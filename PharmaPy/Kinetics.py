@@ -233,6 +233,7 @@ class RxnKinetics:
 
         self.name_params = name_k + name_e + name_orders
         self.num_params = len(self.name_params)
+        self.params = dict(zip(self.name_params, (self.phi_1, self.phi_2)))
 
     def set_stoichiometry(self, stoich_matrix):
 
