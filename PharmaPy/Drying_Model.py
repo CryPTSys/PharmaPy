@@ -191,7 +191,6 @@ class Drying:
         limiter_factor = self.eta_fun(sat_eta, w_eta)
 
         # Dry rate
-
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
@@ -264,6 +263,7 @@ class Drying:
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
         heat_loss = 14626.86 * (temp_gas - 295)
+        heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
@@ -309,7 +309,8 @@ class Drying:
 
             return [dTg_dt, dTcond_dt]
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325):
+    def solve_unit(self, deltaP, runtime, p_atm=101325, 
+                   verbose=True):
 
         # ---------- Discretization
         self.z_grid = np.linspace(0, self.cake_height, self.num_nodes + 1)
@@ -435,6 +436,9 @@ class Drying:
         sim = CVode(model)
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
+        
+        if not verbose:
+          sim.verbosity = 50
 
         self.retrieve_results(time, states)
 

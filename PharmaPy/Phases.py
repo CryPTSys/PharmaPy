@@ -95,7 +95,9 @@ class LiquidPhase(ThermoPhysicalManager):
         num_comp : int
             number of components in the phase. It must be specified only if
             'mass_frac' or 'concentr' are not given.
-
+        ind_solv : int
+            index of solvent components in the liquid phase. It must be 
+            only specified if 'mass_frac' or 'mole_frac' are not given.
         """
 
         self.cp_liq = np.atleast_2d(self.cp_liq)

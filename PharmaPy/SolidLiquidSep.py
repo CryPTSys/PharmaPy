@@ -175,13 +175,15 @@ class DeliquoringStep:
         """
 
         lambd = 5
-
+        sat_star = np.where(sat_star<0, eps, sat_star) #Changing the negative element for numerical issue
+        
         sat_aug = np.append(sat_star, sat_star[-1])
         p_liq = (self.p_gas - self.p_thresh*sat_aug**(-1/lambd))/self.p_thresh
 
         dpliq_dz = np.diff(p_liq)
-
+        
         k_rl = sat_star**3.4
+            
         q_liq = -k_rl * dpliq_dz  # Non-dimensional liquid flux
 
         sinf = self.sat_inf
@@ -205,7 +207,8 @@ class DeliquoringStep:
 
         return dstates_dtheta.T.ravel()
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325):
+    def solve_unit(self, deltaP, runtime, p_atm=101325, 
+                   verbose=True):
 
         # Solid properties
         csd = self.Solid_1.distrib * 1e6
@@ -290,7 +293,10 @@ class DeliquoringStep:
         t_final = runtime * self.theta_conv
 
         theta, states = sim.simulate(t_final)
-
+        
+        if not verbose:
+          sim.verbosity = 50
+          
         self.rho_s = rho_s
         self.retrieve_results(theta, states)
 
@@ -596,7 +602,8 @@ class Filter:
         if state_event:
             raise TerminateSimulation
 
-    def solve_unit(self, runtime=None, deltaP=1e5, slurry_div=1):
+    def solve_unit(self, runtime=None, deltaP=1e5,
+                   slurry_div=1, verbose=True):
 
         # Filtration parameters (constant)
         self.deltaP = deltaP
@@ -642,6 +649,9 @@ class Filter:
         problem.handle_event = self.__handle_event
 
         solver = CVode(problem)
+        
+        if not verbose:
+            solver.verbosity = 50
 
         if runtime is None:
             runtime = 1e10
@@ -690,7 +700,7 @@ class Filter:
 
     def plot_profiles(self, fig_size=None, time_div=1, black_white=False):
         mass_filtr, mass_up = self.massProf.T
-        time_plot = self.timeProf / time_div
+        time_plot = self.timeProf/ time_div
 
         fig, ax = plt.subplots(1, 2, figsize=fig_size, sharex=True)
 
@@ -721,7 +731,7 @@ class Filter:
 
         if time_div == 1:
             ax[1].set_xlabel('time (s)')
-
+           
         return fig, ax
 
 
@@ -783,7 +793,11 @@ class DisplacementWashing:
 
         re_sc = vel * np.dot(distr, size)/diff_pure
         diff_ratio = np.ones_like(re_sc) * 1/np.sqrt(2)
-        diff_ratio[re_sc > 1] += 55.5 * re_sc**0.96
+        
+        for i in range(len(re_sc)):
+            
+            if re_sc[i] > 1:
+                diff_ratio[i] += 55.5 * re_sc[i]**0.96
 
         diff_eff = diff_ratio * diff_pure
 
@@ -828,7 +842,7 @@ class DisplacementWashing:
         return conc_star
 
     def solve_unit(self, deltaP, wash_ratio=1, time_vals=None,
-                   dynamic=True):
+                   dynamic=True, verbose=True):
 
         # ---------- Physical properties
         # Liquid
@@ -904,6 +918,9 @@ class DisplacementWashing:
 
         c_effl = (epsilon/wash_ratio * (sat_zero * c_zero - c_cake) + c_inlet) / \
             (1 + epsilon/wash_ratio * (sat_zero - 1))
+            
+        # if not verbose:
+        #   solver.verbosity = 50
 
         self.retrieve_results(z_vals, time_vals, conc_all)
         self.cake_height = cake_height

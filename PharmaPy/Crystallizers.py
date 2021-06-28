@@ -121,11 +121,11 @@ class _BaseCryst:
         # Outlets
         self.reset_states = reset_states
         self.elapsed_time = 0
-        self.tempProf = []
-        self.wConcProf = []
-        self.distribProf = []
-        self.timeProf = []
-        self.tempProfHt = []
+        self.temp_runs = []
+        self.wConc_runs = []
+        self.distrib_runs = []
+        self.time_runs = []
+        self.tempHT_runs = []
 
         self.__original_prof__ = {
             'tempProf': [], 'concProf': [], 'distribProf': [], 'timeProf': [],
@@ -695,7 +695,7 @@ class _BaseCryst:
         time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         self.retrieve_results(time, states)
-
+        self.flatten_states()
         # ---------- Organize sensitivity
         if eval_sens:
             sensit = []
@@ -752,42 +752,41 @@ class _BaseCryst:
         return states_out, sens_out
 
     def flatten_states(self):
-        if type(self.timeProf) is list:
-            self.distribProf = np.vstack(self.distribProf)
+        
+        self.distribProf = np.vstack(self.distrib_runs)
 
-            self.wConcProf = np.concatenate(self.wConcProf)
-            self.tempProf = np.concatenate(self.tempProf)
-            self.timeProf = np.concatenate(self.timeProf)
-            if len(self.tempProfHt) > 0:
-                self.tempProfHt = np.concatenate(self.tempProfHt)
+        self.wConcProf = np.concatenate(self.wConc_runs)
+        self.tempProf = np.concatenate(self.temp_runs)
+        self.timeProf = np.concatenate(self.time_runs)         
+        
+        if len(self.tempHT_runs) > 0:
+            self.tempProfHt = np.concatenate(self.tempHT_runs)
 
-            # Update phases
-            self.Liquid_1.tempProf = self.tempProf
+        # Update phases
+        self.Liquid_1.tempProf = self.tempProf
 
-            self.Liquid_1.massconcProf = self.wConcProf
+        self.Liquid_1.massconcProf = self.wConcProf
 
-            self.Liquid_1.timeProf = self.timeProf
+        self.Liquid_1.timeProf = self.timeProf
 
-            self.Solid_1.tempProf = self.tempProf
-            self.Solid_1.timeProf = self.timeProf
+        self.Solid_1.tempProf = self.tempProf
+        self.Solid_1.timeProf = self.timeProf
 
-            if self.method == 'moments':
-                self.Solid_1.momProf = self.distribProf
-            else:
-                distrProf = self.distribProf
-                self.Solid_1.distribProf = distrProf
-                momProf = self.Solid_1.getMoments(distrProf,
-                                                  mom_num=[0, 1, 2, 3, 4])
+        if self.method == 'moments':
+            self.Solid_1.momProf = self.distribProf
+        else:
+            distrProf = self.distribProf
+            self.Solid_1.distribProf = distrProf
+            momProf = self.Solid_1.getMoments(distrProf,
+                                              mom_num=[0, 1, 2, 3, 4])
 
-                # for ind in range(momProf.shape[1]):
-                #     momProf[:, ind] *= (1e-6)**ind
+            # for ind in range(momProf.shape[1]):
+            #     momProf[:, ind] *= (1e-6)**ind
 
-                self.Solid_1.momProf = momProf
-
+            self.Solid_1.momProf = momProf
+                
     def plot_profiles(self, fig_size=None, relative_mu0=False,
                       title=None, time_div=1):
-
-        self.flatten_states()
 
         sat_conc = self.Kinetics.get_solubility(self.tempProf)
         supersat = self.wConcProf[:, self.target_ind] - sat_conc
@@ -890,7 +889,7 @@ class _BaseCryst:
         # ---------- Concentration
         ax_conc = axes.flatten()[ind + 2]
         ax_conc.plot(self.timeProf/time_div,
-                     self.wConcProf[:, self.target_ind], 'k')
+                     self.wConcProf[:, self.target_ind], 'b')
 
         target_id = self.name_species[self.target_ind]
 
@@ -905,8 +904,8 @@ class _BaseCryst:
         ax_supsat = ax_conc.twinx()
         ax_supsat.plot(self.timeProf / time_div, supersat)
         color = ax_supsat.lines[0].get_color()
-        # ax_supsat.axhline(0, ls='--', alpha=0.6)
-
+        ax_supsat.axhline(0, ls='--', alpha=0.6)
+        
         if self.Kinetics.rel_super:
             ax_supsat.set_ylabel(
                 'Supersaturation\n' + r'$\left( \frac{C - C_{sat}}{C_{sat}} \right)$')
@@ -917,7 +916,7 @@ class _BaseCryst:
         ax_supsat.tick_params(colors=color)
         ax_supsat.yaxis.label.set_color(color)
         ax_supsat.spines['top'].set_visible(False)
-
+        
         # ---------- Volume
         if 'vol' in self.states_uo:
             ax_vol = axes.flatten()[num_mu + 2]
@@ -963,11 +962,12 @@ class _BaseCryst:
             time_plot = self.timeProf / time_div
 
             x_mesh, t_mesh = np.meshgrid(np.log10(self.x_grid), time_plot)
+            x_mesh, t_mesh = np.meshgrid(self.x_grid[:90], time_plot[2:])
 
             fig = plt.figure(figsize=fig_size)
 
             ax = fig.gca(projection='3d')
-            ax.plot_surface(x_mesh, t_mesh, csd_plot,
+            ax.plot_surface(t_mesh, x_mesh, np.log10(csd_plot[2:,:90]),
                             facecolors=rgb, antialiased=False,
                             linewidth=0,
                             rstride=2, cstride=2)
@@ -1752,12 +1752,13 @@ class MSMPR(_BaseCryst):
         self.statesProf = states
 
         time_profile = np.array(time)
-        self.timeProf.append(time_profile)
+        
+        self.time_runs.append(time_profile)
 
         states[:, :self.num_distr] *= 1 / self.scale
 
         distProf = states[:, :self.num_distr]
-        self.distribProf.append(distProf)
+        self.distrib_runs.append(distProf)
 
         if self.method == '1D-FVM':
             self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
@@ -1773,17 +1774,17 @@ class MSMPR(_BaseCryst):
             vol_liq = self.volProf[-1]
             vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
                                               mom_num=3) * self.Solid_1.kv
-
-            vol_div = vol_liq + vol_sol  # suspension volume
             mass_sol = rho_solid * vol_sol
+            
+            vol_mult = 1
 
         else:
             y_outputs = states
             vol_liq = self.Liquid_1.vol
-            vol_div = 1
-
             mom_3 = self.Solid_1.getMoments(distrib=distProf[-1], mom_num=3)
             vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
+            
+            vol_mult = self.vol_slurry
 
             mass_sol = rho_solid * vol_sol
             massflow_sol = mom_3 * self.Solid_1.kv * \
@@ -1791,23 +1792,23 @@ class MSMPR(_BaseCryst):
 
         if self.isothermal:
             temp_prof = np.ones_like(time_profile) * self.Liquid_1.temp
-            self.tempProf.append(temp_prof)
+            self.temp_runs.append(temp_prof)
 
             y_outputs = np.column_stack((y_outputs, volflow))
             y_outputs = np.column_stack((y_outputs, temp_prof))
 
         elif 'temp_ht' in self.states_uo:
-            self.tempProf.append(states[:, -2])
-            self.tempProfHt.append(states[:, -1])
+            self.temp_runs.append(states[:, -2])
+            self.tempHT_runs.append(states[:, -1])
 
-            self.Liquid_1.temp = self.tempProf[-1][-1]
+            self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
             y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
 
         elif 'temp' in self.states_uo:
-            self.tempProf.append(states[:, -1])
-            self.Liquid_1.temp = self.tempProf[-1][-1]
+            self.temp_runs.append(states[:, -1])
+            self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
             y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
@@ -1817,31 +1818,32 @@ class MSMPR(_BaseCryst):
                 time_profile, self.temp, *self.params_control['temp'],
                 t_zero=self.elapsed_time)
 
-            self.tempProf.append(temp_controlled)
+            self.temp_runs.append(temp_controlled)
 
             y_outputs = np.column_stack((y_outputs, volflow))
             y_outputs = np.column_stack((y_outputs, temp_controlled))
 
-            self.Liquid_1.temp = self.tempProf[-1][-1]
+            self.Liquid_1.temp = self.temp_runs[-1][-1]
 
         wConcProf = states[:, self.num_distr:num_material]
 
-        self.wConcProf.append(wConcProf)
+        self.wConc_runs.append(wConcProf)
 
         self.states = states[-1]
         self.temp = self.Liquid_1.temp
 
         # Update phases
-        self.Solid_1.updatePhase(distrib=self.distribProf[-1][-1],
-                                 mass=mass_sol)
+        self.Solid_1.updatePhase(distrib=self.distrib_runs[-1][-1] * vol_mult)
         self.Solid_1.temp = self.temp
 
-        self.w_conc = self.wConcProf[-1][-1]
+        self.w_conc = self.wConc_runs[-1][-1]
 
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=self.w_conc)
-
+        
+        self.Slurry.distrib = None
+        self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
         self.elapsed_time = time[-1]
-
+        
         # Create output stream
         path = self.Liquid_1.path_data
 
@@ -1857,16 +1859,16 @@ class MSMPR(_BaseCryst):
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol,
                                         x_distrib=self.x_grid,
-                                        distrib=self.distribProf[-1][-1])
+                                        distrib=self.distrib_runs[-1][-1])
             else:
                 solid_out = SolidStream(path, x_distrib=self.x_grid,
-                                        moments=self.distribProf[-1][-1],
+                                        moments=self.distrib_runs[-1][-1],
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol)
 
             self.Outlet = SlurryStream(vol_flow=self.Inlet.vol_flow,
                                        x_distrib=self.x_grid,
-                                       distrib=self.distribProf[-1][-1])
+                                       distrib=self.distrib_runs[-1][-1])
 
         else:
             # liquid_out = LiquidPhase(path, mass_conc=self.w_conc,
