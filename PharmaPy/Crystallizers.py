@@ -14,7 +14,7 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.Phases import LiquidPhase, SolidPhase
 from PharmaPy.MixedPhases import Slurry, SlurryStream
-from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule
+from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule, upwind_fvm, high_resolution_fvm
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 
@@ -266,9 +266,10 @@ class _BaseCryst:
             comp_kin = conc
 
         # Kinetic terms
+        mu_susp = mu*(1e-6)**np.arange(self.num_distr) / vol  # m**n/m**3_susp
         nucl, growth, dissol = self.Kinetics.get_kinetics(
             comp_kin[self.target_ind], comp_kin, temp, kv,
-            mu*(1e-6)**np.arange(self.num_distr))
+            mu_susp)
 
         growth = growth * self.Kinetics.alpha_fn(conc)
 
@@ -281,7 +282,7 @@ class _BaseCryst:
 
         dmu_dt = np.concatenate((dmu_zero_dt, dmu_1on_dt))
 
-        # material balance in g_sol / mL_sln (# G in um and u_2 in um**2)
+        # Material balance in kg_API/s --> G in um, u_2 in um**2 (or m**2/m**3)
         mass_transf = np.atleast_1d(rho_cry * kv * (
             3*(growth + dissol)*mu[2] + nucl*self.rad**3)) * (1e-6)**3
 
@@ -295,7 +296,6 @@ class _BaseCryst:
         kv_cry = self.Solid_1.kv
 
         # Kinetic terms
-        # self.Kinetics.params = params
         if self.basis == 'mass_frac':
             rho_liq = self.Liquid_1.getDensity()
             comp_kin = conc / rho_liq
@@ -306,42 +306,40 @@ class _BaseCryst:
             comp_kin[self.target_ind], conc, temp, kv_cry, moms)
 
         nucl = nucl * self.scale * vol
+
         impurity_factor = self.Kinetics.alpha_fn(conc)
         growth = growth * impurity_factor  # um/s
+
         dissol = dissol  # um/s
 
-        f_ghost = np.concatenate(([csd[0]], csd, [csd[-1]]))
+        boundary_cond = nucl / (growth + eps)  # num/um or num/um/m**3
+        f_aug = np.concatenate(([boundary_cond]*2, csd, [csd[-1]]))
 
         # Flux source terms
-        f_diff = np.diff(f_ghost)
+        f_diff = np.diff(f_aug)
 
         if growth > 0:
-            theta = (f_diff[:-1] + eps) / (f_diff[1:] + eps)
+            theta = f_diff[:-1] / (f_diff[1:] + eps)
         else:
-            theta = (f_diff[1:] + eps) / (f_diff[:-1] + eps)
+            theta = f_diff[1:] / (f_diff[:-1] + eps)
 
         # Van-Leer limiter
-        limiter = (np.abs(theta) + theta) / (1 + np.abs(theta))
+        limiter = np.zeros_like(f_diff)
+        limiter[:-1] = (np.abs(theta) + theta) / (1 + np.abs(theta))
 
-        growth_term = growth * (csd[:-1] + 0.5 * limiter[:-1] * f_diff[1:-1])
-        dissol_term = dissol * (csd[1:] - 0.5 * limiter[1:] * f_diff[1:-1])
+        growth_term = growth * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
+        dissol_term = dissol * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
 
-        flux_internal = growth_term + dissol_term
-
-        flux = np.concatenate(([nucl], flux_internal, [0]))
+        flux = growth_term + dissol_term
 
         if output == 'flux':
             return flux  # TODO: isn't it necessary to divide by dx?
         elif 'dstates':
             dcsd_dt = -np.diff(flux) / self.dx
 
-            # balance in kg_sol / m3_sln
+            # Material bce in kg_API/s --> G in um, mu_2 in m**2 (or m**2/m**3)
             mass_transfer = rho_cry * kv_cry * (
                 3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
-
-            # if growth > 0:
-            #     print('Impurity factor: %.2f, growth: %.4e, dissol: %.4e'
-            #           % (impurity_factor, growth, dissol))
 
             return dcsd_dt, np.array(mass_transfer)
 
@@ -397,7 +395,8 @@ class _BaseCryst:
         name_unit = self.__class__.__name__
 
         if self.method == 'moments':
-            moms = distr * (1e-6)**np.array(len(distr))
+            moms = distr * (1e-6)**np.arange(len(distr))
+            # moms = distr
         else:
             moms = self.Solid_1.getMoments(distr / self.scale)
 
@@ -608,7 +607,7 @@ class _BaseCryst:
             if self.method == 'moments':
                 init_solid = self.Solid_1.moments
                 exp = np.arange(0, self.Solid_1.num_mom)
-                init_solid *= self.scale**exp
+                init_solid = init_solid * (1e6)**exp
 
             # eps_init = init_solid[3] * self.Solid_1.kv
 
@@ -620,7 +619,7 @@ class _BaseCryst:
             if self.method == 'moments':
                 init_solid = self.Slurry.moments
                 exp = np.arange(0, self.Slurry.num_mom)
-                init_solid *= self.scale**exp
+                init_solid *= (1e6)**exp
 
             # eps_init = init_solid[3] * self.Solid_1.kv
 
@@ -655,8 +654,6 @@ class _BaseCryst:
         if 'vol' in self.states_uo:  # Batch or semibatch
             vol_init = self.Slurry.getTotalVol()
             init_susp = np.append(init_liquid, vol_init)
-
-            init_solid *= vol_init  # Total particle number
         else:
             init_susp = init_liquid
 
@@ -684,10 +681,10 @@ class _BaseCryst:
         elif 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
 
-        if self.params_iter is None:
-            merged_params = self.Kinetics.concat_params()[self.mask_params]
-        else:
-            merged_params = self.params_iter
+        # if self.params_iter is None:
+        merged_params = self.Kinetics.concat_params()[self.mask_params]
+        # else:
+        #     merged_params = self.params_iter
 
         # ---------- Create problem
         problem = self.set_ode_problem(eval_sens, states_init,
@@ -741,6 +738,8 @@ class _BaseCryst:
         self.reset()
         self.params_iter = params
 
+        self.Kinetics.set_params(params)
+
         self.elapsed_time = 0
 
         if isinstance(modify_phase, dict):
@@ -759,9 +758,10 @@ class _BaseCryst:
                                                verbose=False)
 
         sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
-        if self.method == 'moment':
+        if self.method == 'moments':
             mu = states[:, :self.num_distr]
-            factor = (scale_factor)**np.arange(self.num_distr)  # convert to mm**n
+            # convert to mm**n
+            factor = (scale_factor)**np.arange(self.num_distr)
 
             sens_mom = [elem * fact for elem, fact in zip(sens_sep, factor)]
             sens_sep = sens_mom + sens_sep[self.num_distr:]
@@ -790,7 +790,7 @@ class _BaseCryst:
         return states_out, sens_out
 
     def flatten_states(self):
-        if type(self.timeProf) is list:
+        if type(self.distribProf) is list:
             self.distribProf = np.vstack(self.distribProf)
 
             self.wConcProf = np.concatenate(self.wConcProf)
@@ -823,7 +823,7 @@ class _BaseCryst:
                 self.Solid_1.momProf = momProf
 
     def plot_profiles(self, fig_size=None, relative_mu0=False,
-                      title=None, time_div=1):
+                      title=None, time_div=1, plot_solub=True):
 
         self.flatten_states()
 
@@ -937,7 +937,8 @@ class _BaseCryst:
         else:
             ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
 
-        ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
+        if plot_solub:
+            ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
 
         # Supersaturation
         ax_supsat = ax_conc.twinx()
@@ -1300,7 +1301,8 @@ class BatchCryst(_BaseCryst):
             # Moment eqns
             conc_diff = conc_tg - c_sat
 
-            dfmu0_dconc = (bp_exp * b_pr + bs_exp * b_sec) * vol_liq / conc_diff
+            dfmu0_dconc = (bp_exp * b_pr + bs_exp * b_sec) * \
+                vol_liq / conc_diff
             dfmun_dconc = idx_moms * moms[:-1] * g_exp/conc_diff * gr
 
             jacobian[0, self.num_distr +
@@ -1388,7 +1390,8 @@ class BatchCryst(_BaseCryst):
                  num_nucl:num_nucl + g_section.shape[1]] = g_section
 
         # ----- Concentration eqns
-        dtr_g = 3 * kv * rho_c * moms[2] * dg * (1e-6)**3  # factor from material bce
+        dtr_g = 3 * kv * rho_c * moms[2] * dg * \
+            (1e-6)**3  # factor from material bce
         dconc_dg = -1/vol_liq * np.outer(self.kron_jtg - w_conc/rho_l, dtr_g)
 
         jacobian[self.num_distr:self.num_distr + dconc_dg.shape[0],
@@ -1407,7 +1410,7 @@ class BatchCryst(_BaseCryst):
 
         rho_liq, rho_s = rhos
 
-        vol_solid = moms[1] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_slurry = vol_liq + vol_solid
 
         if self.method == 'moments':
@@ -1577,7 +1580,7 @@ class BatchCryst(_BaseCryst):
 
         self.outputs = y_outputs
 
-        self.get_heat_duty(time, states)
+        # self.get_heat_duty(time, states)
 
     def get_heat_duty(self, time, states):
         q_heat = np.zeros((len(time), 2))
@@ -1602,7 +1605,8 @@ class BatchCryst(_BaseCryst):
         else:
             q_instant = q_heat  # TODO: write for other scenarios
 
-        self.heat_duty = trapezoidal_rule(time, q_instant)
+        self.heat_duty = np.array([0, trapezoidal_rule(time, q_instant)])
+        self.duty_type = [0, -2]
 
 
 class MSMPR(_BaseCryst):
@@ -1858,13 +1862,13 @@ class MSMPR(_BaseCryst):
             vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
                                               mom_num=3) * self.Solid_1.kv
 
-            vol_div = vol_liq + vol_sol  # suspension volume
+            vol_mult = 1
             mass_sol = rho_solid * vol_sol
 
         else:
             y_outputs = states
             vol_liq = self.Liquid_1.vol
-            vol_div = 1
+            vol_mult = self.vol_slurry
 
             mom_3 = self.Solid_1.getMoments(distrib=distProf[-1], mom_num=3)
             vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
@@ -1916,8 +1920,7 @@ class MSMPR(_BaseCryst):
         self.temp = self.Liquid_1.temp
 
         # Update phases
-        self.Solid_1.updatePhase(distrib=self.distribProf[-1][-1],
-                                 mass=mass_sol)
+        self.Solid_1.updatePhase(distrib=self.distribProf[-1][-1] * vol_mult)
         self.Solid_1.temp = self.temp
 
         self.w_conc = self.wConcProf[-1][-1]
@@ -1993,7 +1996,8 @@ class MSMPR(_BaseCryst):
         q_gen, q_ht, flow_term = q_heat.T  # TODO: controlled temperature
 
         self.heat_prof = q_heat
-        self.heat_duty = trapezoidal_rule(time, q_ht)
+        self.heat_duty = np.array([0, trapezoidal_rule(time, q_ht)])
+        self.duty_type = [0, -2]
 
 
 class SemibatchCryst(MSMPR):

@@ -102,7 +102,7 @@ class ParameterEstimation:
             param_seed = param_seed[np.newaxis]
 
         # --------------- Data
-        self.measured_ind = np.atleast_1d(measured_ind)
+        self.measured_ind = measured_ind
         self.experim_names = None
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):
@@ -394,7 +394,9 @@ class ParameterEstimation:
 
         concat_sens = np.vstack(self.sens_runs)
         if not self.fit_spectra:
-            concat_sens = concat_sens[:, self.map_variable]
+
+            if len(self.map_variable) == concat_sens.shape[1]:
+                concat_sens = concat_sens[:, self.map_variable]
 
         self.sens = concat_sens
 
@@ -471,9 +473,9 @@ class ParameterEstimation:
             self.objfun_iter = np.array(self.objfun_iter)[np.sort(idx)]
 
             col_names = ['obj_fun'] + self.name_params_total
-            self.paramest_df = pd.DataFrame(
-                np.column_stack((self.objfun_iter, self.params_iter)),
-                columns=col_names)
+            # self.paramest_df = pd.DataFrame(
+            #     np.column_stack((self.objfun_iter, self.params_iter)),
+            #     columns=col_names)
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):

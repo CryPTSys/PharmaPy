@@ -16,7 +16,8 @@ eps = np.finfo(float).eps
 
 def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
-    absup = np.maximum(eps, sup_sat)
+    # absup = np.maximum(eps, sup_sat)
+    absup = np.abs(sup_sat)
 
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
@@ -565,7 +566,9 @@ class CrystKinetics:
             params_complete = self.transform_params(params_in,
                                                     self.reformulate_kin)
         else:
-            split_idx = np.array([3, 4, 3, 3]).cumsum()[:-1]
+            param_lens = np.array([3, 4, 3, 3])
+            split_idx = param_lens.cumsum()[:-1]
+
             params_in = np.split(params_in, split_idx)
 
             params_complete = dict(zip(self.names_mechanisms, params_in))

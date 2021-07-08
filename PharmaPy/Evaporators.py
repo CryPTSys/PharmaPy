@@ -842,6 +842,7 @@ class Evaporator:
         self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
         self.heat_duty = trapezoidal_rule(time, self.heat_profile)
 
+        self.duty_type = [0, 0]  # TODO: this should depend on operation T
 
     def flatten_states(self):
         if type(self.timeProf) is list:

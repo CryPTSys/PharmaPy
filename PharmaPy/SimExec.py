@@ -230,7 +230,7 @@ class SimulationExec:
             target_unit.Kinetics.set_params(param_seed)
 
         param_seed = target_unit.Kinetics.concat_params()
-        param_seed = param_seed[target_unit.mask_params]
+        # param_seed = param_seed[target_unit.mask_params]
 
         name_params = []
 
@@ -435,15 +435,60 @@ class SimulationExec:
 
             return size_equipment, cost_equip
 
-
-    def GetDuties(self):
-        heat_duties = {}
+    def GetDuties(self, full_output=False):
+        heat_duties = []
+        equipment_ids = []
+        duty_ids = []
 
         for key, instance in self.uos_instances.items():
             if hasattr(instance, 'heat_duty'):
-                heat_duties[key] = instance.heat_duty
+                duty_ids.append(instance.duty_type)
 
-        return heat_duties
+                heat_duties.append(instance.heat_duty)
+                equipment_ids.append(key)
+
+        heat_duties = np.array(heat_duties)
+        heat_duties = pd.DataFrame(heat_duties, index=equipment_ids,
+                                   columns=['heating', 'cooling'])
+
+        duties_ids = np.array(duty_ids)
+
+        if full_output:
+            return heat_duties, duties_ids
+        else:
+            return heat_duties
+
+    def GetOPEX(self, cost_raw, full_output=False):
+        cost_raw = np.asarray(cost_raw)
+
+        # ---------- Heat duties
+        # Energy cost (USD/GJ)
+        heat_exchange_cost = [14.12, 8.49, 4.77,  # refrigeration
+                              0.378,  # water
+                              4.54, 4.77, 5.66]  # steam
+
+        heat_exchange_cost = np.array(heat_exchange_cost)
+
+        duties, map_duties = self.GetDuties(full_output=True)
+        map_duties += 3
+
+        duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)
+        for ind, row in enumerate(map_duties):
+            duty_unit_cost[ind] = heat_exchange_cost[row]
+
+        duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
+
+        # Raw materials
+        _, raw_materials = self.GetRawMaterials()
+        raw_cost = cost_raw * raw_materials[raw_materials > 0]
+
+        opex = {'raw_materials': raw_cost.sum(),
+                'heat_duties': sum(duty_cost.sum())}
+
+        if full_output:
+            return opex, duty_cost, raw_cost
+        else:
+            return opex
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)

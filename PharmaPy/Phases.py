@@ -54,7 +54,8 @@ def getPropsPhaseMix(phases, basis='mass'):
         if phase.__class__.__name__ == 'SolidPhase':
             mom_solid = all_props[-2]
             conv_exp = np.arange(len(mom_solid))
-            mom_meters = mom_solid * (1e-6)**conv_exp  # num/m**3, m/m**3, m**2/m**3, ...
+            # num/m**3, m/m**3, m**2/m**3, ...
+            mom_meters = mom_solid * (1e-6)**conv_exp
 
             vfrac_solid = mom_meters[-1] * phase.kv
             vfrac_phases.append(vfrac_solid)
@@ -65,7 +66,8 @@ def getPropsPhaseMix(phases, basis='mass'):
     vfrac_rest = 1 - sum(vfrac_phases)
     vfrac_phases.insert(ind_liq, vfrac_rest)
 
-    vfrac_phases = np.array(vfrac_phases)  # to avoid internal casting next line
+    # to avoid internal casting next line
+    vfrac_phases = np.array(vfrac_phases)
 
     mass_phases = vfrac_phases * props_matrix[:, 1]
     mfrac_phases = mass_phases / mass_phases.sum()
@@ -700,6 +702,7 @@ class SolidPhase(ThermoPhysicalManager):
 
         super().__init__(path_thermo)
         self.kv = kv
+        self.distrib_type = distrib_type
 
         self.cp_solid = np.atleast_2d(self.cp_solid)
 
@@ -707,18 +710,16 @@ class SolidPhase(ThermoPhysicalManager):
         self.temp_ref = temp_ref
         self.pres = pres
 
+        self.mass = mass
+
         mass_frac = np.atleast_1d(mass_frac)
         mass_frac[mass_frac == 0] = eps
+
         self.mass_frac = mass_frac
         self.mole_frac = self.frac_to_frac(mass_frac=self.mass_frac)
 
         if moments is not None:
             self.num_mom = len(moments)
-
-        dens = self.getDensity()
-
-        if moments is not None:
-            num_mom = len(moments)
             self.moments = moments
 
             self.x_distrib = x_distrib
@@ -726,48 +727,12 @@ class SolidPhase(ThermoPhysicalManager):
 
         elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
+
+            self.distrib = self.getDistribution(x_distrib, distrib)
             self.x_distrib = x_distrib
 
-            delta_x = np.diff(x_distrib)
-            equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
-            if equal:
-                self.dx = delta_x[0]
-            else:  # assume geometric series and make adjustments
-                ratio = x_distrib[1] / x_distrib[0]
-                x_grid = np.zeros(len(x_distrib) + 1)
-                x_gr = np.sqrt(x_distrib[1:] * x_distrib[:-1])
-
-                x_grid[0] = x_gr[0] / ratio
-                x_grid[-1] = x_gr[-1] * ratio
-
-                x_grid[1:-1] = x_gr
-
-                self.dx = np.diff(x_grid)
-
-            # Distribution
-            distrib = np.asarray(distrib)
-
             self.num_distrib = len(distrib)
-            self.distribProf = None
-
-            if mass > 0:
-                distrib = distrib / distrib.sum()
-                if distrib_type == 'vol_perc':
-                    distr = (mass / dens) * distrib / kv / x_distrib**3 \
-                        * 1e18 / self.dx   # number/um
-                elif distrib_type == 'mass_perc':
-                    distr = mass*distrib / x_distrib**3 / kv * 1e18
-
-            else:
-                mom_three = self.getMoments(distrib=distrib, mom_num=3)[0]
-                mass = mom_three * self.kv * dens
-                distr = distrib
-
-            distr[distr == 0] = eps
-            self.distrib = distr
-
-            mom_idx = np.arange(num_mom)
-            self.moments = self.getMoments(mom_num=mom_idx)
+            self.num_mom = num_mom
 
         else:
             print('Neither moment nor distribution data was '
@@ -775,27 +740,30 @@ class SolidPhase(ThermoPhysicalManager):
                   'one of the two either when declaring this phase, or in a '
                   'Slurry object to which this phase is aggregated')
 
-        self.num_mom = num_mom
+        mom_idx = np.arange(self.num_mom)
+        self.moments = self.getMoments(mom_num=mom_idx)
 
-        # Mass
-        self.mass = mass
-        self.vol = mass / dens  # m**3
+        # Mass and volume
+        dens = self.getDensity()
+
+        if self.mass == 0:
+            self.vol = self.moments[3] * kv
+            self.mass = self.vol * dens
+        else:
+            self.vol = self.mass / dens
 
         mw_av = np.dot(self.mole_frac, self.mw)
         self.moles = mass / mw_av
 
-        # # Moles
-        # self.moles = moles
-        # self.mole_frac = mole_frac
-
         if mass_frac is not None:
             sum_fracs = sum(mass_frac)
             if sum_fracs < 0.99:
-                raise RuntimeError('The sum of mass fractions is less than 0.99')
+                raise RuntimeError(
+                    'The sum of mass fractions is less than 0.99')
 
         self.moisture = moisture
-
         self.porosity = porosity
+        self.distribProf = None
 
     def updatePhase(self, distrib=None, mass=None):
         if distrib is not None:
@@ -804,6 +772,41 @@ class SolidPhase(ThermoPhysicalManager):
 
         if mass is not None:
             self.mass = mass
+
+    def getDistribution(self, x_distrib, distrib):
+        dens = self.getDensity()
+
+        # Crystal size dimension
+        delta_x = np.diff(x_distrib)
+        equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
+        if equal:
+            self.dx = delta_x[0]
+        else:  # assume geometric series and make adjustments
+            ratio = x_distrib[1] / x_distrib[0]
+            x_shifted = np.zeros(len(x_distrib) + 1)
+            x_gr = np.sqrt(x_distrib[1:] * x_distrib[:-1])
+
+            x_shifted[0] = x_gr[0] / ratio
+            x_shifted[-1] = x_gr[-1] * ratio
+
+            x_shifted[1:-1] = x_gr
+
+            self.dx = np.diff(x_shifted)
+
+        # Distribution
+        distrib = np.asarray(distrib)
+        if self.mass > 0:
+            distrib = distrib / distrib.sum()
+            if self.distrib_type == 'vol_perc':
+                distr = (self.mass / dens) * distrib / self.kv / \
+                    x_distrib**3 / self.dx * 1e18  # number/um
+            elif self.distrib_type == 'mass_perc':
+                distr = self.mass*distrib / x_distrib**3 / self.kv * 1e18
+
+        else:
+            distr = distrib
+
+        return distr
 
     def getMoments(self, distrib=None, mom_num=None):
         if distrib is None:

@@ -13,6 +13,36 @@ from scipy.integrate import simps
 from itertools import cycle
 
 linestyles = cycle(['-', '--', '-.', ':'])
+eps = np.finfo(float).eps
+
+
+def high_resolution_fvm(y, boundary_cond, limiter_type='Van Leer',
+                        both=False):
+
+    # Ghost cells -1, 0 and N + 1 (see LeVeque 2002, Chapter 9)
+    y_extrap = 2*y[-1] - y[-2]
+    y_aug = np.concatenate(([boundary_cond]*2, y, [y_extrap]))
+
+    y_diff = np.diff(y_aug, axis=0)
+
+    theta = (y_diff[:-1]) / (y_diff[1:] + eps)
+
+    if limiter_type == 'Van Leer':
+        limiter = (np.abs(theta) + theta) / (1 + np.abs(theta))
+    else:  # TODO: include more limiters
+        pass
+
+    fluxes = y_aug[1:-1] + 0.5 * y_diff[1:] * limiter
+
+    return fluxes
+
+
+def upwind_fvm(y, boundary_cond):
+    y_aug = np.concatenate(([boundary_cond], y))
+
+    y_diff = np.diff(y_aug)
+
+    return y_diff
 
 
 def geom_series(start, stop, num, rate_out=False):
@@ -87,20 +117,20 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
 
     for j in range(num_segments):
         if time_vals is not None:
-            fun_logic = lambda x, j=j: \
+            def fun_logic(x, j=j): return \
                 (time_vals[j] <= x) * (x < time_vals[j + 1])
 
             if y_vals is not None:
-                function = lambda x, j=j: \
-                        (x - time_vals[j])/(time_vals[j + 1] - time_vals[j]) *\
-                        (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+                def function(x, j=j): return \
+                    (x - time_vals[j])/(time_vals[j + 1] - time_vals[j]) *\
+                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
 
                 y_end = y_vals[j + 1]
             else:
                 if j == 0:
                     y_prev = y_init
 
-                function = lambda x, j=j, y_prev=y_prev: \
+                def function(x, j=j, y_prev=y_prev): return \
                     (x - time_vals[j]) * y_ramps[j] + y_prev
 
                 y_prev += y_ramps[j] * (time_vals[j + 1] - time_vals[j])
@@ -113,11 +143,11 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
                 pw_logic_exprs.append(lambda x, j=j: (x >= time_vals[j + 1]))
                 pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
         else:
-            fun_logic = lambda x, j=j: \
+            def fun_logic(x, j=j): return \
                 (sum(time_lengths[0:j]) <= x)*(x < sum(time_lengths[0:j + 1]))
 
             if y_vals is not None:
-                function = lambda x, j=j: \
+                def function(x, j=j): return \
                     (x - sum(time_lengths[0:j])) / (time_lengths[j]) * \
                     (y_vals[j + 1] - y_vals[j]) + y_vals[j]
 
@@ -126,7 +156,7 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
                 if j == 0:
                     y_prev = y_init
 
-                function = lambda x, j=j, y_prev=y_prev: \
+                def function(x, j=j, y_prev=y_prev): return \
                     (x - sum(time_lengths[0:j])) * y_ramps[j] + y_prev
 
                 y_prev += y_ramps[j] * (time_lengths[j])

@@ -654,7 +654,8 @@ class BatchReactor(_BaseReactor):
             q_ht = self.heat_prof[:, 0]
 
         # Heat duty
-        self.heat_duty = trapezoidal_rule(time, q_ht)
+        self.heat_duty = np.array([trapezoidal_rule(time, q_ht), 0])  # J
+        self.duty_type = [0, 0]
 
         self.tempProf.append(temp_prof)
         self.concProf.append(conc_prof)
@@ -1521,7 +1522,8 @@ class PlugFlowReactor(_BaseReactor):
             ht_time[ind] = -self.unit_model(time[ind], row, enrgy_bce=True)
 
         self.heat_profile = ht_time
-        self.heat_duty = trapezoidal_rule(time, ht_time)
+        self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
+        self.duty_type = [None, 'water']
 
     def flatten_states(self):
         if type(self.timeProf) is list:
