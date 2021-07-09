@@ -103,7 +103,7 @@ class SimulationExec:
             print('{}'.format('-'*30))
             print()
 
-            for conn in self.connection_instances:
+            for conn in self.connection_instances[-2:]:
                 if conn.destination_uo is instance:
                     conn.TransferData()
 
@@ -118,7 +118,7 @@ class SimulationExec:
             print()
 
             # Connectivity
-            for conn in self.connection_instances:
+            for conn in self.connection_instances[-2:]:
                 if conn.source_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
 

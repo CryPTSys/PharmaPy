@@ -241,7 +241,7 @@ class DeliquoringStep:
 
         # Gas pressure
         deltaP_media = deltaP*self.resist_medium / \
-            (alpha*rho_s*self.cake_height + self.resist_medium)
+            (alpha*rho_s*self.cake_height*(1 - epsilon) + self.resist_medium)
 
         pgas_out = p_atm + deltaP - deltaP_media
 
@@ -612,7 +612,7 @@ class Filter:
         dens_sol = self.Solid_1.getDensity()
 
         self.alpha = get_alpha(self.Solid_1, sphericity=1, porosity=epsilon,
-                               rho_sol=dens_sol)
+                               rho_sol=dens_sol)/1e5
 
         solid_conc = self.SlurryPhase.getSolidsConcentr()
 

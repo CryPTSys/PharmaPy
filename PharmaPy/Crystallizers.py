@@ -152,7 +152,8 @@ class _BaseCryst:
 
         # Parameters for optimization
         self.params_iter = None
-
+        self.vol_mult = 1
+        
     @property
     def Phases(self):
         return self._Phases
@@ -775,7 +776,7 @@ class _BaseCryst:
         if self.method == 'moments':
             self.Solid_1.momProf = self.distribProf
         else:
-            distrProf = self.distribProf
+            distrProf = self.distribProf * self.vol_mult
             self.Solid_1.distribProf = distrProf
             momProf = self.Solid_1.getMoments(distrProf,
                                               mom_num=[0, 1, 2, 3, 4])
@@ -1776,15 +1777,13 @@ class MSMPR(_BaseCryst):
                                               mom_num=3) * self.Solid_1.kv
             mass_sol = rho_solid * vol_sol
             
-            vol_mult = 1
-
         else:
             y_outputs = states
             vol_liq = self.Liquid_1.vol
             mom_3 = self.Solid_1.getMoments(distrib=distProf[-1], mom_num=3)
             vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
             
-            vol_mult = self.vol_slurry
+            self.vol_mult = self.vol_slurry
 
             mass_sol = rho_solid * vol_sol
             massflow_sol = mom_3 * self.Solid_1.kv * \
@@ -1833,7 +1832,8 @@ class MSMPR(_BaseCryst):
         self.temp = self.Liquid_1.temp
 
         # Update phases
-        self.Solid_1.updatePhase(distrib=self.distrib_runs[-1][-1] * vol_mult)
+        self.Solid_1.updatePhase(distrib=self.distrib_runs[-1][-1] 
+                                 * self.vol_mult)
         self.Solid_1.temp = self.temp
 
         self.w_conc = self.wConc_runs[-1][-1]
@@ -1856,10 +1856,10 @@ class MSMPR(_BaseCryst):
 
             if self.method == '1D-FVM':
                 solid_out = SolidStream(path,
-                                        mass_frac=solid_comp,
-                                        mass_flow=massflow_sol,
-                                        x_distrib=self.x_grid,
-                                        distrib=self.distrib_runs[-1][-1])
+                                        mass_frac=solid_comp)#,
+                                        # mass_flow=massflow_sol,
+                                        # x_distrib=self.x_grid,
+                                        # distrib=self.distrib_runs[-1][-1])
             else:
                 solid_out = SolidStream(path, x_distrib=self.x_grid,
                                         moments=self.distrib_runs[-1][-1],
@@ -1887,7 +1887,7 @@ class MSMPR(_BaseCryst):
             #     #                        moments=self.distribProf[-1][-1],
             #     #                        mass_frac=solid_comp)
 
-            self.Outlet = Slurry(vol_slurry=vol_div)
+            self.Outlet = Slurry(vol_slurry=self.vol_mult)
 
         self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
