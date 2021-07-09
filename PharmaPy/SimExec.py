@@ -61,8 +61,8 @@ class SimulationExec:
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
                        run_subset=None):
-
-        self.SetConnectivity()
+        if len(self.uos_instances) == 0:
+            self.SetConnectivity()
 
         # Pick specific units, if given
         if pick_units is None:
@@ -118,7 +118,7 @@ class SimulationExec:
             print()
 
             # Connectivity
-            for conn in self.connection_instances[-2:]:
+            for conn in self.connection_instances:
                 if conn.source_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
 
