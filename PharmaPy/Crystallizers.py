@@ -317,11 +317,13 @@ class _BaseCryst:
 
         # Flux source terms
         f_diff = np.diff(f_aug)
+        # avoid division by zero when calculating theta
+        f_diff[f_diff == 0] = eps
 
         if growth > 0:
-            theta = f_diff[:-1] / (f_diff[1:] + eps)
+            theta = f_diff[:-1] / f_diff[1:]
         else:
-            theta = f_diff[1:] / (f_diff[:-1] + eps)
+            theta = f_diff[1:] / f_diff[:-1]
 
         # Van-Leer limiter
         limiter = np.zeros_like(f_diff)
@@ -1077,7 +1079,7 @@ class _BaseCryst:
         fig, ax = plt.subplots(figsize=fig_size)
 
         cf = ax.contourf(x_mesh.T, t_mesh.T, self.distribProf.T,
-                         cmap=cm.coolwarm, levels=50)
+                         cmap=cm.coolwarm, levels=150)
         cbar = fig.colorbar(cf)
 
         if self.scale == 1:
@@ -1858,17 +1860,21 @@ class MSMPR(_BaseCryst):
         if 'vol' in self.states_uo:
             self.volProf = states[:, num_material]
             y_outputs = np.delete(states, num_material, axis=1)
+
             vol_liq = self.volProf[-1]
             vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
                                               mom_num=3) * self.Solid_1.kv
 
             vol_mult = 1
+            vol_slurry = vol_liq + vol_sol
+
             mass_sol = rho_solid * vol_sol
 
         else:
             y_outputs = states
             vol_liq = self.Liquid_1.vol
             vol_mult = self.vol_slurry
+            vol_slurry = self.vol_slurry
 
             mom_3 = self.Solid_1.getMoments(distrib=distProf[-1], mom_num=3)
             vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
@@ -1963,7 +1969,7 @@ class MSMPR(_BaseCryst):
 
             liquid_out = copy.deepcopy(self.Liquid_1)
             solid_out = copy.deepcopy(self.Solid_1)
-            solid_out.updatePhase(distrib=self.distribProf[-1][-1] / vol_div)
+            solid_out.updatePhase(distrib=self.distribProf[-1][-1] * vol_mult)
 
             # if self.method == '1D-FVM':
             #     solid_out = SolidPhase(path, x_distrib=self.x_grid,
@@ -1974,7 +1980,7 @@ class MSMPR(_BaseCryst):
             #     #                        moments=self.distribProf[-1][-1],
             #     #                        mass_frac=solid_comp)
 
-            self.Outlet = Slurry(vol_slurry=vol_div)
+            self.Outlet = Slurry(vol_slurry=vol_slurry)
 
         self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
