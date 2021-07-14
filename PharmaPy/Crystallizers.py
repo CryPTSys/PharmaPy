@@ -317,8 +317,7 @@ class _BaseCryst:
 
         # Flux source terms
         f_diff = np.diff(f_aug)
-        # avoid division by zero when calculating theta
-        f_diff[f_diff == 0] = eps
+        f_diff[f_diff == 0] = eps  # avoid division by zero for theta
 
         if growth > 0:
             theta = f_diff[:-1] / f_diff[1:]

@@ -79,7 +79,7 @@ class IsothermalFlash:
             (np.array([global_bce]),
              comp_bces, equilibria,
              np.array([vap_flow]))
-            )
+        )
 
         return balance
 
@@ -131,7 +131,7 @@ class IsothermalFlash:
 
         # Solve nonlinear system
         solution = fsolve(self.unit_model, seed, full_output=False)
-                          # fprime=jac_eqns,
+        # fprime=jac_eqns,
 
         # Retrieve solution
         liq_flash = solution[0] * self.in_flow
@@ -216,7 +216,7 @@ class AdiabaticFlash:
             np.array([global_bce]),
             comp_bces, equilibria,
             np.array([vap_flow]))
-            )
+        )
 
         return material
 
@@ -264,7 +264,7 @@ class AdiabaticFlash:
 
         # jac_eqns = jacauto(self.unit_model)
         solution = fsolve(self.unit_model, seed)
-                          # fprime=jac_eqns)
+        # fprime=jac_eqns)
 
         # Retrieve solution
         liq_flash = solution[0] * self.in_flow
@@ -299,12 +299,16 @@ class AdiabaticFlash:
 class Evaporator:
     def __init__(self, vol_drum, phase=None,
                  pres=101325, diam_out=2.54e-2,
+                 k_vap=1, cv_gas=0.8,
                  ht_coeff=1000, temp_ht=298.15,
                  activity_model='ideal', state_events=None):
 
         self._Inlet = None
         self._Phases = phase
         self.material_from_upstream = False
+        
+        self.k_vap = k_vap
+        self.cv_gas = cv_gas
 
         if isinstance(state_events, list):
             self.state_events = state_events
@@ -419,9 +423,11 @@ class Evaporator:
 
         mw_vap = self.VapEvap.mw_av
 
-        dens_gas = pres / gas_ct / temp * (mw_vap / 1000)  # kg/m**3
-        flow_vap = self.area_out / mw_vap * 1000 *\
-            np.sqrt(2*dens_gas * np.max([eps, pres - self.pres]))  # mol/s
+        rho_mol = pres / gas_ct / temp  # mol/m**3
+        rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
+        vel_vap = np.sqrt(np.maximum(eps, 2 * (pres - self.pres)/rho_gas))
+
+        flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
         rho_liq = self.LiqEvap.getDensity(mole_frac=x_i, temp=temp,
                                           basis='mole')
@@ -664,7 +670,7 @@ class Evaporator:
         states_init = np.concatenate(
             (mol_i, x_init, y_init, [mol_liq, mol_vap],
              [pres_init, u_init, temp_init])
-            )
+        )
 
         sdot_init = np.zeros_like(states_init)
         sdot_init[:self.num_species + 1] = dm_init
@@ -1257,7 +1263,7 @@ class ContinuousEvaporator:
         states_init = np.concatenate(
             (mol_i, x_init, y_init, [mol_liq, mol_vap],
              [pres_init, u_init, temp_bubble_init])
-            )
+        )
 
         sdot_init = np.zeros_like(states_init)
         sdot_init[:self.num_species] = dm_init
@@ -1277,7 +1283,7 @@ class ContinuousEvaporator:
 
         # ---------- Solve problem
         if steady_state:
-            obj_fn = lambda states: self.unit_model(0, states)
+            def obj_fn(states): return self.unit_model(0, states)
             steady_solution = fsolve(obj_fn, states_initial)
 
             return steady_solution
@@ -1487,4 +1493,3 @@ class ContinuousEvaporator:
         fig.tight_layout()
 
         return fig, ax
-
