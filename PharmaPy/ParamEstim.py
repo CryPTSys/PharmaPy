@@ -16,7 +16,7 @@ from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pandas as pd
-from PharmaPy.jac_module import numerical_jac_data
+from PharmaPy.jac_module import numerical_jac_data, dx_jac_p
 from PharmaPy import Gaussians as gs
 
 from PharmaPy.LevMarq import levenberg_marquardt
@@ -93,13 +93,24 @@ class ParameterEstimation:
         self.function = func
 
         self.jac_fun = jac_fun
-        self.dx_fd = dx_finitediff
 
         self.fit_spectra = False
 
         param_seed = np.asarray(param_seed)
         if param_seed.ndim == 0:
             param_seed = param_seed[np.newaxis]
+
+        if dx_finitediff is None:
+            abs_tol = 1e-6 * np.ones_like(param_seed)
+            rel_tol = 1e-6
+
+            def dparam_fun(param):
+                dp = dx_jac_p(param, abs_tol, rel_tol, eps)
+                return dp
+
+            dx_finitediff = dparam_fun
+
+        self.dx_fd = dx_finitediff
 
         # --------------- Data
         self.measured_ind = measured_ind
@@ -259,6 +270,8 @@ class ParameterEstimation:
 
         if self.measured_ind is None:
             self.measured_ind = np.arange(0, self.num_states)
+        else:
+            self.measured_ind = np.atleast_1d(self.measured_ind)
 
         self.num_measured = len(self.measured_ind)
 
@@ -325,6 +338,8 @@ class ParameterEstimation:
         resid_runs = []
         sens_runs = []
 
+        num_jac = False
+
         for ind in range(self.num_datasets):
             # Solve
             result = self.function(params, self.x_fit[ind],
@@ -334,13 +349,15 @@ class ParameterEstimation:
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
+                num_jac = True
                 y_prof = result
 
                 if self.jac_fun is None:
+                    pick_p = np.where(self.map_variable)[0]
                     sens = numerical_jac_data(
                         self.func_aux, params,
                         (self.x_fit[ind], self.args_fun[ind]),
-                        dx=self.dx_fd)
+                        dx=self.dx_fd, pick_x=pick_p)
                 else:
                     sens = self.jac_fun(params, self.x_fit[ind],
                                         *self.args_fun[ind])
@@ -348,6 +365,9 @@ class ParameterEstimation:
             if y_prof.ndim == 1:
                 y_run = y_prof
                 sens_run = sens
+            # elif num_jac:
+            #     y_run = y_prof[:, self.measured_ind]
+            #     sens_run = sens
             else:
                 y_run = y_prof[:, self.measured_ind]
                 num_states = y_prof.shape[1]

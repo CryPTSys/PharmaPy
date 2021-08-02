@@ -13,6 +13,7 @@ from numpy.linalg import norm
 
 eps = np.sqrt(np.finfo(float).eps)
 
+
 def dx_jac_x(x, abstol, reltol, eps):
     sigma_zero = 1
     crit_1 = np.abs(x) * np.sqrt(eps)
@@ -25,9 +26,11 @@ def dx_jac_x(x, abstol, reltol, eps):
     # print(dx)
     return dx
 
+
 def dx_jac_p(p, abstol, reltol, eps):
     dx = np.abs(p) * np.sqrt(max(reltol, eps))
     return dx
+
 
 def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None):
 
@@ -75,23 +78,30 @@ def numerical_jac_central(func, x, rel_tol, abs_tol, dx=None, args=()):
     return np.column_stack(jac)
 
 
-def numerical_jac_data(func, x, args=(), dx=None):  # TODO: x-dependent dx
+def numerical_jac_data(func, x, args=(), dx=None, pick_x=None):
 
-    if dx is None:
-        dx = eps
+    if callable(dx):
+        dx = dx(x)
+    elif dx is None:
+        dx = np.ones_like(x) * eps
     else:
-        dx = dx
+        dx = np.ones_like(x) * dx
+
+    if pick_x is None:
+        pick_x = np.arange(len(x))
+    else:
+        pick_x = np.atleast_1d(pick_x)
 
     f_eval = func(x, *args)
     num_data = len(f_eval)
-    num_states = len(x)
+    num_states = len(pick_x)
 
     jac = np.zeros((num_data, num_states))
     delx = np.zeros_like(x)
 
-    for i in range(num_states):
-        delx[i] = dx
-        jac[:, i] = (func(x + delx, *args) - f_eval)/dx
+    for idx, i in enumerate(pick_x):
+        delx[i] = dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
         delx[i] = 0
 
     return jac

@@ -184,8 +184,8 @@ class SimulationExec:
 
         return stream_table
 
-    def SetParamEstimation(self, x_data,
-                           param_seed=None, y_data=None, spectra=None,
+    def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+                           spectra=None,
                            fit_spectra=False, global_analysis=True,
                            wrapper_args=[],
                            phase_modifiers=None, control_modifiers=None,

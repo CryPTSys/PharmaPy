@@ -754,13 +754,15 @@ class _BaseCryst:
         if isinstance(modify_controls, dict):
             self.params_control = modify_controls
 
-        t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                               eval_sens=True,
-                                               verbose=False)
-
-        sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
         if self.method == 'moments':
+            t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                                   eval_sens=True,
+                                                   verbose=False)
+
+            sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
+
             mu = states[:, :self.num_distr]
+
             # convert to mm**n
             factor = (scale_factor)**np.arange(self.num_distr)
 
@@ -782,13 +784,15 @@ class _BaseCryst:
             mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
 
             states_out = np.column_stack((mu, states[:, self.num_distr:]))
+            sens_out = np.vstack(sens_sep)
+
+            return states_out, sens_out
 
         else:
-            states_out = states
-
-        sens_out = np.vstack(sens_sep)
-
-        return states_out, sens_out
+            t_prof, states_out = self.solve_unit(time_grid=t_vals,
+                                                 eval_sens=False,
+                                                 verbose=False)
+            return states_out
 
     def flatten_states(self):
         if type(self.distribProf) is list:
