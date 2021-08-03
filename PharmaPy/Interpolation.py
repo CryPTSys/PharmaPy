@@ -76,17 +76,23 @@ class SplineInterpolation:
 
 class PiecewiseLagrange:
 
-    def __init__(self, time_final, y_vals, order, time_zero=0, time_k=None):
+    def __init__(self, time_final, y_vals, order=2, time_k=None, time_zero=0):
         """ Create a piecewise Lagrange interpolation object
 
         Parameters
         ----------
         time_final : float
             final time
-        time_eval : float or array-like
-            time(s) at which the polynomial is to be evaluated
-        num_interv : int
-            number of intervals in which the time horizon is to be divided
+        y_vals : numpy array
+            2D array with dimensions num_intervals x order. Each row contains
+            the values of the function at the collocation point within a given
+            finite element
+        order : int
+            order of the Lagrange polynomial (1 for piecewise constant,
+            2 for linear...)
+        time_k : array-like (optional)
+            If None, the time horizon is divided in equally-spaced intervals.
+            Otherwise, time_k represents the limits of the cells.
         time_zero : float (optional)
             initial time (default is zero)
 
@@ -103,11 +109,25 @@ class PiecewiseLagrange:
             time_k = np.linspace(time_zero, time_final, num_interv + 1)
         else:
             num_interv = len(time_k) - 1
+            time_k = np.asarray(time_k)
 
-        dt = time_k[1] - time_k[0]
+            if len(y_vals) != num_interv:
+                raise ValueError("The number of rows in 'y_vals' must match "
+                                 "the number of intervals given by the length "
+                                 "of 'time_k'")
+
+        delta_t = np.diff(time_k)
+        if (delta_t < 0).any():
+            raise ValueError("Values in 'time_k' must be strictly increasing.")
+        equal = np.isclose(delta_t[1:], delta_t[:-1]).all()
+        self.equal_dt = equal
 
         self.time_k = time_k
-        self.dt = dt
+
+        if equal:
+            self.dt = delta_t[0]
+        else:
+            self.dt = delta_t
 
         self.order = order
 
@@ -118,8 +138,12 @@ class PiecewiseLagrange:
         time_eval = np.atleast_1d(time_eval)
         time_k = self.time_k
 
-        k = np.ceil((time_eval - time_k[0]) / self.dt).astype(int)
-        k = np.maximum(1, k)
+        if self.equal_dt:
+            k = np.ceil((time_eval - time_k[0]) / self.dt).astype(int)
+            k = np.maximum(1, k)
+        else:
+            k = np.searchsorted(self.time_k, time_eval, side='right')
+            k = np.minimum(self.num_interv, k)
 
         # ---------- Time normalization
         tau_k = (time_eval - time_k[k - 1]) / (time_k[k] - time_k[k - 1])
