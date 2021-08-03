@@ -379,9 +379,11 @@ class _BaseCryst:
             temp = states[ind_bces]
             temp_ht = None
         elif 'temp' in self.controls.keys():
-            temp = self.controls['temp'](time, self.temp,
-                                         *self.params_control['temp'],
-                                         t_zero=self.elapsed_time)
+            # temp = self.controls['temp'](time, self.temp,
+            #                              *self.params_control['temp'],
+            #                              t_zero=self.elapsed_time)
+
+            temp = self.controls['temp'](time, *self.params_control['temp'])
             temp_ht = None
         else:
             temp = self.Liquid_1.temp
@@ -1252,9 +1254,11 @@ class BatchCryst(_BaseCryst):
             num_material = self.num_distr + self.num_species
             w_conc = states[self.num_distr:num_material]
 
-            temp = self.controls['temp'](time, self.temp,
-                                         *self.params_control['temp'],
-                                         t_zero=self.elapsed_time)
+            # temp = self.controls['temp'](time, self.temp,
+            #                              *self.params_control['temp'],
+            #                              t_zero=self.elapsed_time)
+
+            temp = self.controls['temp'](time, *self.params_control['temp'])
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
@@ -1346,9 +1350,11 @@ class BatchCryst(_BaseCryst):
 
     def jac_params(self, time, states, params):
 
-        temp = self.controls['temp'](time, self.temp,
-                                     *self.params_control['temp'],
-                                     t_zero=self.elapsed_time)
+        # temp = self.controls['temp'](time, self.temp,
+        #                              *self.params_control['temp'],
+        #                              t_zero=self.elapsed_time)
+
+        temp = self.controls['temp'](time, *self.params_control['temp'])
 
         num_states = len(states)
 
@@ -1530,9 +1536,13 @@ class BatchCryst(_BaseCryst):
                 np.ones_like(time_profile) * self.Liquid_1.temp)
 
         elif 'temp' in self.controls.keys():
+            # temp_controlled = self.controls['temp'](
+            #     time_profile, self.temp, *self.params_control['temp'],
+            #     t_zero=self.elapsed_time)
+
             temp_controlled = self.controls['temp'](
-                time_profile, self.temp, *self.params_control['temp'],
-                t_zero=self.elapsed_time)
+                time_profile, *self.params_control['temp'])
+
             self.tempProf.append(temp_controlled)
 
             self.Liquid_1.temp = self.tempProf[-1][-1]

@@ -74,6 +74,84 @@ class SplineInterpolation:
         return y_interp
 
 
+class PiecewiseLagrange:
+
+    def __init__(self, time_final, y_vals, order, time_zero=0, time_k=None):
+        """ Create a piecewise Lagrange interpolation object
+
+        Parameters
+        ----------
+        time_final : float
+            final time
+        time_eval : float or array-like
+            time(s) at which the polynomial is to be evaluated
+        num_interv : int
+            number of intervals in which the time horizon is to be divided
+        time_zero : float (optional)
+            initial time (default is zero)
+
+
+        The interpolation algorithm is based on the work of Vassiliadis et al
+        (Ind. Eng. Chem. Res., 1994, 33, 2111-2122)
+
+        """
+
+        y_vals = np.atleast_2d(y_vals)
+
+        if time_k is None:
+            num_interv = len(y_vals)
+            time_k = np.linspace(time_zero, time_final, num_interv + 1)
+        else:
+            num_interv = len(time_k) - 1
+
+        dt = time_k[1] - time_k[0]
+
+        self.time_k = time_k
+        self.dt = dt
+
+        self.order = order
+
+        self.num_interv = num_interv
+        self.y_vals = y_vals
+
+    def evaluate_poly(self, time_eval):
+        time_eval = np.atleast_1d(time_eval)
+        time_k = self.time_k
+
+        k = np.ceil((time_eval - time_k[0]) / self.dt).astype(int)
+        k = np.maximum(1, k)
+
+        # ---------- Time normalization
+        tau_k = (time_eval - time_k[k - 1]) / (time_k[k] - time_k[k - 1])
+        tau_k = tau_k[..., np.newaxis]
+
+        # ---------- Build Lagrange polynomials
+        # Intermediate collocation points
+        colloc = np.linspace(0, 1, self.order)
+
+        # Lagrange polynomials for k = 1, ..., K (all intervals)
+        poly = np.zeros((len(time_eval), self.order))
+
+        i_set = np.arange(self.order)
+
+        for i in i_set:
+            i_pr = np.setdiff1d(i_set, i)  # i prime
+            poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+
+            poly[:, i] = poly_indiv.prod(axis=1)
+
+        u_time = np.zeros_like(time_eval)
+
+        for ind in np.unique(k):
+            row_map = k == ind
+            poly_k = poly[row_map]
+            u_time[row_map] = np.dot(poly_k, self.y_vals[ind - 1]).flatten()
+
+        if len(u_time) == 1:
+            u_time = u_time[0]
+
+        return u_time
+
 
 if __name__ == '__main__':
     from scipy.interpolate import interp1d
@@ -102,8 +180,8 @@ if __name__ == '__main__':
 
     elif case == 2:  # Saturation example
         sat = np.array(
-                [0.2322061, 0.24866445, 0.25621458, 0.26201002, 0.26689287,
-                 0.27117952, 0.27503542, 0.27856042, 0.28181078, 0.28464856])
+            [0.2322061, 0.24866445, 0.25621458, 0.26201002, 0.26689287,
+             0.27117952, 0.27503542, 0.27856042, 0.28181078, 0.28464856])
         sat_two = 1.2 * sat + 0.05
 
         sat = np.column_stack((sat, sat_two))
