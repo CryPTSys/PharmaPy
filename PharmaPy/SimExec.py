@@ -59,10 +59,12 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
-                       run_subset=None):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, run_subset=None,
+                       verbose=True):
+
         if len(self.uos_instances) == 0:
-            self.SetConnectivity()
+            self.LoadUOs()
+            self.LoadConnections()
 
         # Pick specific units, if given
         if kwargs_run is None:
@@ -72,7 +74,6 @@ class SimulationExec:
                 keys = pick_units
 
             kwargs_run = {key: {} for key in keys}
-
 
         # isbatch = [elem == 'Batch' for elem in self.oper_mode]
 
