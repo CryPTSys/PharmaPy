@@ -401,7 +401,7 @@ class _BaseCryst:
             moms = distr * (1e-6)**np.arange(len(distr))
             # moms = distr
         else:
-            moms = self.Solid_1.getMoments(distr / self.scale)
+            moms = self.Solid_1.getMoments(distrib=distr/self.scale)
 
         if name_unit == 'BatchCryst':
             rhos = rhos_susp
@@ -821,7 +821,7 @@ class _BaseCryst:
         else:
             distrProf = self.distribProf * self.vol_mult
             self.Solid_1.distribProf = distrProf
-            momProf = self.Solid_1.getMoments(distrProf,
+            momProf = self.Solid_1.getMoments(distrib=distrProf,
                                               mom_num=[0, 1, 2, 3, 4])
 
             # for ind in range(momProf.shape[1]):
@@ -923,7 +923,7 @@ class _BaseCryst:
         ax_temp = axes.flatten()[ind + 1]
         ax_temp.plot(self.timeProf/time_div, self.Liquid_1.tempProf)
 
-        if len(self.tempProfHt) > 0:
+        if len(self.tempHT_runs) > 0:
             ax_temp.plot(self.timeProf/time_div, self.tempProfHt, '--')
 
         ax_temp.set_ylabel(r'$T$ (K)')

@@ -104,7 +104,7 @@ class SimulationExec:
                 print('{}'.format('-'*30))
                 print()
 
-            for conn in self.connection_instances[-2:]:
+            for conn in self.connection_instances:
                 if conn.destination_uo is instance:
                     conn.TransferData()
 

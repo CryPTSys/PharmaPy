@@ -727,12 +727,16 @@ class SolidPhase(ThermoPhysicalManager):
         self.mass_frac = mass_frac
         self.mole_frac = self.frac_to_frac(mass_frac=self.mass_frac)
 
+        solid_spec = False
+
         if moments is not None:
             self.num_mom = len(moments)
             self.moments = moments
 
             self.x_distrib = x_distrib
             self.distrib = distrib
+
+            solid_spec = True
 
         elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
@@ -743,23 +747,26 @@ class SolidPhase(ThermoPhysicalManager):
             self.num_distrib = len(distrib)
             self.num_mom = num_mom
 
+            mom_idx = np.arange(self.num_mom)
+            self.moments = self.getMoments(mom_num=mom_idx)
+
+            solid_spec = True
+
         else:
             print('Neither moment nor distribution data was '
                   'provided for this SolidPhase object. Make sure to provide '
                   'one of the two either when declaring this phase, or in a '
                   'Slurry object to which this phase is aggregated')
 
-        mom_idx = np.arange(self.num_mom)
-        self.moments = self.getMoments(mom_num=mom_idx)
-
         # Mass and volume
         dens = self.getDensity()
 
-        if self.mass == 0:
-            self.vol = self.moments[3] * kv
-            self.mass = self.vol * dens
-        else:
-            self.vol = self.mass / dens
+        if solid_spec:
+            if self.mass == 0:
+                self.vol = self.moments[3] * kv
+                self.mass = self.vol * dens
+            else:
+                self.vol = self.mass / dens
 
         mw_av = np.dot(self.mole_frac, self.mw)
         self.moles = mass / mw_av
@@ -774,10 +781,14 @@ class SolidPhase(ThermoPhysicalManager):
         self.porosity = porosity
         self.distribProf = None
 
-    def updatePhase(self, distrib=None, mass=None):
+    def updatePhase(self, x_distrib=None, distrib=None, mass=None):
+        if x_distrib is not None:
+            self.x_distrib = x_distrib
+
         if distrib is not None:
             self.distrib = distrib
-            self.moments = self.getMoments(distrib)
+            self.moments = self.getMoments()
+            self.num_distrib = len(distrib)
 
         if mass is not None:
             self.mass = mass
@@ -818,7 +829,10 @@ class SolidPhase(ThermoPhysicalManager):
 
         return distr
 
-    def getMoments(self, distrib=None, mom_num=None):
+    def getMoments(self, x_distrib=None, distrib=None, mom_num=None):
+        if x_distrib is None:
+            x_distrib = self.x_distrib
+
         if distrib is None:
             distrib = self.distrib
 
@@ -832,8 +846,8 @@ class SolidPhase(ThermoPhysicalManager):
         if distrib.ndim == 1 or len(distrib) == 1:
             moments = np.zeros(len(mom_ind))
             for ind, exp in enumerate(mom_ind):
-                integrand = distrib * self.x_distrib**exp
-                moments[ind] = trapezoidal_rule(self.x_distrib, integrand.T)
+                integrand = distrib * x_distrib**exp
+                moments[ind] = trapezoidal_rule(x_distrib, integrand.T)
 
             if len(mom_ind) == 1:
                 moments = moments[0]
@@ -841,8 +855,8 @@ class SolidPhase(ThermoPhysicalManager):
         else:
             moments = np.zeros((len(distrib), len(mom_ind)))
             for ind, exp in enumerate(mom_ind):
-                integrand = distrib * self.x_distrib**exp
-                moments[:, ind] = trapezoidal_rule(self.x_distrib, integrand.T)
+                integrand = distrib * x_distrib**exp
+                moments[:, ind] = trapezoidal_rule(x_distrib, integrand.T)
 
         conv_factors = (1e-6)**np.array(mom_ind)
         moments *= conv_factors

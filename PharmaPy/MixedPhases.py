@@ -155,7 +155,7 @@ class Slurry:
 
         vol_solid = mom_three * self.Solid_1.kv
         vol_fracs = np.array([1 - vol_solid, vol_solid])
-        
+
         if vol_basis:
             return vol_fracs
 
@@ -279,8 +279,9 @@ class SlurryStream(Slurry):
 
                 self.dx = np.diff(x_grid)
 
-            self.Solid_1.x_distrib = self.x_distrib
-            self.moments = self.Solid_1.getMoments(self.distrib)
+            # self.Solid_1.x_distrib = self.x_distrib
+            self.moments = self.Solid_1.getMoments(self.x_distrib,
+                                                   self.distrib)
 
             if self.vol_slurry > 0:
                 dens_liq = self.Liquid_1.getDensity()
@@ -292,6 +293,7 @@ class SlurryStream(Slurry):
 
                 mass_liq, mass_sol = vol_phases * dens_phases
                 self.mass_slurry = np.dot(vol_phases, dens_phases)
+
             elif self.mass_slurry > 0:
                 mass_share = self.getFractions(vol_basis=False)
                 mass_phases = self.mass_slurry * mass_share
@@ -303,7 +305,8 @@ class SlurryStream(Slurry):
             f_distr = self.vol_slurry * self.distrib
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
-            self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
+            self.Solid_1.updatePhase(x_distrib=self.x_distrib, distrib=f_distr,
+                                     mass=mass_sol)
 
         self.num_species = self.Liquid_1.num_species
 
