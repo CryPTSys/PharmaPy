@@ -9,12 +9,15 @@ import numpy.matlib
 from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
+import scipy
+from scipy.interpolate import CubicSpline
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Cake
 from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
+from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import reorder_pde_outputs
 # from pathlib import Path
 
@@ -25,7 +28,31 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9):
+                 resist_medium=2.22e9, eta_fun=None, mass_eta=False):
+        """
+
+
+        Parameters
+        ----------
+        number_nodes : TYPE
+            DESCRIPTION.
+        idx_supercrit : TYPE
+            DESCRIPTION.
+        diam_unit : TYPE, optional
+            DESCRIPTION. The default is 0.01.
+        resist_medium : TYPE, optional
+            DESCRIPTION. The default is 2.22e9.
+        eta_fun : TYPE, optional
+            DESCRIPTION. The default is None.
+        mass_eta : bool, optional
+            If true, drying rate limiting factor is a function of mass fractional saturation value.
+            The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
 
         self.idx_supercrit = np.atleast_1d(idx_supercrit)
 
@@ -39,12 +66,22 @@ class Drying:
 
         # Transfer coefficients
         self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
+        self.h_T_j = 30  # W/m**2/K
         self.h_T_j = 10  # W/m**2/K
 
         self.nomenclature()
 
         self._Phases = None
         self._Inlet = None
+
+        # Limiting factor
+        if eta_fun is None:
+            eta_fun = lambda sat, mass_frac: 1
+
+        self.eta_fun = eta_fun
+        self.mass_eta = mass_eta
+        self.oper_mode = 'Batch'
+        self.is_continuous = False
 
     @property
     def Phases(self):
@@ -137,25 +174,38 @@ class Drying:
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)
         sat_red = np.maximum(0, sat_red)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
-
         vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
 
         # ---------- Drying rate term
         rho_gas = self.pres_gas / gas_ct / temp_gas  # mol/m**3
 
-        dry_correction = 1e-3
-        dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
+        # Dry correction
+        if self.mass_eta:
+            rho_liq = self.rho_liq
+            sat_eta = satur * rho_liq / (satur*rho_liq + (1 - satur)*rho_gas)
+            w_eta = x_liq
+        else:
+            sat_eta = satur
+            w_eta = x_liq
+
+        limiter_factor = self.eta_fun(sat_eta, w_eta)
+
+        # Dry rate
+        self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
+                                             self.pres_gas)
+
+        self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
         inputs = self.get_inputs(time)
 
         material_eqns = self.material_balance(
             time, satur, temp_gas, temp_sol, y_gas, x_liq,
-            vel_gas, rho_gas, dry_rate, inputs)
+            vel_gas, rho_gas, self.dry_rate, inputs)
 
         energy_eqns = self.energy_balance(time, temp_gas, temp_sol,
                                           satur, y_gas, x_liq, vel_gas,
-                                          rho_gas, dry_rate, inputs)
+                                          rho_gas, self.dry_rate, inputs)
 
         # print(satur.min())
 
@@ -164,7 +214,7 @@ class Drying:
         return model_eqns.ravel()
 
     def material_balance(self, time, satur, temp_gas, temp_sol, y_gas, x_liq,
-                         u_gas, dens_gas, dry_rate, inputs):
+                         u_gas, dens_gas, dry_rate, inputs, return_terms=False):
 
         # ----- Reading inputs
         y_gas_inputs = inputs['mole_frac']
@@ -191,10 +241,16 @@ class Drying:
 
         dygas_dt = -u_gas * dygas_dz + transfer_gas
 
-        return [dsat_dt, dygas_dt.T, dxliq_dt.T]
+        if return_terms:    # TODO: check term by term in material balance down this line
+            self.masstrans_comp = 1
+
+            return self.masstrans_comp
+
+        else:
+            return [dsat_dt, dygas_dt.T, dxliq_dt.T]
 
     def energy_balance(self, time, temp_gas, temp_sol, satur, y_gas, x_liq,
-                       u_gas, rho_gas, dry_rate, inputs):
+                       u_gas, rho_gas, dry_rate, inputs, return_terms=False):
 
         # ----- Reading inputs
         temp_gas_inputs = inputs['temp']
@@ -208,14 +264,19 @@ class Drying:
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
-
+        heat_loss = 14626.86 * (temp_gas - 295)
+        heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
         fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
         dTg_dz = np.diff(fluxes_Tg) / self.dz
 
-        dTg_dt = -u_gas * dTg_dz + (drying_terms - heat_transf) / denom_gas
+        dTg_dt = -u_gas * dTg_dz + (drying_terms - heat_transf - heat_loss) / denom_gas
+
+        # Empty port
+        #dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
+
         # print(dTg_dt[0])
 
         # ----- Condensed phases equations
@@ -237,9 +298,21 @@ class Drying:
 
         dTcond_dt = (-drying_terms_cond + heat_transf) / denom_cond
 
-        return [dTg_dt, dTcond_dt]
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325):
+        if return_terms:
+            self.convec_term = u_gas * dTg_dz
+            self.drying = drying_terms/ denom_gas
+            self.heat_cond = heat_transf/ denom_gas
+            self.heat_loss_emp = heat_loss/ denom_gas
+
+            return self.convec_term, self.drying, self.heat_cond, self.heat_loss_emp
+
+        else:
+
+            return [dTg_dt, dTcond_dt]
+
+    def solve_unit(self, deltaP, runtime, p_atm=101325,
+                   verbose=True):
 
         # ---------- Discretization
         self.z_grid = np.linspace(0, self.cake_height, self.num_nodes + 1)
@@ -256,34 +329,62 @@ class Drying:
         num_comp = self.Liquid_1.num_species
 
         # Molar fractions
+        # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
+        # x_liq_init = self.CakePhase.Liquid_1.mole_frac[:, idx_volatiles]
+
         y_gas_init = self.Vapor_1.mole_frac
-        x_liq_init = self.CakePhase.Liquid_1.mole_frac[:, idx_volatiles]
+        x_liq_init = self.CakePhase.Liquid_1.mole_frac
+
         satur_init = self.CakePhase.saturation
 
         # Temperatures
         temp_cond_init = self.CakePhase.Solid_1.temp
         temp_gas_init = self.Vapor_1.temp
+        z_cake = self.CakePhase.z_external  # For drying_script_inyoung
+        # z_cake = self.CakePhase.z_external # This line for 2MSMPR_Filter.py
 
-        if isinstance(temp_cond_init, float):
-            temp_cond_init = np.ones_like(satur_init) * temp_cond_init
+        if x_liq_init.ndim == 1:
+            x_liq_init = x_liq_init[idx_volatiles]
+            states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
 
-        if isinstance(temp_gas_init, float):
-            temp_gas_init = np.ones_like(satur_init) * temp_gas_init
+            states_stacked = np.hstack(states_tuple)
+            states_prev = np.tile(states_stacked, (self.num_nodes, 1))
 
+        else:
+            x_liq_init = x_liq_init[:, idx_volatiles]
+            if y_gas_init.ndim == 1:
+                y_gas_init = np.tile(y_gas_init, (self.num_nodes, 1))
+            if isinstance(temp_cond_init, float):
+                temp_cond_init = np.ones_like(satur_init) * temp_cond_init
+            if isinstance(temp_gas_init, float):
+                temp_gas_init = np.ones_like(satur_init) * temp_gas_init
+                # temp_gas_init = np.tile(temp_gas_init, (self.num_nodes,1))
+                # temp_cond_init = np.tile(temp_cond_init, (self.num_nodes,1))
+
+            states_stacked = np.column_stack(
+                (satur_init, y_gas_init, x_liq_init, temp_gas_init,
+                 temp_cond_init))
+
+            interp_obj = CubicSpline(z_cake, states_stacked)
+            states_prev = interp_obj(self.z_centers)
+
+        # states_init = states_prev
         # Merge states and interpolate in the grid nodes
-        states_prev = np.column_stack((satur_init, y_gas_init, x_liq_init,
-                                       temp_gas_init, temp_cond_init))
+        # states_prev = np.column_stack((satur_init, y_gas_init, x_liq_init,
+        #                                temp_gas_init, temp_cond_init))
 
-        z_cake = self.cake_height * self.CakePhase.z_external
-        interp = SplineInterpolation(z_cake, states_prev)
-        states_init = interp.evalSpline(self.z_centers)
+        # states_init = define_initial_state(state=states_stacked, z_after=self.z_centers,
+        #              z_before=z_cake, indexed_state=True)
+
+        #z_cake = self.cake_height * self.CakePhase.z_external
 
         # Physical properties
         alpha = self.CakePhase.alpha
         rho_sol = self.Solid_1.getDensity()
         porosity = self.CakePhase.porosity
 
-        xliq = states_init[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
+        xliq = states_prev[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
+        # xliq = states_init[:, num_comp + 1: num_comp + 1 + self.num_volatiles]
 
         xliq_init = np.zeros((self.num_nodes, num_comp))
         xliq_init[:, self.idx_volatiles] = xliq
@@ -304,10 +405,13 @@ class Drying:
 
         self.a_V = 6 / sauter_diam  # m**2/m**3
 
-        # Pressure
+        # Gas pressure
         deltaP_media = deltaP*self.resist_medium / \
-            (alpha*rho_sol*(1 - porosity)*self.cake_height +
-             self.resist_medium)
+            (alpha*rho_sol*self.cake_height + self.resist_medium)
+
+        # deltaP_media = deltaP*self.resist_medium / \
+        #     (alpha*rho_sol*(1 - porosity)*self.cake_height +
+        #      self.resist_medium)
         deltaP -= deltaP_media
 
         p_top = p_atm + deltaP
@@ -327,13 +431,16 @@ class Drying:
                                  (np.mean(surf_tens), rholiq_mass))
 
         # ---------- Solve model
-        model = Explicit_Problem(self.unit_model, y0=states_init.ravel(),
+        model = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                  t0=0)
 
         model.name = 'Drying Model'
         sim = CVode(model)
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
+
+        if not verbose:
+          sim.verbosity = 50
 
         self.retrieve_results(time, states)
 
@@ -362,6 +469,11 @@ class Drying:
 
         self.num_gas = num_gas
         self.num_liq = num_liq
+
+
+    def flatten_states(self):
+        pass
+
 
     def plot_profiles(self, time=None, z_pos=None, fig_size=None, jump=5,
                       pick_idx=None):
@@ -409,11 +521,11 @@ class Drying:
 
         gas_pressure = self.pres_gas[z_idx]
 
-        dry_rate = self.get_drying_rate(x_liq, temp_cond, y_gas, gas_pressure)
+        self.dry_rate = self.get_drying_rate(x_liq, temp_cond, y_gas, gas_pressure)
 
         fig, axis = plt.subplots()
 
-        axis.plot(self.timeProf, dry_rate)
+        axis.plot(self.timeProf, self.dry_rate)
         axis.set_xlabel('time (s)')
         axis.set_ylabel('drying rate ($\mathregular{mol_i \ s^{-1}}$)')
 

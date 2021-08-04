@@ -37,7 +37,7 @@ class SimulationExec:
 
     def LoadUOs(self):
         uos_modules = ('Reactors', 'Crystallizers', 'Containers',
-                       'Evaporators', 'SolidLiquidSep')
+                       'Evaporators', 'SolidLiquidSep', 'Drying_Model')
 
         modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
         for key, value in self.__dict__.items():
@@ -59,11 +59,10 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True):
-
-        # Set connectivity
-        self.LoadUOs()
-        self.LoadConnections()
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
+                       run_subset=None):
+        if len(self.uos_instances) == 0:
+            self.SetConnectivity()
 
         # Pick specific units, if given
         if kwargs_run is None:
@@ -104,7 +103,7 @@ class SimulationExec:
                 print('{}'.format('-'*30))
                 print()
 
-            for conn in self.connection_instances:
+            for conn in self.connection_instances[-2:]:
                 if conn.destination_uo is instance:
                     conn.TransferData()
 

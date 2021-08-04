@@ -7,6 +7,7 @@ Created on Mon Mar  2 15:36:35 2020
 
 from PharmaPy.NameAnalysis import NameAnalyzer
 
+import numpy as np
 import copy
 
 
@@ -79,8 +80,10 @@ class Connection:
 
         self.source_uo = source_uo
         self.destination_uo = destination_uo
+        self.y_list = []
 
     def ReceiveData(self):
+
         # Source UO
         if self.Matter is None:
             self.Matter = self.source_uo.Outlet
@@ -92,6 +95,24 @@ class Connection:
             else:
                 self.Matter.y_upstream = self.source_uo.outputs
                 self.Matter.time_upstream = self.source_uo.timeProf[-1]
+
+            self.y_list.append(self.source_uo.outputs)
+
+        else:
+            if self.source_uo.is_continuous:
+                self.y_list.append(self.source_uo.outputs[1:])
+
+                y_stacked = np.vstack(self.y_list)
+                self.y_list = [y_stacked]
+
+                time_prof = self.source_uo.timeProf
+                idxs = np.where(np.diff(time_prof) > 0)[0]
+
+                time_prof = np.concatenate([time_prof[idxs],
+                                           np.array([time_prof[-1]])])
+
+                self.Matter.y_upstream = y_stacked
+                self.Matter.time_upstream = time_prof
 
     def TransferData(self):
         if self.source_uo is None:
