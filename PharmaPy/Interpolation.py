@@ -91,8 +91,9 @@ class PiecewiseLagrange:
             order of the Lagrange polynomial (1 for piecewise constant,
             2 for linear...)
         time_k : array-like (optional)
-            If None, the time horizon is divided in equally-spaced intervals.
-            Otherwise, time_k represents the limits of the cells.
+            If None, the time horizon is divided in num_intervals equally
+            spaced intervals. Otherwise, time_k represents the limits of the
+            finite elements.
         time_zero : float (optional)
             initial time (default is zero)
 
@@ -102,7 +103,10 @@ class PiecewiseLagrange:
 
         """
 
-        y_vals = np.atleast_2d(y_vals)
+        y_vals = np.atleast_1d(y_vals)
+
+        if y_vals.ndim == 1:
+            y_vals = y_vals.reshape(-1, 1)
 
         if time_k is None:
             num_interv = len(y_vals)
