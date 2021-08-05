@@ -950,7 +950,6 @@ class _BaseCryst:
         ax_supsat = ax_conc.twinx()
         ax_supsat.plot(self.timeProf / time_div, supersat)
         color = ax_supsat.lines[0].get_color()
-        ax_supsat.axhline(0, ls='--', alpha=0.6)
 
         if self.Kinetics.rel_super:
             ax_supsat.set_ylabel(
