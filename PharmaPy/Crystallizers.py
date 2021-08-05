@@ -50,6 +50,7 @@ gas_ct = 8.314  # J/mol/K
 class _BaseCryst:
     np = np
     # @decor_states
+
     def __init__(self, mask_params,
                  method, target_ind, scale,
                  isothermal, controls, params_control, cfun_solub,
@@ -417,13 +418,13 @@ class _BaseCryst:
 
                 inlet_distr = u_input['num_distrib']
 
-                mom_in = self.Inlet.Solid_1.getMoments(inlet_distr, mom_num=3)
+                mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
+                                                       mom_num=3)
 
                 phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
                 phis_in = np.concatenate([phi_in, 1 - phi_in])
 
-                h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in,
-                                              rhos_in)
+                h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in, rhos_in)
             else:
                 # self.Inlet.updatePhase(mass_frac=massfrac_in)
                 rho_liq_in = self.Inlet.getDensity(temp=inlet_temp)
@@ -1012,7 +1013,7 @@ class _BaseCryst:
             fig = plt.figure(figsize=fig_size)
 
             ax = fig.gca(projection='3d')
-            ax.plot_surface(t_mesh, x_mesh, np.log10(csd_plot[2:,:90]),
+            ax.plot_surface(t_mesh, x_mesh, np.log10(csd_plot[2:, :90]),
                             facecolors=rgb, antialiased=False,
                             linewidth=0,
                             rstride=2, cstride=2)
