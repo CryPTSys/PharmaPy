@@ -819,16 +819,16 @@ class _BaseCryst:
 
         if self.method == 'moments':
             self.Solid_1.momProf = self.distribProf
+            self.momProf = self.distribProf
         else:
             distrProf = self.distribProf * self.vol_mult
             self.Solid_1.distribProf = distrProf
-            momProf = self.Solid_1.getMoments(distrib=distrProf,
-                                              mom_num=[0, 1, 2, 3, 4])
 
-            # for ind in range(momProf.shape[1]):
-            #     momProf[:, ind] *= (1e-6)**ind
+            self.Solid_1.momProf = self.Solid_1.getMoments(
+                distrib=distrProf, mom_num=[0, 1, 2, 3, 4])
 
-            self.Solid_1.momProf = momProf
+            self.momProf = self.Solid_1.getMoments(
+                distrib=self.distribProf, mom_num=[0, 1, 2, 3, 4])
 
     def plot_profiles(self, fig_size=None, relative_mu0=False,
                       title=None, time_div=1, plot_solub=True):
@@ -842,7 +842,7 @@ class _BaseCryst:
         self.supsatProf = supersat
 
         # if self.method == 'moments':
-        mu = self.Solid_1.momProf
+        mu = self.momProf
         num_mu = mu.shape[1]
         idx_mom = np.arange(mu.shape[1])
 
@@ -934,7 +934,7 @@ class _BaseCryst:
         # ---------- Concentration
         ax_conc = axes.flatten()[ind + 2]
         ax_conc.plot(self.timeProf/time_div,
-                     self.wConcProf[:, self.target_ind], 'b')
+                     self.wConcProf[:, self.target_ind], 'k')
 
         target_id = self.name_species[self.target_ind]
 

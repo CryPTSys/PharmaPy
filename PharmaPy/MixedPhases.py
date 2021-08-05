@@ -74,7 +74,7 @@ class Slurry:
                 self.distrib = self.Solid_1.distrib / self.vol_slurry
 
                 self.dx = self.Solid_1.dx
-                self.moments = self.Solid_1.getMoments(self.distrib)
+                self.moments = self.Solid_1.getMoments(distrib=self.distrib)
         else:
             delta_x = np.diff(self.x_distrib)
             equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
@@ -94,7 +94,7 @@ class Slurry:
                 self.dx = np.diff(x_grid)
 
             self.Solid_1.x_distrib = self.x_distrib
-            self.moments = self.Solid_1.getMoments(self.distrib)
+            self.moments = self.Solid_1.getMoments(distrib=self.distrib)
 
             if self.vol_slurry > 0:
                 dens_liq = self.Liquid_1.getDensity()
@@ -151,7 +151,7 @@ class Slurry:
         elif distrib is None:
             mom_three = mu_3
         elif mu_3 is None:
-            mom_three = self.Solid_1.getMoments(distrib, 3)
+            mom_three = self.Solid_1.getMoments(distrib=distrib, mom_num=3)
 
         vol_solid = mom_three * self.Solid_1.kv
         vol_fracs = np.array([1 - vol_solid, vol_solid])
@@ -260,7 +260,7 @@ class SlurryStream(Slurry):
             self.distrib = self.Solid_1.distrib / self.vol_slurry
 
             self.dx = self.Solid_1.dx
-            self.moments = self.Solid_1.getMoments(self.distrib)
+            self.moments = self.Solid_1.getMoments(distrib=self.distrib)
         else:
             delta_x = np.diff(self.x_distrib)
             equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
