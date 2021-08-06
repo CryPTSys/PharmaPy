@@ -50,6 +50,17 @@ class LiquidStream(LiquidPhase):
         self.y_upstream = None
         self.time_upstream = None
 
+        # Controls
+        controllable = ('mass_flow', 'vol_flow', 'mole_flow', 'temp', 'pres')
+
+        controls = {}
+        for name in controllable:
+            attr = getattr(self, name)
+            if callable(attr):
+                controls[name] = attr
+
+        self.controls = controls
+
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
             y_interpol = Interpolation(self.time_upstream, self.y_inlet,
@@ -123,10 +134,6 @@ class VaporStream(VaporPhase):
         # del self.moles
 
 
-
-
-
 if __name__ == '__main__':
     path = '../../data/evaporator/compounds_evap.json'
     stream_liq = LiquidStream(path)
-

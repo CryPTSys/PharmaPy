@@ -9,6 +9,7 @@ import numpy as np
 from autograd import numpy as np
 from autograd import jacobian as jacauto
 from PharmaPy.Commons import mid_fn, trapezoidal_rule
+from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
 from PharmaPy.NameAnalysis import get_dict_states
@@ -306,7 +307,7 @@ class Evaporator:
         self._Inlet = None
         self._Phases = phase
         self.material_from_upstream = False
-        
+
         self.k_vap = k_vap
         self.cv_gas = cv_gas
 
@@ -399,6 +400,9 @@ class Evaporator:
         self.names_states_out = ['mole_frac', 'moles', 'temp']
         self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
                             'pres', 'u_int', 'temp']
+
+        self.names_upstream = None
+        self.bipartite = None
 
     def get_inputs(self, time):
         if self.Inlet is None:
@@ -527,7 +531,7 @@ class Evaporator:
             du_dt = states_dot[-2]
 
         # Inputs
-        u_inputs = self.get_inputs(time)
+        u_inputs = get_inputs(time, *self.args_inputs)
 
         if states_dot is None:
             # Material balance
@@ -741,6 +745,13 @@ class Evaporator:
             raise TerminateSimulation
 
     def solve_unit(self, runtime, verbose=True):
+
+        self.args_inputs = (self.Inlet,
+                            self.names_upstream,
+                            self.names_states_in,
+                            self.bipartite,
+                            self.num_species)
+
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
