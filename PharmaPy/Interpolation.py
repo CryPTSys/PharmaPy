@@ -171,7 +171,7 @@ class PiecewiseLagrange:
 
             poly[:, i] = poly_indiv.prod(axis=1)
 
-        u_time = np.zeros_like(time_eval)
+        u_time = np.zeros_like(time_eval, dtype=float)
 
         for ind in np.unique(k):
             row_map = k == ind

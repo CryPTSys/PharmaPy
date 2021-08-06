@@ -385,7 +385,8 @@ class Evaporator:
 
         paths = [path_comp, path_inert]
 
-        fields = ['temp', 'pres', 'mole_flow', 'mole_frac']
+        fields = ['temp', 'pres', 'mole_flow', 'mole_frac',
+                  'controls', 'args_control']
         inlet_dict = {key: inlet.__dict__.get(key) for key in fields}
         inlet_dict['mole_frac'] = np.append(inlet_dict['mole_frac'], 0)
 
@@ -475,11 +476,17 @@ class Evaporator:
         input_temp = u_inputs['temp']
 
         # Enthalpies
-        if input_flow > 0:
-            h_in = self.Inlet.getEnthalpy(temp=input_temp, mole_frac=input_fracs,
+        if isinstance(input_flow, np.ndarray):
+            h_in = self.Inlet.getEnthalpy(temp=input_temp,
+                                          mole_frac=input_fracs,
                                           basis='mole')
         else:
-            h_in = 0
+            if input_flow > 0:
+                h_in = self.Inlet.getEnthalpy(temp=input_temp,
+                                              mole_frac=input_fracs,
+                                              basis='mole')
+            else:
+                h_in = 0
 
         h_liq = self.LiqEvap.getEnthalpy(temp, mole_frac=x_i, basis='mole')
         h_vap = self.VapEvap.getEnthalpy(temp, mole_frac=y_i, basis='mole')
@@ -629,6 +636,10 @@ class Evaporator:
 
         x_init = FlashInit.LiquidOut.mole_frac
         y_init = FlashInit.VaporOut.mole_frac
+
+        if not np.isclose(y_init.sum(), 1, atol=1e-4):  # TODO: does this make sense?
+            y_init = y_seed
+
         temp_init = FlashInit.LiquidOut.temp
 
         mol_liq = FlashInit.LiquidOut.moles

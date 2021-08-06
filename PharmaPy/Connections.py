@@ -29,7 +29,7 @@ def get_inputs(time, Inlet, names_upstream, names_states_in, bipartite,
     elif len(Inlet.controls) > 0:
         input_dict = {}
         for key, val in Inlet.controls.items():
-            args = Inlet.args_controls[key]
+            args = Inlet.args_control[key]
             input_dict[key] = val(time, *args)
 
         for key in names_states_in:

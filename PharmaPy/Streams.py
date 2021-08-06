@@ -29,6 +29,7 @@ def Interpolation(t_data, y_data, time):
 class LiquidStream(LiquidPhase):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass_flow=0, vol_flow=0, mole_flow=0,
+                 controls=None, args_control=None,
                  mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None,
                  ind_solv=None):
 
@@ -51,15 +52,20 @@ class LiquidStream(LiquidPhase):
         self.time_upstream = None
 
         # Controls
-        controllable = ('mass_flow', 'vol_flow', 'mole_flow', 'temp', 'pres')
+        if controls is None:
+            controls = {}
+        else:
+            if args_control is None:
+                args_control = {key: () for key in controls.keys()}
 
-        controls = {}
-        for name in controllable:
-            attr = getattr(self, name)
-            if callable(attr):
-                controls[name] = attr
+            update_dict = {}
+            for key, fun in controls.items():
+                update_dict[key] = fun(0, *args_control[key])
+
+            self.updatePhase(**update_dict)
 
         self.controls = controls
+        self.args_control = args_control
 
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
