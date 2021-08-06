@@ -101,7 +101,12 @@ class _BaseCryst:
             self.params_control = ()
         else:
             self.controls = controls
-            self.params_control = params_control
+            if params_control is None:
+                self.params_control = {}
+                for key in self.controls.keys():
+                    self.params_control[key] = ()
+            else:
+                self.params_control = params_control
 
         self.isothermal = isothermal
         if 'temp' in self.controls.keys():
@@ -131,6 +136,7 @@ class _BaseCryst:
         self.elapsed_time = 0
         self.temp_runs = []
         self.wConc_runs = []
+        self.vol_runs = []
         self.distrib_runs = []
         self.time_runs = []
         self.tempHT_runs = []
@@ -1505,9 +1511,11 @@ class BatchCryst(_BaseCryst):
         time_profile = np.array(time)
 
         # Decompose states
-        self.timeProf.append(time_profile)
+        self.time_runs.append(time_profile)
+
         distribProf = states[:, :self.num_distr] / self.scale
-        self.distribProf.append(distribProf)
+        self.distrib_runs.append(distribProf)
+
         self.volProf = states[:, self.num_distr + self.num_species]
 
         vol_liq = self.volProf[-1]
@@ -1531,7 +1539,7 @@ class BatchCryst(_BaseCryst):
             self.distribVolProf = distribProf * self.Solid_1.kv * self.x_grid**3
 
         if self.isothermal:
-            self.tempProf.append(
+            self.temp_runs.append(
                 np.ones_like(time_profile) * self.Liquid_1.temp)
 
         elif 'temp' in self.controls.keys():
@@ -1542,34 +1550,34 @@ class BatchCryst(_BaseCryst):
             temp_controlled = self.controls['temp'](
                 time_profile, *self.params_control['temp'])
 
-            self.tempProf.append(temp_controlled)
+            self.temp_runs.append(temp_controlled)
 
-            self.Liquid_1.temp = self.tempProf[-1][-1]
+            self.Liquid_1.temp = self.temp_runs[-1][-1]
             # self.Liquid_1.tempProf = self.tempProf[-1]
         else:
-            self.tempProf.append(states[:, -2])
-            self.tempProfHt.append(states[:, -1])
+            self.temp_runs.append(states[:, -2])
+            self.tempHT_runs.append(states[:, -1])
 
             self.Liquid_1.temp = self.tempProf[-1][-1]
 
         wConcProf = states[:, self.num_distr:self.num_distr + self.num_species]
 
-        self.wConcProf.append(wConcProf)
+        self.wConc_runs.append(wConcProf)
 
         self.states = states[-1]
         self.temp = self.Liquid_1.temp
 
         if self.method == 'moments':
-            self.Solid_1.moments = self.distribProf[-1][-1]
+            self.Solid_1.moments = self.distrib_runs[-1][-1]
         else:
-            self.Solid_1.distrib = self.distribProf[-1][-1]
+            self.Solid_1.distrib = self.distrib_runs[-1][-1]
 
-        self.w_conc = self.wConcProf[-1][-1]
+        self.w_conc = self.wConc_runs[-1][-1]
 
         self.Liquid_1.updatePhase(mass_conc=self.w_conc, vol=self.volProf[-1])
 
         if self.method == '1D-FVM':
-            self.Solid_1.updatePhase(distrib=self.distribProf[-1][-1],
+            self.Solid_1.updatePhase(distrib=self.distrib_runs[-1][-1],
                                      mass=mass_sol)
 
         self.elapsed_time = time[-1]
