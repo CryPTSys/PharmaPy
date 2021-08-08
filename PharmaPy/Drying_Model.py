@@ -191,7 +191,9 @@ class Drying:
         limiter_factor = self.eta_fun(sat_eta, w_eta)
 
         # Dry rate
-        self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas, self.pres_gas)
+        self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
+                                             self.pres_gas)
+
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
@@ -285,7 +287,7 @@ class Drying:
                                       basis='mole')
 
         latent_heat = self.Vapor_1.getHeatVaporization(temp_sol,
-                                                       idx=self.idx_volatiles,
+                                                       # idx=self.idx_volatiles,
                                                        basis='mole')
 
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
@@ -309,7 +311,7 @@ class Drying:
 
             return [dTg_dt, dTcond_dt]
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325, 
+    def solve_unit(self, deltaP, runtime, p_atm=101325,
                    verbose=True):
 
         # ---------- Discretization
@@ -338,7 +340,7 @@ class Drying:
         # Temperatures
         temp_cond_init = self.CakePhase.Solid_1.temp
         temp_gas_init = self.Vapor_1.temp
-        z_cake = self.CakePhase.z_external # For drying_script_inyoung
+        z_cake = self.CakePhase.z_external  # For drying_script_inyoung
         # z_cake = self.CakePhase.z_external # This line for 2MSMPR_Filter.py
 
         if x_liq_init.ndim == 1:
@@ -436,7 +438,7 @@ class Drying:
         sim = CVode(model)
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
-        
+
         if not verbose:
           sim.verbosity = 50
 

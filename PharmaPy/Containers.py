@@ -25,12 +25,9 @@ import copy
 
 
 class Mixer:
-    def __init__(self, phases=(), vol=None, inlets=None, temp_refer=298.15):
+    def __init__(self, phases=(), vol=None, temp_refer=298.15):
 
-        if inlets is None:
-            self.inlets = []
-        else:
-            self.inlets = inlets
+        self._Inlets = []
 
         self.oper_mode = None
 
@@ -45,6 +42,21 @@ class Mixer:
 
         self.type_out = None
 
+    @property
+    def Inlets(self):
+        return self._Inlets
+
+    @Inlets.setter
+    def Inlets(self, inlets):
+        if isinstance(inlets, (list, tuple)):
+            self._Inlets += list(inlets)
+        else:
+            self._Inlets.append(inlets)
+
+        # if update_names:
+        self.names_upstream.append(None)
+        self.bipartite.append(None)
+
     def nomenclature(self):
         self.names_states_in = ['mass_frac', 'mass', 'mass_flow', 'temp']
         self.names_states_out = self.names_states_in
@@ -53,7 +65,7 @@ class Mixer:
 
     def get_inputs(self, inlets=None):
         if inlets is None:
-            inlets = self.inlets
+            inlets = self.Inlets
 
         num_species = inlets[0].num_species
 
@@ -78,6 +90,7 @@ class Mixer:
         massfracs = []
         masses = []
         temps = []
+
         if is_flow:
             names_in = [name for name in self.names_states_in
                         if name != 'mass']
@@ -85,7 +98,7 @@ class Mixer:
             self.is_continuous = True
 
             timegrid_ref = None
-            for ind, inlet in enumerate(self.inlets):
+            for ind, inlet in enumerate(self.Inlets):
                 if inlet.y_upstream is None:
                     massfracs.append(inlet.mass_frac)
                     temps.append(inlet.temp)
@@ -152,13 +165,13 @@ class Mixer:
 
         timeseries_flag = []
 
-        for inlet in self.inlets:
+        for inlet in self.Inlets:
             if inlet.y_upstream is None:
                 timeseries_flag.append(False)
             else:
                 timeseries_flag.append(len(inlet.y_upstream) > 1)
 
-        solids_flag = [hasattr(inlet, 'Solid_1') for inlet in self.inlets]
+        solids_flag = [hasattr(inlet, 'Solid_1') for inlet in self.Inlets]
 
         mass_solid = []
         mass_liquid = []
@@ -169,13 +182,13 @@ class Mixer:
         temps = []
 
         ind_solid = np.argmax(solids_flag)
-        num_dist = self.inlets[ind_solid].Solid_1.distrib.shape[0]
+        num_dist = self.Inlets[ind_solid].Solid_1.distrib.shape[0]
 
         if any(timeseries_flag):
             pass
         else:
             self.oper_mode = 'Batch'  # TODO: not necessarily
-            for inlet in self.inlets:
+            for inlet in self.Inlets:
                 if hasattr(inlet, 'Solid_1'):
                     mass_solid.append(inlet.Solid_1.mass)
                     mass_liquid.append(inlet.Liquid_1.mass)
@@ -216,7 +229,7 @@ class Mixer:
         mass_in = u_inputs['mass_liq']
 
         h_in = []
-        for ind, inlet in enumerate(self.inlets):
+        for ind, inlet in enumerate(self.Inlets):
             if hasattr(inlet, 'Solid_1'):
                 distrib_in = u_inputs['num_distrib']
                 h_in.append(inlet.getEnthalpy(temp_in[ind],
@@ -312,7 +325,7 @@ class Mixer:
         massfrac = np.dot(mass_liquid, massfrac_liq) / total_liquid
 
         # Physical properties
-        phase_wsolids = self.inlets[ind_solids]
+        phase_wsolids = self.Inlets[ind_solids]
         path = phase_wsolids.Liquid_1.path_data
 
         # TODO: Using phase_wsolids.getDensity() doesnn't allow updating fracs
@@ -367,12 +380,12 @@ class Mixer:
 
         # ---------- Read inputs
         solids_flag = [inlet.__module__ == 'PharmaPy.MixedPhases'
-                       for inlet in self.inlets]
+                       for inlet in self.Inlets]
 
         if any(solids_flag):
             u_input, ind_solids = self.get_inputs_solids()
 
-            path = self.inlets[0].path_data
+            path = self.Inlets[0].path_data
             self.Liquid_1 = LiquidPhase(path)
             if isinstance(u_input['mass_frac'], list):
                 pass
@@ -382,7 +395,7 @@ class Mixer:
             u_input = self.get_inputs()
 
             # ---------- Create output phase
-            path = self.inlets[0].path_data
+            path = self.Inlets[0].path_data
             if self.is_continuous:
                 self.Liquid_1 = LiquidStream(path_thermo=path)
             else:
@@ -401,7 +414,7 @@ class Mixer:
 
     def retrieve_results(self, states):
         solids_flag = [inlet.__module__ == 'PharmaPy.MixedPhases'
-                       for inlet in self.inlets]
+                       for inlet in self.Inlets]
 
         if any(solids_flag):
             mass_liq, mass_sol, massfrac_liq, distrib, temp = states
@@ -461,6 +474,7 @@ class DynamicCollector:
         #     classify_phases(self.inlet)
 
         self.tau = tau
+        self.vol_offset = 0.75
 
         self.oper_mode = 'Dynamic'
         self.time_shift = timeshift_factor
@@ -547,7 +561,7 @@ class DynamicCollector:
 
         return dtemp_dt
 
-    def solve_unit(self, runtime=None, time_grid=None):
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
         init_dict = self.get_inputs(0)
         temp_init = init_dict['temp']
@@ -579,7 +593,8 @@ class DynamicCollector:
             SemiCryst.names_upstream = self.names_upstream
             SemiCryst.bipartite = self.bipartite
 
-            time, states = SemiCryst.solve_unit(runtime, time_grid)
+            time, states = SemiCryst.solve_unit(runtime, time_grid,
+                                                verbose=verbose)
 
             # Retrieve crystallizer results
             output_names = ['timeProf', 'wConcProf', 'tempProf', 'Outlet',
@@ -590,6 +605,12 @@ class DynamicCollector:
 
             self.CrystInst = SemiCryst
             self.Outlet = SemiCryst.Outlet
+
+            vol_phase = self.Outlet.vol_slurry
+            if isinstance(vol_phase, np.ndarray):
+                vol_phase = vol_phase[0]
+
+            self.vol_phase = vol_phase
         else:
             path = self.Inlet.path_data
             mass_init = init_dict['mass_flow'] / 10
@@ -604,9 +625,18 @@ class DynamicCollector:
             problem = Explicit_Problem(self.unit_model, states_init, t0=0)
             solver = CVode(problem)
 
+            if not verbose:
+                solver.verbosity = 50
+
             time, states = solver.simulate(runtime, ncp_list=time_grid)
 
             self.retrieve_results(time, states)
+
+            vol_liq = self.Liquid_1.vol
+            if isinstance(vol_liq, np.ndarray):
+                vol_liq = vol_liq[0]
+
+            self.vol_phase = vol_liq
 
         return time, states
 

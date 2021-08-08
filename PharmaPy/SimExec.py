@@ -8,7 +8,7 @@ Created on Mon Jan 13 12:44:44 2020
 import numpy as np
 import pandas as pd
 from PharmaPy.ThermoModule import ThermoPhysicalManager
-from PharmaPy.ParamEstim import ParameterEstimation
+from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
 from collections import OrderedDict
 import time
@@ -43,6 +43,7 @@ class SimulationExec:
         for key, value in self.__dict__.items():
             type_val = getattr(value, '__module__', None)
             if type_val in modules_ids:
+                value.id_uo = key
                 value.name_species = self.NamesSpecies
                 self.uos_instances[key] = value
                 # self.oper_mode.append(value.oper_mode)
@@ -52,29 +53,25 @@ class SimulationExec:
             module_name = getattr(value, '__module__', None)
             if module_name == 'PharmaPy.Connections':
                 value.ThermoInstance = self.ThermoInstance
+
                 self.connection_instances.append(value)
                 self.connection_names.append(key)
 
-    def SetConnectivity(self, incidence_matrix=None):
-        self.LoadUOs()
-        self.LoadConnections()
+                value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None,
-                       run_subset=None):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, run_subset=None,
+                       verbose=True):
+
         if len(self.uos_instances) == 0:
-            self.SetConnectivity()
+            self.LoadUOs()
+            self.LoadConnections()
 
         # Pick specific units, if given
-        if pick_units is None:
-            picked = self.uos_instances
-        else:
-            picked = pick_units
-
         if kwargs_run is None:
             if pick_units is None:
                 keys = self.uos_instances.keys()
             else:
-                keys = pick_units.keys()
+                keys = pick_units
 
             kwargs_run = {key: {} for key in keys}
 
@@ -90,18 +87,22 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
-        if run_subset is not None:
-            execution_order = [execution_order[i] for i in run_subset]
+        if pick_units is not None:
+            uos_names = list(uos.keys())
+            idx = [uos_names.index(name) for name in pick_units]
+            idx.sort()
+            execution_order = [execution_order[i] for i in idx]
 
         # Run loop
         for instance in execution_order:
             uo_id = list(uos.keys())[list(uos.values()).index(instance)]
 
-            print()
-            print('{}'.format('-'*30))
-            print('Running {}'.format(uo_id))
-            print('{}'.format('-'*30))
-            print()
+            if verbose:
+                print()
+                print('{}'.format('-'*30))
+                print('Running {}'.format(uo_id))
+                print('{}'.format('-'*30))
+                print()
 
             for conn in self.connection_instances:
                 if conn.destination_uo is instance:
@@ -113,16 +114,22 @@ class SimulationExec:
             if uo_type != 'PharmaPy.Containers':
                 instance.flatten_states()
 
-            print()
-            print('Done!')
-            print()
+            if verbose:
+                print()
+                print('Done!')
+                print()
 
             # Connectivity
             for conn in self.connection_instances:
                 if conn.source_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
 
+        self.execution_order = execution_order
+
     def GetStreamTable(self, basis='mass'):
+
+        # # TODO: include inlets and holdups in the stream table
+        # inlets, holdups, _, inlets_id, holdups_id = self.get_raw_objects()
 
         if basis == 'mass':
             fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
@@ -177,12 +184,13 @@ class SimulationExec:
 
         return stream_table
 
-    def SetParamEstimation(self, x_data,
-                           param_seed=None, y_data=None, spectra=None,
-                           fit_spectra=False,
-                           phase_modifiers=None,
+    def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+                           spectra=None,
+                           fit_spectra=False, global_analysis=True,
+                           wrapper_args=[],
+                           phase_modifiers=None, control_modifiers=None,
                            measured_ind=None, optimize_flags=None,
-                           df_dtheta=None, df_dy=None,
+                           jac_fun=None,
                            covar_data=None,
                            pick_unit=None):
 
@@ -199,13 +207,30 @@ class SimulationExec:
                 pass  # remember setting reset_states to True!!
 
         if phase_modifiers is None:
-            phase_modifiers = {}
+            if control_modifiers is None:
+                phase_modifiers = [phase_modifiers]
+            else:
+                phase_modifiers = [phase_modifiers] * len(control_modifiers)
+
+        if control_modifiers is None:
+            if phase_modifiers is None:
+                control_modifiers = [control_modifiers]
+            else:
+                control_modifiers = [control_modifiers] * len(phase_modifiers)
+
+        args_wrapper = list(zip(phase_modifiers, control_modifiers))
+
+        if len(args_wrapper) == 1:
+            args_wrapper = args_wrapper[0]
+
+        args_wrapper = list(args_wrapper) + wrapper_args
 
         # Get 1D array of parameters from the UO class
-        if param_seed is None:
-            # All UOs must have this attrib
-            param_seed = target_unit.Kinetics.concat_params()
-            param_seed = param_seed[target_unit.mask_params]
+        if param_seed is not None:
+            target_unit.Kinetics.set_params(param_seed)
+
+        param_seed = target_unit.Kinetics.concat_params()
+        # param_seed = param_seed[target_unit.mask_params]
 
         name_params = []
 
@@ -216,13 +241,22 @@ class SimulationExec:
         name_states = target_unit.states_uo
 
         # Instantiate parameter estimation
-        self.ParamInst = ParameterEstimation(
-            target_unit.paramest_wrapper,
-            param_seed, x_data, y_data, spectra, fit_spectra=fit_spectra,
-            args_fun=phase_modifiers, measured_ind=measured_ind,
-            optimize_flags=optimize_flags,
-            df_dtheta=df_dtheta, df_dy=df_dy, covar_data=covar_data,
-            name_params=name_params, name_states=name_states)
+        if fit_spectra:
+            self.ParamInst = MultipleCurveResolution(
+                target_unit.paramest_wrapper,
+                param_seed, x_data, spectra, global_analysis,
+                args_fun=args_wrapper, measured_ind=measured_ind,
+                optimize_flags=optimize_flags,
+                jac_fun=jac_fun, covar_data=covar_data,
+                name_params=name_params, name_states=name_states)
+        else:
+            self.ParamInst = ParameterEstimation(
+                target_unit.paramest_wrapper,
+                param_seed, x_data, y_data,
+                args_fun=args_wrapper, measured_ind=measured_ind,
+                optimize_flags=optimize_flags,
+                jac_fun=jac_fun, covar_data=covar_data,
+                name_params=name_params, name_states=name_states)
 
     def EstimateParams(self, optim_options=None, method='LM', bounds=None,
                        verbose=True):
@@ -237,6 +271,224 @@ class SimulationExec:
         print('Optimization time: {:.2e} s.'.format(elapsed))
 
         return results
+
+    def get_raw_objects(self):
+        raw_inlets = []
+        inlets_ids = []
+
+        raw_holdups = []
+        holdups_ids = []
+
+        time_inlets = []
+
+        for ind, uo in enumerate(self.execution_order):
+            # Inlets (flows)
+            if hasattr(uo, 'Inlet'):
+                if uo.Inlet is not None:
+                    if uo.Inlet.y_upstream is None:
+                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+                        raw_inlets.append(inlet)
+
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
+                        inlets_ids.append(uo.id_uo)
+
+            elif hasattr(uo, 'Inlets'):
+                for inlet in uo.Inlets:
+                    if inlet.y_upstream is None:
+                        raw_inlets.append(inlet)
+
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
+                        inlets_ids.append(uo.id_uo)
+
+            # Initial holdups
+            if hasattr(uo, '__original_phase__'):
+                if uo.oper_mode == 'Continuous':
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+                elif not uo.material_from_upstream:
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+
+        return (raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids,
+                holdups_ids)
+
+    def GetRawMaterials(self):
+        # ---------- CAPEX
+        # Raw materials
+        (raw_flows, raw_holdups, time_flows,
+         flow_idx, holdup_idx) = self.get_raw_objects()
+
+        # Flows
+        fracs = []
+        masses_inlets = np.zeros(len(raw_flows))
+        for ind, obj in enumerate(raw_flows):
+            try:
+                masses_inlets[ind] = obj.mass_flow
+            except:
+                masses_inlets[ind] = obj.mass
+
+            fracs.append(obj.mass_frac)
+
+        masses_inlets *= time_flows
+
+        fracs = np.array(fracs)
+
+        inlet_comp_mass = (fracs.T * masses_inlets).T
+
+        # Holdups
+        fracs = []
+        masses_holdups = np.zeros(len(raw_holdups))
+        for ind, obj in enumerate(raw_holdups):
+            if isinstance(obj, list):
+                masa = [elem.mass for elem in obj]
+                masa = np.array(masa)
+
+                frac = [elem.mass_frac for elem in obj]
+                frac = (np.array(frac).T * masa).T
+                frac = frac.sum(axis=0)
+
+                mass = 1
+            else:
+                mass = obj.mass
+                frac = obj.mass_frac
+
+            masses_holdups[ind] = mass
+            fracs.append(frac)
+
+        fracs = np.array(fracs)
+
+        holdup_comp_mass = (fracs.T * masses_holdups).T
+
+        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
+                               columns=self.NamesSpecies)
+
+        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
+                                 columns=self.NamesSpecies)
+
+        raw_df = pd.concat((flow_df, holdup_df), axis=0,
+                           keys=('inlets', 'holdups'))
+        raw_total = raw_df.sum(axis=0)
+
+        return raw_df, raw_total
+
+    def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
+                 f_pres=None, f_mat=None, min_capacity=None):
+
+        size_equipment = {}
+
+        for key, instance in self.uos_instances.items():
+            if hasattr(instance, 'vol_tot'):
+                size_equipment[key] = instance.vol_tot
+            elif hasattr(instance, 'vol_phase'):
+                off_vol = instance.vol_offset
+                size_equipment[key] = instance.vol_phase / off_vol
+
+            elif hasattr(instance, 'area_filt'):
+                size_equipment[key] = instance.area_filt
+
+        num_equip = len(size_equipment)
+        name_equip = size_equipment.keys()
+        if cepci_vals is None:
+            cepci_vals = np.ones(2)
+
+        if f_pres is None:
+            f_pres = np.ones(num_equip)
+
+        if f_mat is None:
+            f_mat = np.ones(num_equip)
+
+        if k_vals is None:
+            return size_equipment
+        else:
+            capacities = np.array(list(size_equipment.values()))
+
+            if min_capacity is None:
+                a_corr = capacities
+            else:
+                a_corr = np.maximum(min_capacity, capacities)
+
+            k1, k2, k3 = k_vals.T
+            cost_zero = 10**(k1 + k2*np.log10(a_corr) + k3*np.log10(a_corr)**2)
+
+            b1, b2 = b_vals.T
+
+            f_bare = b1 + b2 * f_mat * f_pres
+            cost_equip = cost_zero * f_bare
+
+            scale_corr = np.ones_like(capacities)
+            if min_capacity is not None:
+                for ind, capac in enumerate(capacities):
+                    if capac < min_capacity[ind]:
+                        scale_corr[ind] = (capac / min_capacity[ind])**0.6
+
+            cost_equip *= scale_corr
+
+            cost_equip = dict(zip(name_equip, cost_equip))
+
+            return size_equipment, cost_equip
+
+    def GetDuties(self, full_output=False):
+        heat_duties = []
+        equipment_ids = []
+        duty_ids = []
+
+        for key, instance in self.uos_instances.items():
+            if hasattr(instance, 'heat_duty'):
+                duty_ids.append(instance.duty_type)
+
+                heat_duties.append(instance.heat_duty)
+                equipment_ids.append(key)
+
+        heat_duties = np.array(heat_duties)
+        heat_duties = pd.DataFrame(heat_duties, index=equipment_ids,
+                                   columns=['heating', 'cooling'])
+
+        duties_ids = np.array(duty_ids)
+
+        if full_output:
+            return heat_duties, duties_ids
+        else:
+            return heat_duties
+
+    def GetOPEX(self, cost_raw, full_output=False):
+        cost_raw = np.asarray(cost_raw)
+
+        # ---------- Heat duties
+        # Energy cost (USD/GJ)
+        heat_exchange_cost = [14.12, 8.49, 4.77,  # refrigeration
+                              0.378,  # water
+                              4.54, 4.77, 5.66]  # steam
+
+        heat_exchange_cost = np.array(heat_exchange_cost)
+
+        duties, map_duties = self.GetDuties(full_output=True)
+        map_duties += 3
+
+        duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)
+        for ind, row in enumerate(map_duties):
+            duty_unit_cost[ind] = heat_exchange_cost[row]
+
+        duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
+
+        # Raw materials
+        _, raw_materials = self.GetRawMaterials()
+        raw_cost = cost_raw * raw_materials[raw_materials > 0]
+
+        opex = {'raw_materials': raw_cost.sum(),
+                'heat_duties': sum(duty_cost.sum())}
+
+        if full_output:
+            return opex, duty_cost, raw_cost
+        else:
+            return opex
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)

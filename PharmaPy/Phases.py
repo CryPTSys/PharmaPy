@@ -54,7 +54,8 @@ def getPropsPhaseMix(phases, basis='mass'):
         if phase.__class__.__name__ == 'SolidPhase':
             mom_solid = all_props[-2]
             conv_exp = np.arange(len(mom_solid))
-            mom_meters = mom_solid * (1e-6)**conv_exp  # num/m**3, m/m**3, m**2/m**3, ...
+            # num/m**3, m/m**3, m**2/m**3, ...
+            mom_meters = mom_solid * (1e-6)**conv_exp
 
             vfrac_solid = mom_meters[-1] * phase.kv
             vfrac_phases.append(vfrac_solid)
@@ -65,7 +66,8 @@ def getPropsPhaseMix(phases, basis='mass'):
     vfrac_rest = 1 - sum(vfrac_phases)
     vfrac_phases.insert(ind_liq, vfrac_rest)
 
-    vfrac_phases = np.array(vfrac_phases)  # to avoid internal casting next line
+    # to avoid internal casting next line
+    vfrac_phases = np.array(vfrac_phases)
 
     mass_phases = vfrac_phases * props_matrix[:, 1]
     mfrac_phases = mass_phases / mass_phases.sum()
@@ -89,14 +91,11 @@ class LiquidPhase(ThermoPhysicalManager):
         ----------
         mass_frac : array-like (optional)
             mass fractions of the constituents of the phase.
-        concentr : array-like (optional)
-            molar concentrations of the constituents of the phase, excluding
+        mole_conc : array-like (optional)
+            molar mole_concations of the constituents of the phase, excluding
             the solvent
-        num_comp : int
-            number of components in the phase. It must be specified only if
-            'mass_frac' or 'concentr' are not given.
         ind_solv : int
-            index of solvent components in the liquid phase. It must be 
+            index of solvent components in the liquid phase. It must be
             only specified if 'mass_frac' or 'mole_frac' are not given.
         """
 
@@ -116,7 +115,7 @@ class LiquidPhase(ThermoPhysicalManager):
             self.mass_conc = np.ones(self.num_species) * eps
 
             self.mole_frac = np.ones(self.num_species) * eps
-            self.concentr = mole_conc
+            self.mole_conc = mole_conc
 
             self.mw_av = 0
         elif mass_frac is not None:
@@ -124,7 +123,7 @@ class LiquidPhase(ThermoPhysicalManager):
             self.mass_conc = mass_conc
 
             self.mole_frac = mole_frac
-            self.concentr = mole_conc
+            self.mole_conc = mole_conc
 
             if self.mass_frac.ndim == 1:
                 sum_fracs = sum(self.mass_frac)
@@ -147,7 +146,7 @@ class LiquidPhase(ThermoPhysicalManager):
             self.mass_conc = mass_conc
 
             self.mole_frac = np.array(mole_frac)
-            self.concentr = mole_conc
+            self.mole_conc = mole_conc
             sum_fracs = sum(mole_frac)
             if verbose:
                 if sum_fracs < 0.99:
@@ -163,12 +162,12 @@ class LiquidPhase(ThermoPhysicalManager):
             self.mole_frac = mole_frac
 
             self.mass_frac = mass_frac
-            self.concentr = mole_conc
+            self.mole_conc = mole_conc
 
             self.__calcComposition()
 
         elif mole_conc is not None:
-            self.concentr = np.array(mole_conc)
+            self.mole_conc = np.array(mole_conc)
             self.mole_frac = mole_frac
 
             self.mass_frac = mass_frac
@@ -199,23 +198,23 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.mass_frac = massfrac
         self.mole_frac = molefrac
-        self.concentr = conc
+        self.mole_conc = conc
         self.mass_conc = mass_conc
 
         self.mw_av = mw_av
 
     def __calcComposition(self):
 
-        if self.concentr is not None:
-            frac_out = self.conc_to_frac(self.concentr,
+        if self.mole_conc is not None:
+            frac_out = self.conc_to_frac(self.mole_conc,
                                          solvent_ind=self.ind_solv)
             if self.ind_solv is None:
                 mass_frac, mole_frac = frac_out
-                concentr = self.concentr
+                mole_conc = self.mole_conc
             else:
-                mass_frac, mole_frac, concentr = frac_out
+                mass_frac, mole_frac, mole_conc = frac_out
 
-            mass_conc = concentr * self.mw  # kg / m3
+            mass_conc = mole_conc * self.mw  # kg / m3
 
         elif self.mass_conc is not None:
             frac_out = self.mass_conc_to_frac(self.mass_conc,
@@ -227,38 +226,38 @@ class LiquidPhase(ThermoPhysicalManager):
             else:
                 mass_frac, mole_frac, mass_conc = frac_out
 
-            concentr = mass_conc / self.mw  # mol/L
+            mole_conc = mass_conc / self.mw  # mol/L
 
         elif self.mass_frac is not None:
-            concentr = self.frac_to_conc(self.mass_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(self.mass_frac)
+            mass_conc = mole_conc * self.mw
 
             mole_frac = self.frac_to_frac(self.mass_frac)
             mass_frac = self.mass_frac
 
         elif self.mole_frac is not None:
-            concentr = self.frac_to_conc(mole_frac=self.mole_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(mole_frac=self.mole_frac)
+            mass_conc = mole_conc * self.mw
 
             mass_frac = self.frac_to_frac(mole_frac=self.mole_frac)
             mole_frac = self.mole_frac
 
         self.__set_amounts(self.mass, self.vol, self.moles,
-                           mass_frac, mole_frac, concentr, mass_conc)
+                           mass_frac, mole_frac, mole_conc, mass_conc)
 
-    def updatePhase(self, concentr=None, mass_conc=None,
+    def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
                     vol=0, mass=0, moles=0, temp=None, pres=None):
 
-        if concentr is not None:
-            frac_out = self.conc_to_frac(concentr,
+        if mole_conc is not None:
+            frac_out = self.conc_to_frac(mole_conc,
                                          solvent_ind=self.ind_solv)
             if self.ind_solv:
-                mass_frac, mole_frac, concentr = frac_out
+                mass_frac, mole_frac, mole_conc = frac_out
             else:
                 mass_frac, mole_frac = frac_out
 
-            mass_conc = concentr * self.mw
+            mass_conc = mole_conc * self.mw
 
         elif mass_conc is not None:
             frac_out = self.mass_conc_to_frac(mass_conc,
@@ -269,22 +268,22 @@ class LiquidPhase(ThermoPhysicalManager):
             else:
                 mass_frac, mole_frac = frac_out
 
-            concentr = mass_conc / self.mw
+            mole_conc = mass_conc / self.mw
 
         elif mass_frac is not None:
-            concentr = self.frac_to_conc(mass_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(mass_frac)
+            mass_conc = mole_conc * self.mw
             mole_frac = self.frac_to_frac(mass_frac)
 
         elif mole_frac is not None:
-            concentr = self.frac_to_conc(mole_frac=mole_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(mole_frac=mole_frac)
+            mass_conc = mole_conc * self.mw
             mass_frac = self.frac_to_frac(mole_frac=mole_frac)
 
         else:
             mass_frac = self.mass_frac
             mole_frac = self.mole_frac
-            concentr = self.concentr
+            mole_conc = self.mole_conc
             mass_conc = self.mass_conc
 
         if temp is not None:
@@ -294,7 +293,7 @@ class LiquidPhase(ThermoPhysicalManager):
             self.pres = pres
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
-                           concentr, mass_conc)
+                           mole_conc, mass_conc)
 
     def getDensity(self, mass_frac=None, mole_frac=None, temp=None,
                    basis='mass'):
@@ -439,13 +438,13 @@ class LiquidPhase(ThermoPhysicalManager):
 class VaporPhase(ThermoPhysicalManager):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
-                 mass_frac=None, mole_frac=None, concentr=None):
+                 mass_frac=None, mole_frac=None, mole_conc=None):
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
         props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, concentr)
+                            vol, moles, mass_frac, mole_frac, mole_conc)
 
         self.mass = props.mass
         self.moles = props.moles
@@ -453,7 +452,7 @@ class VaporPhase(ThermoPhysicalManager):
 
         self.mass_frac = props.mass_frac
         self.mole_frac = props.mole_frac
-        self.concentr = props.concentr
+        self.mole_conc = props.mole_conc
 
         self.mw_av = props.mw_av
 
@@ -482,24 +481,24 @@ class VaporPhase(ThermoPhysicalManager):
 
         self.mass_frac = massfrac
         self.mole_frac = molefrac
-        self.concentr = conc
+        self.mole_conc = conc
         self.mass_conc = mass_conc
 
         self.mw_av = mw_av
 
-    def updatePhase(self, concentr=None, mass_conc=None,
+    def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
                     vol=0, mass=0, moles=0):
 
-        if concentr is not None:
-            frac_out = self.conc_to_frac(concentr,
+        if mole_conc is not None:
+            frac_out = self.conc_to_frac(mole_conc,
                                          solv_ind=self.ind_solv)
             if self.ind_solv:
-                mass_frac, mole_frac, concentr = frac_out
+                mass_frac, mole_frac, mole_conc = frac_out
             else:
                 mass_frac, mole_frac = frac_out
 
-            mass_conc = concentr * self.mw
+            mass_conc = mole_conc * self.mw
 
         elif mass_conc is not None:
             frac_out = self.mass_conc_to_frac(mass_conc,
@@ -510,26 +509,26 @@ class VaporPhase(ThermoPhysicalManager):
             else:
                 mass_frac, mole_frac = frac_out
 
-            concentr = mass_conc / self.mw
+            mole_conc = mass_conc / self.mw
 
         elif mass_frac is not None:
-            concentr = self.frac_to_conc(mass_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(mass_frac)
+            mass_conc = mole_conc * self.mw
             mole_frac = self.frac_to_frac(mass_frac)
 
         elif mole_frac is not None:
-            concentr = self.frac_to_conc(mole_frac=mole_frac)
-            mass_conc = concentr * self.mw
+            mole_conc = self.frac_to_conc(mole_frac=mole_frac)
+            mass_conc = mole_conc * self.mw
             mass_frac = self.frac_to_frac(mole_frac=mole_frac)
 
         else:
             mass_frac = self.mass_frac
             mole_frac = self.mole_frac
-            concentr = self.concentr
+            mole_conc = self.mole_conc
             mass_conc = self.mass_conc
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
-                           concentr, mass_conc)
+                           mole_conc, mass_conc)
 
     def getCp(self, temp, mass_frac=None, mole_frac=None, basis='mass'):
         if mass_frac is None and mole_frac is None:
@@ -540,19 +539,24 @@ class VaporPhase(ThermoPhysicalManager):
 
         return cpMix
 
-    def getHeatVaporization(self, temp, idx=None, basis='mass'):
-        if idx is None:
-            idx = np.arange(len(self.t_crit))
+    def getHeatVaporization(self, temp, basis='mass'):
+        # if idx is None:
+        #     idx = np.arange(len(self.t_crit))
 
         temp = np.atleast_1d(temp)
-        tref = self.tref_hvap[idx]
 
         if len(temp) > 1:
             temp = temp[..., np.newaxis]
+            idx = np.unique(np.where(temp < self.t_crit)[1])
+        else:
+            idx = np.where(temp < self.t_crit)[0]
+
+        tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
-        deltahvap = watson * self.delta_hvap[idx]  # J/mole
+        deltahvap = np.zeros_like(self.t_crit)
+        deltahvap[idx] = watson * self.delta_hvap[idx]  # J/mole
 
         if basis == 'mass':
             deltahvap = deltahvap / self.mw[idx] * 1000  # J/kg
@@ -599,6 +603,7 @@ class VaporPhase(ThermoPhysicalManager):
         if temp is None:
             temp = self.temp
 
+        # Sensible heat
         if any(temp > self.t_crit):
             ind_super = np.where(temp > self.t_crit)[0]
             ind_sub = np.where(temp < self.t_crit)[0]
@@ -614,12 +619,6 @@ class VaporPhase(ThermoPhysicalManager):
                     temp, temp_ref, mass_frac, mole_frac, phase='liquid',
                     total_h=total_h, idx=ind_sub, basis=basis)
 
-                deltaVap = self.getHeatVaporization(
-                    temp, idx=ind_sub, basis=basis)
-
-                deltaVap = np.concatenate(
-                    (np.zeros_like(ind_super), deltaVap))[ind_sort]
-
                 if total_h:
                     hSens = sensSuper + sensSub
                 else:
@@ -627,15 +626,16 @@ class VaporPhase(ThermoPhysicalManager):
 
             else:
                 hSens = sensSuper
-                deltaVap = np.zeros_like(ind_super)
 
         else:
             hSens = super().getEnthalpy(
                 temp, temp_ref, mass_frac, mole_frac, phase='liquid',
-                total_h=total_h)
+                total_h=total_h, basis=basis)
 
-            deltaVap = self.getHeatVaporization(temp, basis=basis)
+        # Phase change
+        deltaVap = self.getHeatVaporization(temp, basis=basis)
 
+        # Collect terms
         if total_h:
             hVap = hSens + np.dot(deltaVap, mole_frac)
 
@@ -704,13 +704,14 @@ class VaporPhase(ThermoPhysicalManager):
 class SolidPhase(ThermoPhysicalManager):
     def __init__(self, path_thermo, temp=298.15, temp_ref=298.15, pres=101325,
                  mass=0, mass_frac=None,
-                 moments=None,
+                 moments=None, num_mom=4,
                  distrib=None, x_distrib=None, distrib_type='vol_perc',
                  moisture=0, porosity=0,
-                 concentr=None, kv=1):
+                 mole_conc=None, kv=1):
 
         super().__init__(path_thermo)
         self.kv = kv
+        self.distrib_type = distrib_type
 
         self.cp_solid = np.atleast_2d(self.cp_solid)
 
@@ -718,99 +719,120 @@ class SolidPhase(ThermoPhysicalManager):
         self.temp_ref = temp_ref
         self.pres = pres
 
-        self.moments = moments
-        self.distrib = distrib
-        self.x_distrib = x_distrib
-        self.num_mom = None
+        self.mass = mass
 
         mass_frac = np.atleast_1d(mass_frac)
         mass_frac[mass_frac == 0] = eps
+
         self.mass_frac = mass_frac
         self.mole_frac = self.frac_to_frac(mass_frac=self.mass_frac)
 
+        solid_spec = False
+
         if moments is not None:
             self.num_mom = len(moments)
+            self.moments = moments
 
-        dens = self.getDensity()
-        if distrib is not None:
+            self.x_distrib = x_distrib
+            self.distrib = distrib
+
+            solid_spec = True
+
+        elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
+
+            self.distrib = self.getDistribution(x_distrib, distrib)
             self.x_distrib = x_distrib
 
-            delta_x = np.diff(x_distrib)
-            equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
-            if equal:
-                self.dx = delta_x[0]
-            else:  # assume geometric series and make adjustments
-                ratio = x_distrib[1] / x_distrib[0]
-                x_grid = np.zeros(len(x_distrib) + 1)
-                x_gr = np.sqrt(x_distrib[1:] * x_distrib[:-1])
-
-                x_grid[0] = x_gr[0] / ratio
-                x_grid[-1] = x_gr[-1] * ratio
-
-                x_grid[1:-1] = x_gr
-
-                self.dx = np.diff(x_grid)
-
-            # Distribution
-            distrib = np.asarray(distrib)
-
             self.num_distrib = len(distrib)
-            self.distribProf = None
+            self.num_mom = num_mom
 
-            if mass > 0:
-                distrib = distrib / distrib.sum()
-                if distrib_type == 'vol_perc':
-                    distr = (mass / dens) * distrib / kv / x_distrib**3 \
-                        * 1e18 / self.dx   # number/um
+            mom_idx = np.arange(self.num_mom)
+            self.moments = self.getMoments(mom_num=mom_idx)
 
-                elif distrib_type == 'mass_perc':
-                    distr = mass*distrib / x_distrib**3 / kv * 1e18
+            solid_spec = True
 
+        else:
+            print('Neither moment nor distribution data was '
+                  'provided for this SolidPhase object. Make sure to provide '
+                  'one of the two either when declaring this phase, or in a '
+                  'Slurry object to which this phase is aggregated')
+
+        # Mass and volume
+        dens = self.getDensity()
+
+        if solid_spec:
+            if self.mass == 0:
+                self.vol = self.moments[3] * kv
+                self.mass = self.vol * dens
             else:
-                mom_three = self.getMoments(mom_num=3)  # m**3
-                mass = mom_three * self.kv * dens
-                distr = distrib
-
-            distr[distr == 0] = eps
-            self.distrib = distr
-
-            if self.num_mom is None:
-                self.moments = self.getMoments()
-            else:
-                idx = np.arange(self.num_mom)
-                self.moments = self.getMoments(mom_num=idx)
-
-        # Mass
-        self.mass = mass
-        self.vol = mass / dens  # m**3
+                self.vol = self.mass / dens
 
         mw_av = np.dot(self.mole_frac, self.mw)
         self.moles = mass / mw_av
 
-        # # Moles
-        # self.moles = moles
-        # self.mole_frac = mole_frac
-
         if mass_frac is not None:
             sum_fracs = sum(mass_frac)
             if sum_fracs < 0.99:
-                raise RuntimeError('The sum of mass fractions is less than 0.99')
+                raise RuntimeError(
+                    'The sum of mass fractions is less than 0.99')
 
         self.moisture = moisture
-
         self.porosity = porosity
+        self.distribProf = None
 
-    def updatePhase(self, distrib=None, mass=None):
+    def updatePhase(self, x_distrib=None, distrib=None, mass=None):
+        if x_distrib is not None:
+            self.x_distrib = x_distrib
+
         if distrib is not None:
             self.distrib = distrib
-            self.moments = self.getMoments(distrib)
+            self.moments = self.getMoments()
+            self.num_distrib = len(distrib)
 
         if mass is not None:
             self.mass = mass
             self.vol = mass / self.getDensity()
 
-    def getMoments(self, distrib=None, mom_num=None):
+    def getDistribution(self, x_distrib, distrib):
+        dens = self.getDensity()
+
+        # Crystal size dimension
+        delta_x = np.diff(x_distrib)
+        equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
+        if equal:
+            self.dx = delta_x[0]
+        else:  # assume geometric series and make adjustments
+            ratio = x_distrib[1] / x_distrib[0]
+            x_shifted = np.zeros(len(x_distrib) + 1)
+            x_gr = np.sqrt(x_distrib[1:] * x_distrib[:-1])
+
+            x_shifted[0] = x_gr[0] / ratio
+            x_shifted[-1] = x_gr[-1] * ratio
+
+            x_shifted[1:-1] = x_gr
+
+            self.dx = np.diff(x_shifted)
+
+        # Distribution
+        distrib = np.asarray(distrib)
+        if self.mass > 0:
+            distrib = distrib / distrib.sum()
+            if self.distrib_type == 'vol_perc':
+                distr = (self.mass / dens) * distrib / self.kv / \
+                    x_distrib**3 / self.dx * 1e18  # number/um
+            elif self.distrib_type == 'mass_perc':
+                distr = self.mass*distrib / x_distrib**3 / self.kv * 1e18
+
+        else:
+            distr = distrib
+
+        return distr
+
+    def getMoments(self, x_distrib=None, distrib=None, mom_num=None):
+        if x_distrib is None:
+            x_distrib = self.x_distrib
+
         if distrib is None:
             distrib = self.distrib
 
@@ -824,8 +846,8 @@ class SolidPhase(ThermoPhysicalManager):
         if distrib.ndim == 1 or len(distrib) == 1:
             moments = np.zeros(len(mom_ind))
             for ind, exp in enumerate(mom_ind):
-                integrand = distrib * self.x_distrib**exp
-                moments[ind] = trapezoidal_rule(self.x_distrib, integrand.T)
+                integrand = distrib * x_distrib**exp
+                moments[ind] = trapezoidal_rule(x_distrib, integrand.T)
 
             if len(mom_ind) == 1:
                 moments = moments[0]
@@ -833,8 +855,8 @@ class SolidPhase(ThermoPhysicalManager):
         else:
             moments = np.zeros((len(distrib), len(mom_ind)))
             for ind, exp in enumerate(mom_ind):
-                integrand = distrib * self.x_distrib**exp
-                moments[:, ind] = trapezoidal_rule(self.x_distrib, integrand.T)
+                integrand = distrib * x_distrib**exp
+                moments[:, ind] = trapezoidal_rule(x_distrib, integrand.T)
 
         conv_factors = (1e-6)**np.array(mom_ind)
         moments *= conv_factors

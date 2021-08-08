@@ -5,10 +5,43 @@ Created on Mon Mar  2 15:36:35 2020
 @author: dcasasor
 """
 
-from PharmaPy.NameAnalysis import NameAnalyzer
+from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
 
 import numpy as np
 import copy
+
+
+def get_inputs(time, Inlet, names_upstream, names_states_in, bipartite,
+               num_species, defaults=None, num_distr=0):
+
+    if Inlet is None:
+        input_dict = defaults
+
+    elif hasattr(Inlet, 'y_inlet'):
+        all_inputs = Inlet.InterpolateInputs(time)
+        input_upstream = get_dict_states(names_upstream, num_species,
+                                         num_distr, all_inputs)
+
+        input_dict = {}
+        for key in names_states_in:
+            input_dict[key] = input_upstream.get(bipartite[key])
+
+    elif len(Inlet.controls) > 0:
+        input_dict = {}
+        for key, val in Inlet.controls.items():
+            args = Inlet.args_control[key]
+            input_dict[key] = val(time, *args)
+
+        for key in names_states_in:
+            if key not in input_dict.keys():
+                input_dict[key] = getattr(Inlet, key)
+    else:
+        input_dict = {}
+        for name in names_states_in:
+            val = getattr(Inlet, name)
+            input_dict[name] = val
+
+    return input_dict
 
 
 class Graph:
@@ -83,7 +116,7 @@ class Connection:
         self.y_list = []
 
     def ReceiveData(self):
-        
+
         # Source UO
         if self.Matter is None:
             self.Matter = self.source_uo.Outlet
@@ -95,22 +128,22 @@ class Connection:
             else:
                 self.Matter.y_upstream = self.source_uo.outputs
                 self.Matter.time_upstream = self.source_uo.timeProf[-1]
-                
+
             self.y_list.append(self.source_uo.outputs)
-                
+
         else:
             if self.source_uo.is_continuous:
                 self.y_list.append(self.source_uo.outputs[1:])
-                
+
                 y_stacked = np.vstack(self.y_list)
                 self.y_list = [y_stacked]
-                
+
                 time_prof = self.source_uo.timeProf
                 idxs = np.where(np.diff(time_prof) > 0)[0]
-                
-                time_prof = np.concatenate([time_prof[idxs], 
+
+                time_prof = np.concatenate([time_prof[idxs],
                                            np.array([time_prof[-1]])])
-                
+
                 self.Matter.y_upstream = y_stacked
                 self.Matter.time_upstream = time_prof
 
@@ -160,14 +193,12 @@ class Connection:
 
         if mode == 'Batch':
             self.destination_uo.Phases = transfered_matter
+            self.destination_uo.material_from_upstream = True
         elif mode == 'Semibatch':
             if self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
-            else:
-                pass
+                self.destination_uo.material_from_upstream = True
 
-        elif self.source_uo is None:  # Mixers
-            self.destination_uo.inlets.append(transfered_matter)
         else:  # Continuous
             source_phases = self.source_uo.Outlet
             if self.source_uo.oper_mode == 'Batch' and source_phases is not self.Matter:
@@ -194,10 +225,12 @@ class Connection:
                         elif 'Solid' in name_source and 'Solid' in name_destin:
                             pass
 
-            if self.destination_uo.__class__.__name__ == 'Mixer':
-                self.destination_uo.inlets.append(transfered_matter)
-            else:
+            if hasattr(self.destination_uo, 'Inlet'):
                 self.destination_uo.Inlet = transfered_matter
+                self.destination_uo.material_from_upstream = True
+            else:
+                self.destination_uo.Inlets = transfered_matter
+                self.destination_uo.material_from_upstream = True
 
             if self.destination_uo.__class__.__name__ == 'DynamicCollector':
                 if self.source_uo.__module__ == 'PharmaPy.Crystallizers':

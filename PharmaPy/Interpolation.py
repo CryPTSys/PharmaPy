@@ -67,15 +67,123 @@ class NewtonInterpolation:
 
 class SplineInterpolation:
     def __init__(self, x_data, y_data):
-           
+
         self.Spline = CubicSpline(x_data, y_data)
-        
+
     def evalSpline(self, x):
-        
+
         y_interp = self.Spline(x)
-        
+
         return y_interp
-    
+
+
+class PiecewiseLagrange:
+
+    def __init__(self, time_final, y_vals, order=2, time_k=None, time_zero=0):
+        """ Create a piecewise Lagrange interpolation object
+
+        Parameters
+        ----------
+        time_final : float
+            final time
+        y_vals : numpy array
+            2D array with dimensions num_intervals x order. Each row contains
+            the values of the function at the collocation point within a given
+            finite element
+        order : int
+            order of the Lagrange polynomial (1 for piecewise constant,
+            2 for linear...)
+        time_k : array-like (optional)
+            If None, the time horizon is divided in num_intervals equally
+            spaced intervals. Otherwise, time_k represents the limits of the
+            finite elements.
+        time_zero : float (optional)
+            initial time (default is zero)
+
+
+        The interpolation algorithm is based on the work of Vassiliadis et al
+        (Ind. Eng. Chem. Res., 1994, 33, 2111-2122)
+
+        """
+
+        y_vals = np.atleast_1d(y_vals)
+
+        if y_vals.ndim == 1:
+            y_vals = y_vals.reshape(-1, 1)
+
+        if time_k is None:
+            num_interv = len(y_vals)
+            time_k = np.linspace(time_zero, time_final, num_interv + 1)
+        else:
+            num_interv = len(time_k) - 1
+            time_k = np.asarray(time_k)
+
+            if len(y_vals) != num_interv:
+                raise ValueError("The number of rows in 'y_vals' must match "
+                                 "the number of intervals given by the length "
+                                 "of 'time_k'")
+
+        delta_t = np.diff(time_k)
+        if (delta_t < 0).any():
+            raise ValueError("Values in 'time_k' must be strictly increasing.")
+        equal = np.isclose(delta_t[1:], delta_t[:-1]).all()
+        self.equal_dt = equal
+
+        self.time_k = time_k
+
+        if equal:
+            self.dt = delta_t[0]
+        else:
+            self.dt = delta_t
+
+        self.order = order
+
+        self.num_interv = num_interv
+        self.y_vals = y_vals
+
+    def evaluate_poly(self, time_eval):
+        time_eval = np.atleast_1d(time_eval)
+        time_k = self.time_k
+
+        if self.equal_dt:
+            k = np.ceil((time_eval - time_k[0]) / self.dt).astype(int)
+            k = np.maximum(1, k)
+        else:
+            k = np.searchsorted(self.time_k, time_eval, side='right')
+            k = np.minimum(self.num_interv, k)
+
+        # ---------- Time normalization
+        tau_k = (time_eval - time_k[k - 1]) / (time_k[k] - time_k[k - 1])
+        tau_k = tau_k[..., np.newaxis]
+
+        # ---------- Build Lagrange polynomials
+        # Intermediate collocation points
+        colloc = np.linspace(0, 1, self.order)
+
+        # Lagrange polynomials for k = 1, ..., K (all intervals)
+        poly = np.zeros((len(time_eval), self.order))
+
+        i_set = np.arange(self.order)
+
+        for i in i_set:
+            i_pr = np.setdiff1d(i_set, i)  # i prime
+            poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+
+            poly[:, i] = poly_indiv.prod(axis=1)
+
+        u_time = np.zeros_like(time_eval, dtype=float)
+
+        for ind in np.unique(k):
+            row_map = k == ind
+            poly_k = poly[row_map]
+            u_time[row_map] = np.dot(poly_k, self.y_vals[ind - 1]).flatten()
+
+        if len(u_time) == 1:
+            u_time = u_time[0]
+
+        return u_time
+
+
 if __name__ == '__main__':
     from scipy.interpolate import interp1d
 
@@ -103,8 +211,8 @@ if __name__ == '__main__':
 
     elif case == 2:  # Saturation example
         sat = np.array(
-                [0.2322061, 0.24866445, 0.25621458, 0.26201002, 0.26689287,
-                 0.27117952, 0.27503542, 0.27856042, 0.28181078, 0.28464856])
+            [0.2322061, 0.24866445, 0.25621458, 0.26201002, 0.26689287,
+             0.27117952, 0.27503542, 0.27856042, 0.28181078, 0.28464856])
         sat_two = 1.2 * sat + 0.05
 
         sat = np.column_stack((sat, sat_two))

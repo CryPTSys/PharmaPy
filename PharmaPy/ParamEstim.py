@@ -16,7 +16,7 @@ from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pandas as pd
-from PharmaPy.jac_module import numerical_jac_data
+from PharmaPy.jac_module import numerical_jac_data, dx_jac_p
 from PharmaPy import Gaussians as gs
 
 from PharmaPy.LevMarq import levenberg_marquardt
@@ -26,6 +26,8 @@ from itertools import cycle
 from ipopt import minimize_ipopt
 
 linestyles = cycle(['-', '--', '-.', ':'])
+
+eps = np.finfo(float).eps
 
 
 def pseudo_inv(states, dstates_dparam=None):
@@ -58,6 +60,11 @@ def mcr_spectra(conc, spectra):
     return conc_plus, absortivity_pred, absorbance_pred
 
 
+class Experiment:
+    def __init__(self):
+        pass
+
+
 class ParameterEstimation:
 
     """ Create a ParameterEstimation object
@@ -69,84 +76,111 @@ class ParameterEstimation:
         model function. Its signaure must be func(params, x_data, *args)
     params_seed : array-like
         parameter seed values
-    x_data : numpy array
+    x_data : numpy array or list of arrays
         1 x num_data array with experimental values for the independent
         variable.
-    y_data : numpy array
+    y_data : numpy array or list of arrays
         n_states x num_data experimental values for the dependent variable(s)
     """
 
-    def __init__(self, func, param_seed, x_data, y_data=None, spectra=None,
-                 fit_spectra=False, args_fun=None,
+    def __init__(self, func, param_seed, x_data, y_data=None,
+                 args_fun=None,
                  optimize_flags=None,
-                 df_dtheta=None, df_dy=None, dx_finitediff=None,
+                 jac_fun=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
                  name_params=None, name_states=None):
 
         self.function = func
-        self.df_dtheta = df_dtheta
-        self.dx_fd = dx_finitediff
 
-        self.spectra = spectra
-        self.fit_spectra = fit_spectra
+        self.jac_fun = jac_fun
+
+        self.fit_spectra = False
 
         param_seed = np.asarray(param_seed)
         if param_seed.ndim == 0:
             param_seed = param_seed[np.newaxis]
 
+        if dx_finitediff is None:
+            abs_tol = 1e-6 * np.ones_like(param_seed)
+            rel_tol = 1e-6
+
+            def dparam_fun(param):
+                dp = dx_jac_p(param, abs_tol, rel_tol, eps)
+                return dp
+
+            dx_finitediff = dparam_fun
+
+        self.dx_fd = dx_finitediff
+
         # --------------- Data
-        if fit_spectra:
-            y_fit = spectra
-        else:  # TODO check this
-            # if y_data.ndim == 1:
-            #     y_data = y_data[..., np.newaxis]
+        self.measured_ind = measured_ind
+        self.experim_names = None
 
-            y_fit = y_data
+        if isinstance(x_data, dict) and isinstance(y_data, dict):
 
-        # If one dataset, then put it in an one-element list
-        if not isinstance(y_fit, list):
+            keys_x = x_data.keys()
+            keys_y = y_data.keys()
+
+            if keys_x == keys_y:
+                keys_dict = keys_x
+            else:
+                raise NameError("Keys of the x_data and y_data dictionaries "
+                                "don't match")
+
+            self.experim_names = list(keys_dict)
+
+            x_fit = []
+            y_fit = []
+            x_match = []
+
+            x_exp = []
+            y_exp = []
+            for key in keys_dict:
+                x_vals, y_vals, x_common, y_experim = self.interpret_data(
+                    x_data[key], y_data[key])
+
+                x_fit.append(x_vals)
+                y_fit.append(y_vals)
+                x_match.append(x_common)
+
+                x_exp.append(x_data[key])
+                y_exp.append(y_experim)
+
+        else:
+            x_fit, y_fit, x_common, y_experim = self.interpret_data(
+                x_data, y_data)
+
+            x_fit = [x_fit]
             y_fit = [y_fit]
-            x_data = [x_data]
-        elif not isinstance(x_data, list):
-            x_data = [x_data] * len(y_fit)
+            x_match = [x_common]
 
+            x_exp = [x_data]
+            y_exp = [y_experim]
+
+        self.x_data = x_exp
+        self.y_data = y_exp
+        self.x_match = x_match
+
+        self.x_fit = x_fit
+        self.y_fit = y_fit
+
+        # ---------- Covariance
         if (covar_data is not None) and (type(covar_data) is not list):
             covar_data = [covar_data]
 
-        self.num_datasets = len(y_fit)
+        self.num_datasets = len(self.y_fit)
 
-        self.y_orig = []
-        self.y_fit = []
-        for data in y_fit:
-            if data.ndim == 1:
-                data = data[..., np.newaxis]
-
-            self.y_orig.append(data)
-
-            data[data == 0] = 1e-15
-            self.y_fit.append(data.T.ravel())
-            # self.y_fit.append(data)
-
+        # ---------- Arguments
         if args_fun is None:
-            self.args_fun = [()] * self.num_datasets
+            args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
-            self.args_fun = [args_fun]
-        else:
-            self.args_fun = args_fun
+            args_fun = [args_fun]
 
-        if measured_ind is None:
-            measured_ind = range(len(self.y_orig[0].T))
+        self.args_fun = args_fun
 
-        self.measured_ind = measured_ind
-        self.num_states = self.y_orig[0].shape[1]
-        self.num_measured = len(measured_ind)
-
-        self.num_xs = [len(xs) for xs in x_data]
-        # self.num_data = [len(xs) * self.num_measured for xs in x_data]
-        self.num_data = [array.size for array in y_fit]
+        self.num_xs = np.array([len(xs) for xs in self.x_fit])
+        self.num_data = [array.size for array in self.y_fit]
         self.num_data_total = sum(self.num_data)
-
-        self.x_data = x_data
 
         if covar_data is None:
             self.stdev_data = [np.ones(num_data) for num_data in self.num_data]
@@ -162,9 +196,6 @@ class ParameterEstimation:
         else:
             self.map_variable = np.array(optimize_flags)
             self.map_fixed = ~self.map_variable
-
-        # param_ind = range(len(param_seed))
-        # self.ind_variable = [x for x in param_ind if x not in self.ind_fixed]
 
         self.param_seed = param_seed
 
@@ -189,32 +220,62 @@ class ParameterEstimation:
             self.name_params_plot = [r'$' + name + '$'
                                      for name in self.name_params]
 
-        # Outputs
-        self.params_iter = []
-        self.objfun_iter = []
-
-        # States
+        # ---------- States
         if name_states is None:
             self.name_states = [r'$y_{}$'.format(ind + 1)
                                 for ind in range(self.num_states)]
         else:
             self.name_states = name_states
 
-#        max_data = self.y_orig.max(axis=0)
-#        min_data = self.y_orig.min(axis=0)
-#
-#        self.delta_conc = max_data - min_data
-#        y_data = y_data.T.ravel()
-
-        # Iteration-dependent output data
+        # --------------- Outputs
+        self.params_iter = []
+        self.objfun_iter = []
         self.cond_number = []
 
-        # --------------- Outputs
         self.resid_runs = None
         self.y_runs = None
         self.sens = None
         self.sens_runs = None
         self.y_model = []
+
+    def interpret_data(self, x_data, y_data):
+        x_match = None
+
+        if isinstance(x_data, (list, tuple)):  # several datasets
+            # args_fun = (args_fun, )
+
+            x_fit = np.concatenate(x_data)
+            x_fit.sort()
+            x_fit = np.unique(x_fit)
+
+            x_match = [np.isin(x_fit, array) for array in x_data]
+
+            x_fit = x_fit
+            y_fit = np.concatenate(y_data)
+
+            y_data = [item[..., np.newaxis] for item in y_data
+                      if item.ndim == 1]
+
+        else:  # unique dataset
+            x_fit = x_data
+
+            if y_data.ndim == 1:
+                y_data = y_data[..., np.newaxis]
+
+            y_data = y_data.T
+
+            y_fit = y_data.flatten()
+
+        self.num_states = len(y_data)
+
+        if self.measured_ind is None:
+            self.measured_ind = np.arange(0, self.num_states)
+        else:
+            self.measured_ind = np.atleast_1d(self.measured_ind)
+
+        self.num_measured = len(self.measured_ind)
+
+        return x_fit, y_fit, x_match, y_data
 
     def scale_sens(self, param_lims=None):
         """ Scale sensitivity matrix to make it non-dimensional.
@@ -239,10 +300,15 @@ class ParameterEstimation:
 
         return np.vstack(selected_sens)
 
-    def select_sens(self, sens_ordered, num_xs):
-        parts = np.vsplit(sens_ordered, len(sens_ordered)//num_xs)
+    def select_sens(self, sens_ordered, num_states, times=None):
+        parts = np.split(sens_ordered, num_states, axis=0)
 
-        selected = [parts[ind] for ind in self.measured_ind]
+        if times is None:
+            selected = [parts[ind] for ind in self.measured_ind]
+        else:
+            selected = [parts[ind][times[count]]
+                        for count, ind in enumerate(self.measured_ind)]
+
         selected_array = np.vstack(selected)
 
         return selected_array
@@ -254,8 +320,12 @@ class ParameterEstimation:
 
         return params_reconstr
 
-    def objective_fun(self, params, residual_vec=False):
+    def func_aux(self, params, x_vals, args):
+        states = self.function(params, x_vals, *args)
 
+        return states.T.ravel()
+
+    def get_objective(self, params, residual_vec=False):
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
 
@@ -267,85 +337,51 @@ class ParameterEstimation:
         y_runs = []
         resid_runs = []
         sens_runs = []
+
+        num_jac = False
+
         for ind in range(self.num_datasets):
             # Solve
-            if self.fit_spectra:
-                kwarg_sens = {'reorder': False}
-            else:
-                kwarg_sens = {}
+            result = self.function(params, self.x_fit[ind],
+                                   *self.args_fun[ind])
 
-            result = self.function(params, self.x_data[ind],
-                                   *self.args_fun[ind],
-                                   **kwarg_sens)
-
-            if self.fit_spectra:
-                if isinstance(result, tuple):
-                    y_prof, sens_states = result
-                else:
-                    y_prof = result
-
-                def func_aux(params, x_vals, *args):
-                    states = self.function(params, x_vals, *args)
-
-                    _, epsilon, absorbance = mcr_spectra(
-                        states[:, self.measured_ind], self.spectra)
-
-                    return absorbance.T.ravel()
-
-                conc_target = y_prof[:, self.measured_ind]
-
-                # MCR
-                conc_plus = np.linalg.pinv(conc_target)
-                absortivity_pred = np.dot(conc_plus, self.spectra[ind])
-                y_prof = np.dot(conc_target, absortivity_pred)
-
-                self.epsilon_mcr = absortivity_pred
-
-                sens_analytical = True
-
-                if sens_analytical:
-                    eye = np.eye(conc_target.shape[0])
-                    proj_orthogonal = eye - np.dot(conc_target, conc_plus)
-
-                    sens_pick = sens_states[self.map_variable][
-                        :, :, self.measured_ind]
-
-                    first_term = proj_orthogonal @ sens_pick @ conc_plus
-                    second_term = first_term.transpose((0, 2, 1))
-                    sens_an = (first_term + second_term) @ y_prof
-
-                    n_par, n_times, n_conc = sens_an.shape
-                    sens = sens_an.T.reshape(n_conc * n_times, n_par)
-
-                else:
-                    args_merged = [self.x_data[ind], self.args_fun[ind]]
-                    sens = numerical_jac_data(
-                        func_aux, params,
-                        args_merged,
-                        dx=self.dx_fd)[:, self.map_variable]
-
-            elif type(result) is tuple:  # func also returns the jacobian
+            if type(result) is tuple:  # func also returns the jacobian
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
+                num_jac = True
                 y_prof = result
 
-                if self.df_dtheta is None:
-                    sens = numerical_jac_data(self.function, params,
-                                              (self.x_data[ind], ),
-                                              dx=self.dx_fd)
+                if self.jac_fun is None:
+                    pick_p = np.where(self.map_variable)[0]
+                    sens = numerical_jac_data(
+                        self.func_aux, params,
+                        (self.x_fit[ind], self.args_fun[ind]),
+                        dx=self.dx_fd, pick_x=pick_p)
                 else:
-                    sens = self.df_dtheta(params, self.x_data[ind],
-                                          *self.args_fun[ind])
+                    sens = self.jac_fun(params, self.x_fit[ind],
+                                        *self.args_fun[ind])
 
-            if y_prof.ndim == 1 or self.fit_spectra:
+            if y_prof.ndim == 1:
                 y_run = y_prof
                 sens_run = sens
+            # elif num_jac:
+            #     y_run = y_prof[:, self.measured_ind]
+            #     sens_run = sens
             else:
                 y_run = y_prof[:, self.measured_ind]
-                sens_run = self.select_sens(sens, self.num_xs[ind])
+                num_states = y_prof.shape[1]
 
-            y_run = y_run.T.ravel()
+                if self.x_match[ind] is None:
+                    y_run = y_run.T.ravel()
+                    sens_run = self.select_sens(sens, num_states)
+                else:
+                    y_run = [y_run[idx, col]
+                             for col, idx in enumerate(self.x_match[ind])]
+                    y_run = np.concatenate(y_run)
+
+                    x_sens = self.x_match[ind]
+                    sens_run = self.select_sens(sens, num_states, x_sens)
 
             resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
 
@@ -378,7 +414,9 @@ class ParameterEstimation:
 
         concat_sens = np.vstack(self.sens_runs)
         if not self.fit_spectra:
-            concat_sens = concat_sens[:, self.map_variable]
+
+            if len(self.map_variable) == concat_sens.shape[1]:
+                concat_sens = concat_sens[:, self.map_variable]
 
         self.sens = concat_sens
 
@@ -417,7 +455,7 @@ class ParameterEstimation:
 
             opt_par, inv_hessian, info = levenberg_marquardt(
                 params_var,
-                self.objective_fun,
+                self.get_objective,
                 self.get_gradient,
                 args=(True,),
                 **optim_options)
@@ -429,7 +467,7 @@ class ParameterEstimation:
             else:
                 optim_options['print_level'] = int(verbose) * 5
 
-            result = minimize_ipopt(self.objective_fun, params_var,
+            result = minimize_ipopt(self.get_objective, params_var,
                                     jac=self.get_gradient,
                                     bounds=bounds, options=optim_options)
 
@@ -455,15 +493,22 @@ class ParameterEstimation:
             self.objfun_iter = np.array(self.objfun_iter)[np.sort(idx)]
 
             col_names = ['obj_fun'] + self.name_params_total
-            self.paramest_df = pd.DataFrame(
-                np.column_stack((self.objfun_iter, self.params_iter)),
-                columns=col_names)
+            # self.paramest_df = pd.DataFrame(
+            #     np.column_stack((self.objfun_iter, self.params_iter)),
+            #     columns=col_names)
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):
             y_model_flat = self.resid_runs[ind]*self.stdev_data[ind] + \
                 self.y_fit[ind]
-            y_reshape = y_model_flat.reshape(-1, self.num_xs[ind]).T
+
+            if self.x_match[ind] is None:
+                y_reshape = y_model_flat.reshape(-1, self.num_xs[ind]).T
+            else:
+                x_len = [sum(array) for array in self.x_match[ind]]
+                x_sum = np.cumsum(x_len)[:-1]
+                y_reshape = np.split(y_model_flat, x_sum)
+
             self.y_model.append(y_reshape)
 
         covar_params = self.get_covariance()
@@ -500,9 +545,9 @@ class ParameterEstimation:
             kwarg_sens = {}
 
         for ind in range(self.num_datasets):
-            states_pred = self.function(self.param_seed, self.x_data[ind],
-                                        *self.args_fun[ind],
-                                        **kwarg_sens)
+            states_pred = self.function(self.param_seed, self.x_fit[ind],
+                                           *self.args_fun[ind],
+                                           **kwarg_sens)
 
             if isinstance(states_pred, tuple):
                 states_pred = states_pred[0]
@@ -512,29 +557,40 @@ class ParameterEstimation:
         if len(states_seed) == 1:
             y_seed = states_seed[0]
 
-            x_data = self.x_data[0]
-            y_data = self.y_orig[0]
+            x_data = self.x_data
+            y_data = self.y_data
 
-            fig, axes = plt.subplots(y_data.shape[1], figsize=fig_size)
+            fig, axes = plt.subplots(len(y_data), figsize=fig_size)
 
-            for ind, experimental in enumerate(y_data.T):
-                axes[ind].plot(x_data, y_seed[:, self.measured_ind[ind]])
-                axes[ind].plot(x_data, experimental, 'o', mfc='None')
+            axes = np.atleast_1d(axes)
+
+            for ind, experimental in enumerate(y_data):
+                axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind])
+
+                markers = cycle(['o', 's', '^', '*', 'P', 'X'])
+
+                for idx, row in enumerate(experimental):
+                    color = axes[ind].lines[idx].get_color()
+                    axes[ind].plot(x_data[ind], row, lw=0,
+                                   marker=next(markers), ms=5,
+                                   mfc='None', color=color)
 
                 axes[ind].spines['right'].set_visible(False)
                 axes[ind].spines['top'].set_visible(False)
 
                 axes[ind].set_ylabel(self.name_states[ind])
 
-            axes[0].legend(
-                ('prediction with seed params', 'experimental data'))
+            axes[0].lines[0].set_label('prediction with seed parameters')
+            axes[0].lines[self.num_measured].set_label('data')
+
+            axes[0].legend(loc='best')
             axes[-1].set_xlabel('$x$')
 
         else:
             pass  # TODO what to do with multiple datasets, maybe a parity plot?
 
     def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None,
-                        plot_initial=False, black_white=False, x_div=1):
+                        plot_initial=False, black_white=False):
 
         num_plots = self.num_datasets
 
@@ -551,33 +607,47 @@ class ParameterEstimation:
             axes = np.asarray(axes)[np.newaxis]
 
         if fig_kwargs is None:
-            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 3}
+            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
 
         ax_flatten = axes.flatten()
-        names_meas = [self.name_states[ind] for ind in self.measured_ind]
-        # params_nominal = self.reconstruct_params(self.params_convg)
 
-        for ind in range(self.num_datasets):
-            # Experimental data
-            x_exp = self.x_data[ind] / x_div
-            y_exp = self.y_orig[ind]
+        x_data = self.x_data
+        y_data = self.y_data
+
+        # if any([item is not None for item in self.x_match]):
+        #     raise NotImplementedError('One or more datasets of type 2.')
+
+        for ind in range(self.num_datasets):  # experiment loop
             markers = cycle(['o', 's', '^', '*', 'P', 'X'])
 
             # Model prediction
             if black_white:
-                ax_flatten[ind].plot(x_exp, self.y_model[ind], 'k')
+                ax_flatten[ind].plot(x_data[ind], self.y_model[ind], 'k')
 
-                for col in y_exp.T:
-                    ax_flatten[ind].plot(x_exp, col, color='k',
+                for col in y_data[ind]:
+                    ax_flatten[ind].plot(x_data[ind], col, color='k',
                                          marker=next(markers), **fig_kwargs)
             else:
-                ax_flatten[ind].plot(x_exp, self.y_model[ind])
+                try:  # Type 1
+                    ax_flatten[ind].plot(x_data[ind], self.y_model[ind])
+                except:  # Type 2
+                    for x, y in zip(x_data[ind], self.y_model[ind]):
+                        ax_flatten[ind].plot(x, y)
+
                 lines = ax_flatten[ind].lines
                 colors = [line.get_color() for line in lines]
 
-                for color, col in zip(colors, y_exp.T):
-                    ax_flatten[ind].plot(x_exp, col, color=color,
-                                         marker=next(markers), **fig_kwargs)
+                try:  # Type 1
+                    for color, col in zip(colors, y_data[ind]):
+                        ax_flatten[ind].plot(x_data[ind], col, color=color,
+                                             marker=next(markers),
+                                             **fig_kwargs)
+                except:  # Type 2
+                    for color, x, y in zip(colors, x_data[ind], y_data[ind]):
+                        ax_flatten[ind].plot(x, y, color=color,
+                                             marker=next(markers),
+                                             **fig_kwargs)
+
 
             # Edit
             ax_flatten[ind].spines['right'].set_visible(False)
@@ -589,17 +659,26 @@ class ParameterEstimation:
             ax_flatten[ind].xaxis.set_minor_locator(AutoMinorLocator(2))
             ax_flatten[ind].yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        ax_flatten[0].legend(names_meas, loc='best')
+        # ax_flatten[0].legend(names_meas, loc='best')
 
         if plot_initial:
+            if self.x_match[ind] is None:  # type 1
+                x_exp = [x_data[ind]] * len(self.y_model)
+            else:  # type 2
+                x_exp = x_data[ind]
+
             residuals_convg = self.residuals.copy()
             resid_runs_convg = self.resid_runs.copy()
 
             seed_params = self.param_seed[self.map_variable]
-            resid_seed = self.objective_fun(seed_params, residual_vec=True)
-            resid_seed = np.split(resid_seed, self.num_datasets)
+            resid_seed = self.get_objective(seed_params, residual_vec=True)
+
+            idx_split = np.cumsum(self.num_measured * self.num_xs)[:-1]
+            resid_seed = np.split(resid_seed, idx_split)
 
             for ind in range(self.num_datasets):
+                x_exp = x_data[ind]
+
                 ymodel_seed = resid_seed[ind] + self.y_fit[ind]
                 ymodel_seed = ymodel_seed.reshape(-1, self.num_xs[ind])
 
@@ -629,18 +708,25 @@ class ParameterEstimation:
         if len(axes) == 1:
             axes = axes[0]
 
+        fig.tight_layout()
+
         return fig, axes
 
     def plot_data_model_sep(self, fig_size=None, fig_kwargs=None,
                             plot_initial=False):
 
-        if len(self.x_data) > 1:
+        if len(self.x_fit) > 1:
             raise NotImplementedError('More than one dataset detected. '
-                                      'Not supported')
+                                      'Not supported for multiple datasets')
 
-        xdata = self.x_data[0]
-        ydata = self.y_orig[0]
-        ymodel = self.y_model[0]
+        if self.x_match[0] is None:
+            ydata = self.y_data[0]
+            xdata = [self.x_data[0]] * len(ydata)
+            ymodel = self.y_model[0].T  # TODO: change this
+        else:
+            xdata = self.x_data
+            ydata = self.y_data
+            ymodel = self.y_model[0]
 
         num_x = self.num_xs[0]
         num_plots = self.num_states
@@ -648,14 +734,17 @@ class ParameterEstimation:
         num_col = 2
         num_row = num_plots // num_col + num_plots % num_col
 
+        num_row = 2
+        num_col = num_plots // num_row + num_plots % num_row
+
         fig, axes = plt.subplots(num_row, num_col, figsize=fig_size)
 
-        for ind in range(num_plots):
-            axes.flatten()[ind].plot(xdata, ymodel[:, ind])
+        for ind in range(num_plots):  # for every state
+            axes.flatten()[ind].plot(xdata[ind], ymodel[ind])
 
             line = axes.flatten()[ind].lines[0]
             color = line.get_color()
-            axes.flatten()[ind].plot(xdata, ydata[:, ind], 'o', color=color,
+            axes.flatten()[ind].plot(xdata[ind], ydata[ind].T, 'o', color=color,
                                      mfc='None')
 
             axes.flatten()[ind].set_ylabel(self.name_states[ind])
@@ -665,12 +754,19 @@ class ParameterEstimation:
             resid_runs_convg = self.resid_runs.copy()
 
             seed_params = self.param_seed[self.map_variable]
-            resid_seed = self.objective_fun(seed_params, residual_vec=True)
+            resid_seed = self.get_objective(seed_params, residual_vec=True)
 
             ymodel_seed = resid_seed*self.stdev_data[0] + self.y_fit[0]
-            ymodel_seed = ymodel_seed.reshape(-1, num_x)
+
+            if self.x_match[0] is None:
+                ymodel_seed = ymodel_seed.reshape(-1, num_x)
+            else:
+                x_len = [sum(array) for array in self.x_match]
+                x_sum = np.cumsum(x_len)[:-1]
+                ymodel_seed = np.split(ymodel_seed, x_sum)
+
             for ind in range(num_plots):
-                axes.flatten()[ind].plot(xdata, ymodel_seed[ind], '--',
+                axes.flatten()[ind].plot(xdata[ind], ymodel_seed[ind], '--',
                                          color=color,
                                          alpha=0.4)
 
@@ -698,9 +794,20 @@ class ParameterEstimation:
 
         fig, axis = plt.subplots(figsize=fig_size)
 
-        for ind, y_model in enumerate(self.y_model):
+        if all([item is None for item in self.x_match]):
+            y_model = self.y_model
+        else:
+            y_model = [np.concatenate(lst) for lst in self.y_model]
+
+        if self.experim_names is None:
+            experim_names = ['experiment {}'.format(ind + 1)
+                             for ind in range(self.num_datasets)]
+        else:
+            experim_names = self.experim_names
+
+        for ind, y_model in enumerate(y_model):
             axis.scatter(y_model.T.flatten(), self.y_fit[ind],
-                         label='experiment {}'.format(ind + 1),
+                         label=experim_names[ind],
                          **fig_kwargs)
 
         axis.set_xlabel('Model')
@@ -802,22 +909,22 @@ class Deconvolution:
 
         return fig, axis, gaussian_pred
 
-    def estimate_params(self, optim_opt=None):
-        seed = self.concat_params()
+    # def estimate_params(self, optim_opt=None):
+    #     seed = self.concat_params()
 
-        paramest = ParameterEstimation(self.fun_wrapper, seed, self.x_data,
-                                       self.y_data,
-                                       df_dtheta=self.dparam_wrapper,
-                                       df_dy=self.dx_wrapper)
+    #     paramest = ParameterEstimation(self.fun_wrapper, seed, self.x_data,
+    #                                    self.y_data,
+    #                                    df_dtheta=self.dparam_wrapper,
+    #                                    df_dy=self.dx_wrapper)
 
-        result = paramest.optimize_fn(optim_options=optim_opt)
+    #     result = paramest.optimize_fn(optim_options=optim_opt)
 
-        optim_params = np.split(result[0], 3)
+    #     optim_params = np.split(result[0], 3)
 
-        self.param_obj = paramest
-        self.optim_params = optim_params
+    #     self.param_obj = paramest
+    #     self.optim_params = optim_params
 
-        return optim_params, result[1:], paramest
+    #     return optim_params, result[1:], paramest
 
     def plot_results(self, fig_size=None, plot_initial=False,
                      plot_individual=False):
@@ -894,6 +1001,187 @@ class Deconvolution:
                 axis.axvline(mu, ls='--', alpha=0.4)
 
         return fig, axis
+
+
+class MultipleCurveResolution(ParameterEstimation):
+    def __init__(self, func, param_seed, time_data, spectra=None,
+                 global_analysis=True,
+                 args_fun=None,
+                 optimize_flags=None,
+                 jac_fun=None, dx_finitediff=None,
+                 measured_ind=None, covar_data=None,
+                 name_params=None, name_states=None):
+
+        super().__init__(func, param_seed, time_data, spectra,
+                         args_fun, optimize_flags, jac_fun,
+                         dx_finitediff, measured_ind, covar_data,
+                         name_params, name_states)
+
+        self.fit_spectra = True
+        self.spectra = [data.T for data in self.y_data]
+        self.len_spectra = [data.shape[0] for data in self.spectra]
+        self.size_spectra = [data.size for data in self.spectra]
+
+        self.spectra_tot = np.vstack(self.spectra)
+        self.stdev_tot = np.concatenate(self.stdev_data)
+
+        self.global_analysis = global_analysis
+
+    def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
+        eye = np.eye(c_target.shape[0])
+        proj_orthogonal = eye - np.dot(c_target, c_plus)
+
+        sens_pick = sens_states[self.map_variable][:, :, self.measured_ind]
+
+        first_term = proj_orthogonal @ sens_pick @ c_plus
+        second_term = first_term.transpose((0, 2, 1))
+        sens_an = (first_term + second_term) @ spectra_pred
+
+        n_par, n_times, n_lambda = sens_an.shape
+        sens_proj = sens_an.T.reshape(n_lambda * n_times, n_par)
+
+        return sens_proj
+
+    def func_aux(self, params, x_vals, spectra, *args):
+        states = self.function(params, x_vals, *args)
+
+        _, epsilon, absorbance = mcr_spectra(
+            states[:, self.measured_ind], spectra)
+
+        return absorbance.T.ravel()
+
+    def get_global_analysis(self, params,):
+        c_runs = []
+        sens_conc = []
+        for ind in range(self.num_datasets):
+            result = self.function(params, self.x_fit[ind],
+                                   reorder=False,
+                                   *self.args_fun[ind])
+
+            if isinstance(result, tuple):
+                conc_prof, sens_states = result
+                sens_conc.append(sens_states)
+            else:
+                conc_prof = result
+
+            conc_target = conc_prof[:, self.measured_ind]
+
+            # MCR
+            c_runs.append(conc_target)
+
+        conc_tot = np.vstack(c_runs)
+
+        # MCR
+        conc_plus = np.linalg.pinv(conc_tot)
+        absorptivity_pure = np.dot(conc_plus, self.spectra_tot)
+
+        spectra_pred = np.dot(conc_tot, absorptivity_pure)
+
+        if len(sens_conc) == 0:  # TODO: it won't work like this
+            args_merged = [self.x_data[ind],
+                           self.args_fun[ind], self.spectra[ind]]
+
+            sens = numerical_jac_data(self.func_aux, params, args_merged,
+                                      dx=self.dx_fd)[:, self.map_variable]
+        else:
+            sens_tot = np.concatenate(sens_conc, axis=1)
+            sens = self.get_sens_projection(conc_tot, conc_plus,
+                                            sens_tot, spectra_pred)
+
+        residuals = (spectra_pred - self.spectra_tot).T.ravel() / \
+            self.stdev_tot
+
+        trim_y = np.cumsum(self.len_spectra)[:-1]
+        trim_sens = np.cumsum(self.size_spectra)[:-1]
+
+        y_runs = np.split(spectra_pred, trim_y, axis=0)
+        y_runs = [array.T.ravel() for array in y_runs]
+
+        sens_runs = np.split(sens, trim_sens, axis=0)
+        resid_runs = np.split(residuals, trim_sens)
+
+        self.epsilon_mcr = absorptivity_pure
+
+        return y_runs, resid_runs, sens_runs
+
+    def get_local_analysis(self, params):
+        y_runs = []
+        resid_runs = []
+        sens_runs = []
+        c_runs = []
+        epsilon_mcr = []
+
+        for ind in range(self.num_datasets):
+            result = self.function(params, self.x_fit[ind],
+                                   reorder=False,
+                                   *self.args_fun[ind])
+
+            if isinstance(result, tuple):
+                conc_prof, sens_states = result
+            else:
+                conc_prof = result
+                sens_states = None
+
+            conc_target = conc_prof[:, self.measured_ind]
+
+            # MCR
+            conc_plus = np.linalg.pinv(conc_target)
+            absorptivity_pure = np.dot(conc_plus, self.spectra[ind])
+            spectra_pred = np.dot(conc_target, absorptivity_pure)
+
+            epsilon_mcr.append(absorptivity_pure)
+
+            if sens_states is None:
+                args_merged = [self.x_data[ind],
+                               self.args_fun[ind], self.spectra[ind]]
+
+                sens = numerical_jac_data(self.func_aux, params, args_merged,
+                                          dx=self.dx_fd)[:, self.map_variable]
+            else:
+                sens = self.get_sens_projection(conc_target, conc_plus,
+                                                sens_states, spectra_pred)
+
+            resid = (spectra_pred - self.spectra[ind]).T.ravel()
+            resid_run = resid / self.stdev_data[ind]
+
+            y_runs.append(spectra_pred.T.ravel())
+            resid_runs.append(resid_run)
+            sens_runs.append(sens)
+
+        self.epsilon_mcr = epsilon_mcr
+
+        return y_runs, resid_runs, sens_runs
+
+    def get_objective(self, params, residual_vec=False):
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
+
+        if type(self.params_iter) is list:
+            self.params_iter.append(params)
+
+        if self.global_analysis:
+            y_runs, resid_runs, sens_runs = self.get_global_analysis(params)
+
+        else:
+            y_runs, resid_runs, sens_runs = self.get_local_analysis(params)
+
+        self.y_runs = y_runs
+        self.sens_runs = sens_runs
+        self.resid_runs = resid_runs
+
+        if type(self.objfun_iter) is list:
+            objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            self.objfun_iter.append(objfun_val)
+
+        residuals = np.concatenate(resid_runs)
+        self.residuals = residuals
+
+        # Return objective
+        if residual_vec:
+            return residuals
+        else:
+            residual = 1/2 * residuals.dot(residuals)
+            return residual
 
 
 if __name__ == '__main__':

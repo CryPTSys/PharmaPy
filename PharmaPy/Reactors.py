@@ -9,7 +9,7 @@ from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.Commons import reorder_sens, plot_sens
+from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.NameAnalysis import get_dict_states
 
@@ -116,7 +116,10 @@ class _BaseReactor:
             raise RuntimeError('Please provide a list or tuple of phases '
                                'objects')
         classify_phases(self)
-        self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+
+        self.vol_phase = copy.copy(self.Liquid_1.vol)
+        self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
+        self.__original_phase__ = copy.deepcopy(self.Liquid_1)
 
     @property
     def Kinetics(self):
@@ -147,14 +150,13 @@ class _BaseReactor:
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
 
-        self.Liquid_1.__dict__.update(self.__original_phase__)
+        self.Liquid_1.__dict__.update(self.__original_phase_dict__)
         self.__dict__.update(copy_dict)
 
     def heat_transfer(self, temp, temp_ht, vol):
         # Heat transfer area
         diam = (4/np.pi * vol)**(1/3)  # m
         area_ht = np.pi * diam**2  # m**2
-        # self.area_ht = area_ht
 
         if self.ht_mode == 'coil':  # Half pipe heat transfer
             pass
@@ -211,7 +213,7 @@ class _BaseReactor:
         self.Liquid_1.temp = temp
 
         if self.oper_mode != 'Batch':
-            self.Liquid_1.updatePhase(concentr=conc, vol=vol)
+            self.Liquid_1.updatePhase(mole_conc=conc, vol=vol)
 
         material_bces = self.material_balances(time, conc, vol, temp,
                                                u_values)
@@ -274,38 +276,31 @@ class _BaseReactor:
             self.Liquid_1.timeProf = self.timeProf
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
-                         reorder=True):
-
-        evalsens = True
+                         modify_controls=None, reorder=True):
 
         self.reset()
+
         if isinstance(modify_phase, dict):
             self.Liquid_1.updatePhase(**modify_phase)
 
-        self.Kinetics.assign_params(params)
+        if isinstance(modify_controls, dict):
+            self.params_control = modify_controls
+
+        self.Kinetics.set_params(params)
         self.elapsed_time = 0
 
-        if evalsens:
-            t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                                   verbose=False,
-                                                   eval_sens=True)
+        t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                               verbose=False,
+                                               eval_sens=True)
 
-            if reorder:
-                sens = reorder_sens(sens)
-            else:
-                sens = np.stack(sens)
-
-            c_prof = states[:, :self.Kinetics.num_species]
-
-            return c_prof, sens
+        if reorder:
+            sens = reorder_sens(sens)
         else:
-            t_prof, states = self.solve_unit(time_grid=t_vals,
-                                             verbose=False,
-                                             eval_sens=False)
+            sens = np.stack(sens)
 
-            c_prof = states[:, :self.Kinetics.num_species]
+        c_prof = states[:, :self.Kinetics.num_species]
 
-            return c_prof
+        return c_prof, sens
 
     def plot_profiles(self, fig_size=None, title=None, time_div=1, q_div=1,
                       pick_idx=None, black_white=False):
@@ -444,6 +439,10 @@ class BatchReactor(_BaseReactor):
         self.is_continuous = False
         self.nomenclature()
 
+        self.vol_offset = 0.75
+
+        self.material_from_upstream = False
+
     def nomenclature(self):
         if not self.isothermal and 'temp' not in self.controls.keys():
             self.states_uo.append('temp')
@@ -478,10 +477,11 @@ class BatchReactor(_BaseReactor):
 
     def energy_balances(self, conc, vol, temp, temp_ht, inputs,
                         heat_prof=False):
+
         temp = np.atleast_1d(temp)
         conc = np.atleast_2d(conc)
 
-        conc_all = np.ones((len(conc), len(self.Liquid_1.concentr)))
+        conc_all = np.ones((len(conc), len(self.Liquid_1.mole_conc)))
 
         if conc.ndim == 1:
             conc_all[self.mask_species] = conc
@@ -517,6 +517,7 @@ class BatchReactor(_BaseReactor):
             else:
                 ht_term = self.heat_transfer(temp, temp_ht, vol)
                 heat_profile = np.column_stack((source_term, -ht_term))
+
             return heat_profile
         else:
             ht_term = self.heat_transfer(temp, temp_ht, vol)
@@ -554,13 +555,9 @@ class BatchReactor(_BaseReactor):
         if time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
 
-        # # Reset states
-        # if self.reset_states:
-        #     self.reset()
-
         # Initial states
-        conc_init = self.Liquid_1.concentr[self.mask_species]
-        self.conc_inert = self.Liquid_1.concentr[~self.mask_species]
+        conc_init = self.Liquid_1.mole_conc[self.mask_species]
+        self.conc_inert = self.Liquid_1.mole_conc[~self.mask_species]
         self.num_concentr = len(conc_init)
 
         states_init = conc_init
@@ -589,7 +586,7 @@ class BatchReactor(_BaseReactor):
 
             problem = Explicit_Problem(fobj, states_init,
                                        t0=self.elapsed_time)
-            if self.isothermal:
+            if self.isothermal and self.Kinetics.df_dstates is not None:
                 problem.jac = lambda time, states: self.get_jacobians(
                     time, states, 0, merged_params)
 
@@ -651,6 +648,15 @@ class BatchReactor(_BaseReactor):
                                               tht_prof, None,
                                               heat_prof=True)
 
+        if 'temp_ht' in self.states_uo:
+            q_ht = self.heat_prof[:, 1]
+        else:
+            q_ht = self.heat_prof[:, 0]
+
+        # Heat duty
+        self.heat_duty = np.array([trapezoidal_rule(time, q_ht), 0])  # J
+        self.duty_type = [0, 0]
+
         self.tempProf.append(temp_prof)
         self.concProf.append(conc_prof)
         self.volProf.append(vol_prof)
@@ -668,9 +674,9 @@ class BatchReactor(_BaseReactor):
         # self.Liquid_1.vol = self.vol
         # self.Liquid_1.calcComposition()
 
-        concentr_final = self.Liquid_1.concentr.copy()
+        concentr_final = self.Liquid_1.mole_conc.copy()
         concentr_final[self.mask_species] = self.concentr
-        self.Liquid_1.updatePhase(vol=self.vol, concentr=concentr_final)
+        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=concentr_final)
 
         self.Outlet = self.Liquid_1
         self.outputs = states
@@ -678,21 +684,21 @@ class BatchReactor(_BaseReactor):
 
 class CSTR(_BaseReactor):
     def __init__(self, partic_species, name_species=None, mask_params=None,
-                 Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  u_ht=1000, ht_media=None, ht_mode='jacket'):
 
         super().__init__(partic_species, name_species, mask_params,
-                         Kinetics, Phases,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          u_ht, ht_media, ht_mode)
 
-        self.Inlet = Inlet
+        self.Inlet = None
         self.oper_mode = 'Continuous'
         self.is_continuous = True
         self.nomenclature()
+
+        self.vol_offset = 0.75
 
     def nomenclature(self):
         if not self.isothermal:
@@ -838,8 +844,8 @@ class CSTR(_BaseReactor):
         # self.Inlet.Liquid_1.getProps()
 
         # Initial states
-        states_init = self.Liquid_1.concentr
-        self.num_concentr = len(self.Liquid_1.concentr)
+        states_init = self.Liquid_1.mole_conc
+        self.num_concentr = len(self.Liquid_1.mole_conc)
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
@@ -963,6 +969,8 @@ class SemibatchReactor(CSTR):
 
         self.vol_ht = self.vol_max * 0.15
 
+        self.material_from_upstream = False
+
     def heat_transfer(self, temp, temp_ht, vol):
         # Geometry
         circ = np.pi / 4 * self.diam**2  # m**2
@@ -1033,8 +1041,8 @@ class SemibatchReactor(CSTR):
         # self.Inlet.getProps()
 
         # Initial states
-        states_init = self.Liquid_1.concentr
-        self.num_concentr = len(self.Liquid_1.concentr)
+        states_init = self.Liquid_1.mole_conc
+        self.num_concentr = len(self.Liquid_1.mole_conc)
         states_init = np.append(states_init, self.Liquid_1.vol)
 
         if 'temp' in self.states_uo:
@@ -1130,7 +1138,9 @@ class PlugFlowReactor(_BaseReactor):
                          u_ht, ht_media, ht_mode)
 
         self.is_continuous = True
+        self.oper_mode = 'Continuous'
         self.diam = diam_in
+        self.vol_offset = 1
 
         self.adiabatic = adiabatic
 
@@ -1139,6 +1149,8 @@ class PlugFlowReactor(_BaseReactor):
         self.distributed_uo = True
 
         self.nomenclature()
+
+        self.Inlet = None
 
     def nomenclature(self):
         if not self.isothermal:
@@ -1168,7 +1180,7 @@ class PlugFlowReactor(_BaseReactor):
     def energy_steady(self, conc, temp):
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
-        concentr = np.zeros_like(self.Liquid_1.concentr)
+        concentr = np.zeros_like(self.Liquid_1.mole_conc)
         concentr[self.mask_species] = conc
         concentr[~self.mask_species] = self.c_inert
 
@@ -1275,7 +1287,9 @@ class PlugFlowReactor(_BaseReactor):
 
         return dconc_dt
 
-    def energy_balances(self, time, conc, vol_diff, temp, flow_in, rate_i):
+    def energy_balances(self, time, conc, vol_diff, temp, flow_in, rate_i,
+                        heat_profile=False):
+
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         # Volumetric heat capacity
@@ -1290,22 +1304,27 @@ class PlugFlowReactor(_BaseReactor):
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
         # ---------- Balance terms (W)
-        source_term = -inner1d(deltah_rxn, rate_i) * 1000 / cp_vol  # W/m**3
+        source_term = -inner1d(deltah_rxn, rate_i * 1000)  # W/m**3
 
         temp_diff = np.diff(temp)
-        flow_term = -flow_in * temp_diff / vol_diff
+        flow_term = -flow_in * temp_diff / vol_diff  # K/s
 
         if self.adiabatic:
             heat_transfer = np.zeros_like(self.vol_discr)
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
             heat_transfer = self.u_ht * a_prime * \
-                (temp - self.ht_media.temp_in) / cp_vol
+                (temp - self.ht_media.temp_in)  # W/m**3
 
-        # -------- Energy balance
-        dtemp_dt = flow_term + source_term[1:] - heat_transfer[1:]
+        if heat_profile:
+            ht_total = trapezoidal_rule(self.vol_centers, heat_transfer)  # W
+            return ht_total
 
-        return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant!!
+        else:
+            dtemp_dt = flow_term + \
+                (source_term[1:] - heat_transfer[1:])/cp_vol[1:]
+
+            return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant
 
     def unravel_states(self, states):
         if 'temp' in self.states_uo:
@@ -1323,7 +1342,7 @@ class PlugFlowReactor(_BaseReactor):
     def get_inputs(self, time):
 
         if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_conc': self.Inlet.concentr,
+            input_dict = {'mole_conc': self.Inlet.mole_conc,
                           'temp': self.Inlet.temp,
                           'vol_flow': self.Inlet.vol_flow}
         else:
@@ -1338,7 +1357,7 @@ class PlugFlowReactor(_BaseReactor):
 
         return input_dict
 
-    def unit_model(self, time, states):
+    def unit_model(self, time, states, enrgy_bce=False):
 
         conc, temp = self.unravel_states(states)
 
@@ -1377,20 +1396,29 @@ class PlugFlowReactor(_BaseReactor):
                                                temp_all, flow_in, rates_j)
 
         if 'temp' in self.states_uo:
-            energy_bce = self.energy_balances(time, conc_all, vol_diff,
-                                              temp_all,
-                                              flow_in, rates_i)
+            if enrgy_bce:
+                ht_inst = self.energy_balances(time, conc_all, vol_diff,
+                                               temp_all,
+                                               flow_in, rates_i,
+                                               heat_profile=True)
+                return ht_inst
 
-            balances = np.column_stack((material_bces, energy_bce)).ravel()
+            else:
+                energy_bce = self.energy_balances(time, conc_all, vol_diff,
+                                                  temp_all,
+                                                  flow_in, rates_i,
+                                                  heat_profile=False)
+
+                balances = np.column_stack((material_bces, energy_bce)).ravel()
         else:
             balances = material_bces.ravel()
 
         return balances
 
-    def solve_unit(self, runtime, num_discr):
+    def solve_unit(self, runtime, num_discr, verbose=True):
         self.set_names()
 
-        c_inlet = self.Inlet.concentr
+        c_inlet = self.Inlet.mole_conc
         self.num_species = len(c_inlet)
         self.num_discr = num_discr
 
@@ -1399,7 +1427,7 @@ class PlugFlowReactor(_BaseReactor):
         self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
 
         c_init = np.ones((num_discr,
-                          self.num_species)) * self.Liquid_1.concentr
+                          self.num_species)) * self.Liquid_1.mole_conc
 
         self.num_concentr = self.num_species  # TODO: make consistent with Batch
 
@@ -1412,6 +1440,9 @@ class PlugFlowReactor(_BaseReactor):
         problem = Explicit_Problem(self.unit_model, states_init, t0=0)
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
+
+        if not verbose:
+            solver.verbosity = 50
 
         time, states_solver = solver.simulate(runtime)
 
@@ -1484,6 +1515,15 @@ class PlugFlowReactor(_BaseReactor):
 
         # Adjust discretization
         self.vol_centers = vol_centers
+
+        # Energy balance
+        ht_time = np.zeros_like(time)
+        for ind, row in enumerate(states):
+            ht_time[ind] = -self.unit_model(time[ind], row, enrgy_bce=True)
+
+        self.heat_profile = ht_time
+        self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
+        self.duty_type = [None, 'water']
 
     def flatten_states(self):
         if type(self.timeProf) is list:

@@ -13,6 +13,36 @@ from scipy.integrate import simps
 from itertools import cycle
 
 linestyles = cycle(['-', '--', '-.', ':'])
+eps = np.finfo(float).eps
+
+
+def high_resolution_fvm(y, boundary_cond, limiter_type='Van Leer',
+                        both=False):
+
+    # Ghost cells -1, 0 and N + 1 (see LeVeque 2002, Chapter 9)
+    y_extrap = 2*y[-1] - y[-2]
+    y_aug = np.concatenate(([boundary_cond]*2, y, [y_extrap]))
+
+    y_diff = np.diff(y_aug, axis=0)
+
+    theta = (y_diff[:-1]) / (y_diff[1:] + eps)
+
+    if limiter_type == 'Van Leer':
+        limiter = (np.abs(theta) + theta) / (1 + np.abs(theta))
+    else:  # TODO: include more limiters
+        pass
+
+    fluxes = y_aug[1:-1] + 0.5 * y_diff[1:] * limiter
+
+    return fluxes
+
+
+def upwind_fvm(y, boundary_cond):
+    y_aug = np.concatenate(([boundary_cond], y))
+
+    y_diff = np.diff(y_aug)
+
+    return y_diff
 
 
 def geom_series(start, stop, num, rate_out=False):
@@ -59,13 +89,109 @@ def vol_ufun(time, vol_zero, rate):
     return vol_t
 
 
+def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
+                 t_init=0.0, y_init=None):
+
+    if y_ramps is not None and y_init is None:
+        raise ValueError('If specifying ramp functions, you need to pass an '
+                         'initial state value for y_init')
+
+    if time_vals is None and time_lengths is None:
+        raise ValueError('time_vals or time_lengths must be specified to '
+                         'utilize piecewise linear profiles')
+
+    if y_vals is None and y_ramps is None:
+        raise ValueError('y_vals or y_ramps must be specified to utilize '
+                         'piecewise linear profiles')
+
+    num_segments = 0
+    if time_vals is None:
+        num_segments = len(time_lengths)
+    else:
+        num_segments = len(time_vals) - 1
+
+    pw_logic_exprs = []
+    pw_fncs = []
+    y_prev = None
+    y_end = None
+
+    for j in range(num_segments):
+        if time_vals is not None:
+            def fun_logic(x, j=j): return \
+                (time_vals[j] <= x) * (x < time_vals[j + 1])
+
+            if y_vals is not None:
+                def function(x, j=j): return \
+                    (x - time_vals[j])/(time_vals[j + 1] - time_vals[j]) *\
+                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                y_end = y_vals[j + 1]
+            else:
+                if j == 0:
+                    y_prev = y_init
+
+                def function(x, j=j, y_prev=y_prev): return \
+                    (x - time_vals[j]) * y_ramps[j] + y_prev
+
+                y_prev += y_ramps[j] * (time_vals[j + 1] - time_vals[j])
+                y_end = y_prev
+
+            pw_logic_exprs.append(fun_logic)
+            pw_fncs.append(function)
+
+            if j == (num_segments - 1):
+                pw_logic_exprs.append(lambda x, j=j: (x >= time_vals[j + 1]))
+                pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
+        else:
+            def fun_logic(x, j=j): return \
+                (sum(time_lengths[0:j]) <= x)*(x < sum(time_lengths[0:j + 1]))
+
+            if y_vals is not None:
+                def function(x, j=j): return \
+                    (x - sum(time_lengths[0:j])) / (time_lengths[j]) * \
+                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                y_end = y_vals[j + 1]
+            else:
+                if j == 0:
+                    y_prev = y_init
+
+                def function(x, j=j, y_prev=y_prev): return \
+                    (x - sum(time_lengths[0:j])) * y_ramps[j] + y_prev
+
+                y_prev += y_ramps[j] * (time_lengths[j])
+                y_end = y_prev
+
+            pw_logic_exprs.append(fun_logic)
+            pw_fncs.append(function)
+
+            if j == (num_segments - 1):
+                pw_logic_exprs.append(lambda x, j=j:
+                                      (x >= sum(time_lengths[0:j + 1])))
+                pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
+
+    return pw_logic_exprs, pw_fncs
+
+
+def temp_pw_lin(time, temp_zero, pw_exprs=None, pw_fncs=None, t_zero=0):
+    pw_exprs_vals = []
+
+    for ind, val in enumerate(pw_exprs):
+        if ind < (len(pw_exprs)):
+            pw_exprs_vals.append(pw_exprs[ind](time))
+
+    temp_t = np.piecewise(time, pw_exprs_vals, pw_fncs)
+
+    return temp_t
+
+
 def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
               name_params=None, mode='per_parameter', black_white=False,
               time_div=1):
 
     num_plots = len(sensit)
     num_cols = bool(num_plots // 2) + 1
-    num_rows = num_plots // 2 + num_plots % 2
+    num_rows = num_plots // num_cols + (num_plots % num_cols > 0)
 
     time_prof *= 1 / time_div
 
@@ -117,7 +243,7 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
 
     num_subplots = len(axes_sens.ravel())
     if num_subplots > num_plots:
-        fig_sens.delaxes(axes_sens.flatten()[-1])
+        [fig_sens.delaxes(ax) for ax in axes_sens.flatten()[num_plots:]]
 
     if mode == 'per_parameter':
         legend = [r'$' + name + r'$' for name in name_states]
@@ -126,8 +252,9 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
         else:
             ncols = 1
     elif mode == 'per_state':
-        legend = [r'${}$'.format(name_params[ind])
-                  for ind in range(num_params)]
+        legend = [r'$' + name + r'$' for name in name_params]
+        # legend = [r'${}$'.format(name_params[ind])
+        #           for ind in range(num_params)]
         if len(legend) > 4:
             ncols = num_params // 4 + 1
         else:
@@ -269,89 +396,3 @@ def reorder_pde_outputs(state_array, num_fv, size_states, name_states=None):
             key: value for key, value in zip(name_states, individual_states)}
 
     return states_per_fv, individual_states
-
-
-def animate_pde(time_vals, z_vals, states_container, name_species,
-                 filename=None, title=None, pick_idx=None,
-                 step_data=2, fps=5):
-
-    num_species = len(name_species)
-    if pick_idx is None:
-        pick_idx = np.arange(num_species)
-        names = name_species
-    else:
-        pick_idx = pick_idx
-        names = [name_species[ind] for ind in pick_idx]
-
-    num_plots = len(states_container)
-    fig_size = (4, 4/1.6*num_plots)
-    fig_anim, (ax_anim, ax_sat) = plt.subplots(num_plots, figsize=fig_size)
-    ax_anim.set_xlim(0, z_vals.max())
-    fig_anim.suptitle(title)
-
-    fig_anim.subplots_adjust(left=0, bottom=0, right=1, top=1,
-                             wspace=None, hspace=None)
-
-    for array in states_container:
-        # Determine boundary values
-        pass
-
-    conc_min = np.vstack(self.concPerVolElement)[:, pick_idx].min()
-    conc_max = np.vstack(self.concPerVolElement)[:, pick_idx].max()
-
-    conc_diff = conc_max - conc_min
-
-    ax_anim.set_ylim(conc_min - 0.03*conc_diff, conc_max + conc_diff*0.03)
-
-    ax_anim.set_xlabel('$z/L$')
-    ax_anim.set_ylabel('$C_j$ (mol/L)')
-
-    sat = self.satProf
-    sat_diff = sat.max() - sat.min()
-    ax_sat.set_xlim(0, z_vals.max())
-    ax_sat.set_ylim(sat.min() - sat_diff*0.03, sat.max() + sat_diff*0.03)
-
-    ax_sat.set_xlabel('$z/L$')
-    ax_sat.set_ylabel('$S$')
-
-    def func_data(ind):
-        conc_species = []
-        for comp in pick_idx:
-            conc_species.append(self.concPerSpecies[comp][ind])
-
-        conc_species = np.column_stack(conc_species)
-        return conc_species
-
-    lines_conc = ax_anim.plot(self.z_centers, func_data(0))
-    line_temp, = ax_sat.plot(self.z_centers, sat[0])
-
-    time_tag = ax_anim.text(
-        1, 1.04, '$time = {:.2f}$ s'.format(self.timeProf[0]),
-        horizontalalignment='right',
-        transform=ax_anim.transAxes)
-
-    def func_anim(ind):
-        f_vals = func_data(ind)
-        for comp, line in enumerate(lines_conc):
-            line.set_ydata(f_vals[:, comp])
-            line.set_label(names[comp])
-
-        line_temp.set_ydata(sat[ind])
-
-        ax_anim.legend()
-        fig_anim.tight_layout()
-
-        time_tag.set_text('$t = {:.2f}$ s'.format(self.timeProf[ind]))
-
-    frames = np.arange(0, len(self.timeProf), step_data)
-    animation = FuncAnimation(fig_anim, func_anim, frames=frames,
-                              repeat=True)
-
-    writer = FFMpegWriter(fps=fps, metadata=dict(artist='Me'),
-                          bitrate=-1)
-
-    suff = '.mp4'
-
-    animation.save(filename + suff, writer=writer)
-
-    return animation, fig_anim, (ax_anim, ax_sat)

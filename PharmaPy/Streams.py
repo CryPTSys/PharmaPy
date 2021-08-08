@@ -29,6 +29,7 @@ def Interpolation(t_data, y_data, time):
 class LiquidStream(LiquidPhase):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass_flow=0, vol_flow=0, mole_flow=0,
+                 controls=None, args_control=None,
                  mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None,
                  ind_solv=None):
 
@@ -49,6 +50,22 @@ class LiquidStream(LiquidPhase):
         # Outputs from upstream UO
         self.y_upstream = None
         self.time_upstream = None
+
+        # Controls
+        if controls is None:
+            controls = {}
+        else:
+            if args_control is None:
+                args_control = {key: () for key in controls.keys()}
+
+            update_dict = {}
+            for key, fun in controls.items():
+                update_dict[key] = fun(0, *args_control[key])
+
+            self.updatePhase(**update_dict)
+
+        self.controls = controls
+        self.args_control = args_control
 
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
@@ -107,12 +124,12 @@ class SolidStream(SolidPhase):
 class VaporStream(VaporPhase):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass_flow=0, vol_flow=0, mole_flow=0,
-                 mass_frac=None, mole_frac=None, concentr=None):
+                 mass_frac=None, mole_frac=None, mole_conc=None):
 
         super().__init__(path_thermo, temp, pres,
                          mass=mass_flow, vol=vol_flow, moles=mole_flow,
                          mass_frac=mass_frac, mole_frac=mole_frac,
-                         concentr=concentr)
+                         mole_conc=mole_conc)
 
         self.mass_flow = self.mass
         self.vol_flow = self.vol
@@ -123,10 +140,6 @@ class VaporStream(VaporPhase):
         # del self.moles
 
 
-
-
-
 if __name__ == '__main__':
     path = '../../data/evaporator/compounds_evap.json'
     stream_liq = LiquidStream(path)
-
