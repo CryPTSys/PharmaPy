@@ -306,6 +306,7 @@ class Evaporator:
 
         self._Inlet = None
         self._Phases = phase
+        self._Utility
         self.material_from_upstream = False
 
         self.k_vap = k_vap
@@ -395,6 +396,16 @@ class Evaporator:
 
         self.oper_mode = 'Semibatch'
         # self.paths = paths
+
+    @property
+    def Utility(self):
+        return self._Utility
+
+    @Utility.setter
+    def Utility(self, utility):
+        self.Utility = utility
+
+        self.u_ht = (1 / self.ht_coeff + 1 / utility.ht_coeff)
 
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
@@ -496,7 +507,7 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        heat_transfer = -self.ht_coeff * area_ht * (temp - self.temp_ht)
+        heat_transfer = -self.u_ht * area_ht * (temp - self.Utility.temp_in)
 
         if du_dt is None:
             return heat_transfer
