@@ -15,14 +15,9 @@ class CoolingWater:
         self.cp = 4180  # J/kg/K
         self.ht_coeff = ht_coeff
 
-        # if vol_flow > 0:
-        #     self.vol_flow = vol_flow
-        #     self.mass_flow = vol_flow * self.rho  # kg/s
-        # elif mass_flow > 0:
-        #     self.vol_flow = mass_flow / self.rho  # m**3/s
-        #     self.mass_flow = mass_flow
-
-        # self.temp_in = temp_in
+        if vol_flow is None and mass_flow is None:
+            raise RuntimeError("Both 'vol_flow' and 'mass_flow' are None. "
+                               "Specify one of them.")
 
         self.updateObject(vol_flow, mass_flow, temp_in)
 
@@ -37,10 +32,11 @@ class CoolingWater:
             for key, fun in controls.items():
                 update_dict[key] = fun(0, *args_control[key])
 
-            self.updatePhase(**update_dict)
+            self.updateObject(**update_dict)
 
         self.controls = controls
         self.args_control = args_control
+        self.controllable = ('temp_in', 'vol_flow', 'mass_flow')
 
         # Outputs
         self.temp_out = None
@@ -52,9 +48,20 @@ class CoolingWater:
         elif mass_flow is not None:
             self.mass_flow = mass_flow
             self.vol_flow = mass_flow / self.rho
-        else:
-            raise RuntimeError("Both 'vol_flow' and 'mass_flow' are None. "
-                               "Specify one of them.")
 
         if temp_in is not None:
             self.temp_in = temp_in
+
+    def evaluate_controls(self, time):
+        controls_out = {}
+
+        if len(self.controls) > 0:
+            for key, fun in self.controls.items():
+                args = self.args_control[key]
+                controls_out[key] = fun(time, *args)
+
+        for name in self.controllable:
+            if name not in controls_out.keys():
+                controls_out[name] = getattr(self, name)
+
+        return controls_out

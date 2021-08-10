@@ -298,15 +298,15 @@ class AdiabaticFlash:
 
 
 class Evaporator:
-    def __init__(self, vol_drum, phase=None,
+    def __init__(self, vol_drum,
                  pres=101325, diam_out=2.54e-2,
                  k_vap=1, cv_gas=0.8,
-                 ht_coeff=1000, temp_ht=298.15,
+                 ht_coeff=1000,
                  activity_model='ideal', state_events=None):
 
         self._Inlet = None
-        self._Phases = phase
-        self._Utility
+        self._Phases = None
+        self._Utility = None
         self.material_from_upstream = False
 
         self.k_vap = k_vap
@@ -330,7 +330,6 @@ class Evaporator:
 
         # Heat transfer
         self.ht_coeff = ht_coeff
-        self.temp_ht = temp_ht
 
         self.oper_mode = 'Batch'  # If inlet setter, then Semibatch
 
@@ -403,9 +402,8 @@ class Evaporator:
 
     @Utility.setter
     def Utility(self, utility):
-        self.Utility = utility
-
-        self.u_ht = (1 / self.ht_coeff + 1 / utility.ht_coeff)
+        self.u_ht = 1 / (1 / self.ht_coeff + 1 / utility.ht_coeff)
+        self._Utility = utility
 
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
@@ -430,7 +428,7 @@ class Evaporator:
 
         return input_dict
 
-    def material_balances(self, moles_i, x_i, y_i,
+    def material_balances(self, time, moles_i, x_i, y_i,
                           mol_liq, mol_vap, pres, temp, u_inputs,
                           dmoli_dt=None):
 
@@ -479,7 +477,7 @@ class Evaporator:
 
             return diff_i, alg_balances, flow_vap, vol_liq
 
-    def energy_balances(self, u_int, temp, x_i, y_i, mol_liq, mol_vap,
+    def energy_balances(self, time, u_int, temp, x_i, y_i, mol_liq, mol_vap,
                         vol_liq, flow_vap, pres, u_inputs, du_dt=None):
 
         input_flow = u_inputs['mole_flow']
@@ -507,7 +505,10 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        heat_transfer = -self.u_ht * area_ht * (temp - self.Utility.temp_in)
+        ht_controls = self.Utility.evaluate_controls(time)
+        temp_ht = ht_controls['temp_in']
+
+        heat_transfer = -self.u_ht * area_ht * (temp - temp_ht)
 
         if du_dt is None:
             return heat_transfer
@@ -553,7 +554,7 @@ class Evaporator:
 
         if states_dot is None:
             # Material balance
-            material_bces = self.material_balances(moles_i,
+            material_bces = self.material_balances(time, moles_i,
                                                    x_liq, y_vap, mol_liq, mol_vap,
                                                    pres, temp,
                                                    u_inputs, dmoli_dt)
@@ -561,7 +562,7 @@ class Evaporator:
             flow_vap, vol_liq = material_bces
 
             # Energy balance
-            energy_bce = self.energy_balances(u_int, temp, x_liq, y_vap,
+            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
                                               mol_liq, mol_vap,
                                               vol_liq, flow_vap,
                                               pres, u_inputs, du_dt)
@@ -570,7 +571,7 @@ class Evaporator:
         else:
 
             # Material balance
-            material_bces = self.material_balances(moles_i,
+            material_bces = self.material_balances(time, moles_i,
                                                    x_liq, y_vap, mol_liq, mol_vap,
                                                    pres, temp,
                                                    u_inputs, dmoli_dt)
@@ -579,7 +580,7 @@ class Evaporator:
             flow_vap, vol_liq = material_bces[-2:]
 
             # Energy balance
-            energy_bce = self.energy_balances(u_int, temp, x_liq, y_vap,
+            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
                                               mol_liq, mol_vap,
                                               vol_liq, flow_vap,
                                               pres, u_inputs, du_dt)
@@ -684,7 +685,10 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        ht_init = -self.ht_coeff * area_ht * (temp_init - self.temp_ht)
+        ht_controls = self.Utility.evaluate_controls(0)
+        temp_ht = ht_controls['temp_in']
+
+        ht_init = -self.ht_coeff * area_ht * (temp_init - temp_ht)
 
         du_init = ht_init + inlet_flow * hin_init  # bce - dU_dt
 
@@ -857,8 +861,9 @@ class Evaporator:
         flow_vap = np.zeros_like(time)
         h_liq = np.zeros_like(time)
         h_vap = np.zeros_like(time)
+
         for ind, row in enumerate(states):
-            mass_bce, q_ht = self.unit_model(time, row, None, False)
+            mass_bce, q_ht = self.unit_model(time[ind], row, None, False)
 
             heat_bce[ind] = q_ht
             flow_vap[ind] = mass_bce[0]
@@ -969,15 +974,15 @@ class Evaporator:
 
 
 class ContinuousEvaporator:
-    def __init__(self, vol_drum, phase=None, inlet=None, adiabatic=True,
+    def __init__(self, vol_drum, adiabatic=True,
                  pres=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
                  ht_coeff=1000, temp_ht=298.15,
                  activity_model='ideal'):
 
-        self._Inlet = inlet
-        self._Phases = phase
+        self._Inlet = None
+        self._Phases = None
 
         self.vol_tot = vol_drum
 
@@ -1000,7 +1005,6 @@ class ContinuousEvaporator:
 
         # Heat transfer
         self.ht_coeff = ht_coeff
-        self.temp_ht = temp_ht
 
         self.oper_mode = 'Continuous'
 
@@ -1144,7 +1148,10 @@ class ContinuousEvaporator:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
             area_ht = np.pi * self.diam_tank * height_liq  # m**2
 
-            heat_transfer = self.ht_coeff * area_ht * (temp - self.temp_ht)
+            ht_controls = self.Utility.evaluate_controls(time)
+            temp_ht = ht_controls['temp_in']
+
+            heat_transfer = self.ht_coeff * area_ht * (temp - temp_ht)
 
         flow_term = input_flow * h_in - flow_liq * h_liq - flow_vap * h_vap
         if heat_prof:
