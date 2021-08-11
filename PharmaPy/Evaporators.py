@@ -335,12 +335,15 @@ class Evaporator:
 
         self.is_continuous = False
 
-        self.timeProf = []
-        self.tempProf = []
-        self.presProf = []
+        self.time_runs = []
+        self.temp_runs = []
+        self.pres_runs = []
 
-        self.xliqProf = []
-        self.yvapProf = []
+        self.xliq_runs = []
+        self.yvap_runs = []
+
+        self.molLiq_runs = []
+        self.molVap_runs = []
 
         self.activity_model = activity_model
 
@@ -819,40 +822,54 @@ class Evaporator:
         time, states, sdot = solver.simulate(runtime)
 
         self.retrieve_results(time, states)
+        self.flatten_states()
+        self.get_heat_duty(time, states)
 
         return time, states
 
     def retrieve_results(self, time, states):
         n_comp = self.num_species + 1
 
-        self.timeProf.append(time)
+        self.time_runs.append(np.asarray(time))
 
         fracs = states[:, n_comp:3*n_comp]
-        self.xliqProf.append(fracs[:, :n_comp])
-        self.yvapProf.append(fracs[:, n_comp:])
+        self.xliq_runs.append(fracs[:, :n_comp])
+        self.yvap_runs.append(fracs[:, n_comp:])
 
-        self.molLiqProf = states[:, 3*n_comp]
-        self.molVapProf = states[:, 3*n_comp + 1]
+        self.molLiq_runs.append(states[:, 3*n_comp])
+        self.molVap_runs.append(states[:, 3*n_comp + 1])
 
-        self.presProf.append(states[:, 3*n_comp + 2])
+        self.pres_runs.append(states[:, 3*n_comp + 2])
 
         self.uIntProf = states[:, -2]
-        self.tempProf.append(states[:, -1])
+        self.temp_runs.append(states[:, -1])
 
         # Update phases
-        self.LiqPhase.temp = self.tempProf[-1][-1]
-        self.LiqPhase.pres = self.presProf[-1][-1]
-        self.LiqPhase.updatePhase(mole_frac=self.xliqProf[-1][-1, :-1],
-                                  moles=self.molLiqProf[-1])
+        self.LiqPhase.temp = self.temp_runs[-1][-1]
+        self.LiqPhase.pres = self.pres_runs[-1][-1]
+        self.LiqPhase.updatePhase(mole_frac=self.xliq_runs[-1][-1, :-1],
+                                  moles=self.molLiq_runs[-1][-1])
 
         self.Phases = self.LiqPhase
 
         # Output info
         self.Outlet = self.LiqPhase
-        self.outputs = np.column_stack((self.xliqProf[-1][:, :-1],
-                                        self.molLiqProf, self.tempProf[-1]))
+        self.outputs = np.column_stack((self.xliq_runs[-1][:, :-1],
+                                        self.molLiq_runs[-1],
+                                        self.temp_runs[-1]))
 
-        self.get_heat_duty(time, states)
+    def flatten_states(self):
+        self.timeProf = np.concatenate(self.time_runs)
+
+        self.xliqProf = np.vstack(self.xliq_runs)
+        self.yvapProf = np.vstack(self.yvap_runs)
+
+        self.molLiqProf = np.concatenate(self.molLiq_runs)
+        self.molVapProf = np.concatenate(self.molVap_runs)
+
+        self.presProf = np.concatenate(self.pres_runs)
+
+        self.tempProf = np.concatenate(self.temp_runs)
 
     def get_heat_duty(self, time, states):
         # ---------- Heat balance
@@ -869,16 +886,15 @@ class Evaporator:
             flow_vap[ind] = mass_bce[0]
 
             temp_bubble = self.LiqPhase.getBubblePoint(
-                pres=self.presProf[-1][ind],
-                mole_frac=self.xliqProf[-1][ind, :-1])
+                pres=self.presProf[ind], mole_frac=self.xliqProf[ind, :-1])
 
             h_liq[ind] = self.LiqPhase.getEnthalpy(
-                temp=temp_bubble,
-                mole_frac=self.xliqProf[-1][ind, :-1], basis='mole')
+                temp=temp_bubble, mole_frac=self.xliqProf[ind, :-1],
+                basis='mole')
 
             h_vap[ind] = self.VaporOut.getEnthalpy(
-                temp=self.tempProf[-1][ind],
-                mole_frac=self.yvapProf[-1][ind, :-1], basis='mole')
+                temp=self.tempProf[ind], mole_frac=self.yvapProf[ind, :-1],
+                basis='mole')
 
         # Condensation duty
         heat_cond_prof = flow_vap * (h_liq - h_vap)
@@ -887,23 +903,6 @@ class Evaporator:
         self.heat_duty = trapezoidal_rule(time, self.heat_profile)
 
         self.duty_type = [0, 0]  # TODO: this should depend on operation T
-
-    def flatten_states(self):
-        if type(self.timeProf) is list:
-            self.xliqProf = np.vstack(self.xliqProf)
-            self.yvapProf = np.vstack(self.yvapProf)
-
-            # self.volProf = np.concatenate(self.volProf)
-            self.tempProf = np.concatenate(self.tempProf)
-            self.presProf = np.concatenate(self.presProf)
-            self.timeProf = np.concatenate(self.timeProf)
-
-            # if 'temp_ht' in self.states_uo:
-            #     self.tempHtProf = np.concatenate(self.tempHtProf)
-
-            # self.Phases.tempProf = self.tempProf
-            # self.Phases.concProf = self.concProf
-            # self.Phases.timeProf = self.timeProf
 
     def plot_profiles(self, fig_size=None, pick_comp=None, time_div=1):
         self.flatten_states()
