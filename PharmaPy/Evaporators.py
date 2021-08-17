@@ -301,7 +301,7 @@ class Evaporator:
     def __init__(self, vol_drum,
                  pres=101325, diam_out=2.54e-2,
                  k_vap=1, cv_gas=0.8,
-                 ht_coeff=1000,
+                 h_conv=1000,
                  activity_model='ideal', state_events=None):
 
         self._Inlet = None
@@ -329,7 +329,7 @@ class Evaporator:
         self.jac_sdot = jacauto(self.unit_model, 2)
 
         # Heat transfer
-        self.ht_coeff = ht_coeff
+        self.h_conv = h_conv
 
         self.oper_mode = 'Batch'  # If inlet setter, then Semibatch
 
@@ -405,7 +405,7 @@ class Evaporator:
 
     @Utility.setter
     def Utility(self, utility):
-        self.u_ht = 1 / (1 / self.ht_coeff + 1 / utility.ht_coeff)
+        self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
         self._Utility = utility
 
     def nomenclature(self):
@@ -416,20 +416,6 @@ class Evaporator:
 
         self.names_upstream = None
         self.bipartite = None
-
-    def get_inputs(self, time):
-        if self.Inlet is None:
-            input_dict = {'mole_flow': 0,
-                          'mole_frac': np.zeros(self.num_species + 1),
-                          'temp': 298.15}
-        elif hasattr(self.Inlet, 'y_inlet'):
-            pass  # TODO: Interpolate
-        else:
-            input_dict = {'mole_flow': self.Inlet.mole_flow,
-                          'mole_frac': self.Inlet.mole_frac,
-                          'temp': self.Inlet.temp}
-
-        return input_dict
 
     def material_balances(self, time, moles_i, x_i, y_i,
                           mol_liq, mol_vap, pres, temp, u_inputs,
@@ -553,7 +539,12 @@ class Evaporator:
             du_dt = states_dot[-2]
 
         # Inputs
-        u_inputs = get_inputs(time, *self.args_inputs)
+        if self.Inlet is None:
+            u_inputs = {'mole_flow': 0,
+                        'mole_frac': np.zeros(self.num_species + 1),
+                        'temp': 298.15}
+        else:
+            u_inputs = get_inputs(time, *self.args_inputs)
 
         if states_dot is None:
             # Material balance
@@ -691,7 +682,7 @@ class Evaporator:
         ht_controls = self.Utility.evaluate_controls(0)
         temp_ht = ht_controls['temp_in']
 
-        ht_init = -self.ht_coeff * area_ht * (temp_init - temp_ht)
+        ht_init = -self.h_conv * area_ht * (temp_init - temp_ht)
 
         du_init = ht_init + inlet_flow * hin_init  # bce - dU_dt
 
@@ -977,7 +968,7 @@ class ContinuousEvaporator:
                  pres=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
-                 ht_coeff=1000, temp_ht=298.15,
+                 h_conv=1000, temp_ht=298.15,
                  activity_model='ideal'):
 
         self._Inlet = None
@@ -1003,7 +994,7 @@ class ContinuousEvaporator:
         self.jac_sdot = jacauto(self.unit_model, 2)
 
         # Heat transfer
-        self.ht_coeff = ht_coeff
+        self.h_conv = h_conv
 
         self.oper_mode = 'Continuous'
 
@@ -1150,7 +1141,7 @@ class ContinuousEvaporator:
             ht_controls = self.Utility.evaluate_controls(time)
             temp_ht = ht_controls['temp_in']
 
-            heat_transfer = self.ht_coeff * area_ht * (temp - temp_ht)
+            heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
 
         flow_term = input_flow * h_in - flow_liq * h_liq - flow_vap * h_vap
         if heat_prof:

@@ -9,11 +9,11 @@ Created on Sun Aug  9 13:52:55 2020
 
 class CoolingWater:
     def __init__(self, vol_flow=None, mass_flow=None, temp_in=298.15,
-                 controls=None, args_control=None, ht_coeff=1000):
+                 controls=None, args_control=None, h_conv=1000):
 
         self.rho = 1000  # kg/m**3
         self.cp = 4180  # J/kg/K
-        self.ht_coeff = ht_coeff
+        self.h_conv = h_conv
 
         if vol_flow is None and mass_flow is None:
             raise RuntimeError("Both 'vol_flow' and 'mass_flow' are None. "
