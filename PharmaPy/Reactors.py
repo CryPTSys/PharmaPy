@@ -32,7 +32,7 @@ class _BaseReactor:
     def __init__(self, partic_species, name_species, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
-                 u_ht, ht_media, ht_mode):
+                 h_conv, ht_mode):
         """
 
         Parameters
@@ -46,9 +46,9 @@ class _BaseReactor:
         self.is_continuous = False
 
         self.elapsed_time = 0
-        self.u_ht = u_ht
+        self.h_conv = h_conv
         self.area_ht = None
-        self.ht_media = ht_media
+        self._Utility = None
 
         # Names
         self.name_species = name_species
@@ -146,6 +146,15 @@ class _BaseReactor:
         self.params_fixed = self.Kinetics.concat_params()[ind_false]
 
         self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
+
+    @property
+    def Utility(self):
+        return self._Utility
+
+    @Utility.setter
+    def Utility(self, utility):
+        self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
+        self._Utility = utility
 
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
@@ -428,12 +437,12 @@ class BatchReactor(_BaseReactor):
     def __init__(self, partic_species, name_species=None, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 u_ht=1000, ht_media=None, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket'):
 
         super().__init__(partic_species, name_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         u_ht, ht_media, ht_mode)
+                         h_conv, ht_mode)
 
         self.oper_mode = 'Batch'
         self.is_continuous = False
@@ -525,10 +534,10 @@ class BatchReactor(_BaseReactor):
             dtemp_dt = (source_term - ht_term) / capacitance  # K/s
 
             if 'temp_ht' in self.states_uo:
-                flow_ht = self.ht_media.vol_flow
-                tht_in = self.ht_media.temp_in
-                cp_ht = self.ht_media.cp
-                rho_ht = self.ht_media.rho
+                flow_ht = self.Utility.vol_flow
+                tht_in = self.Utility.temp_in
+                cp_ht = self.Utility.cp
+                rho_ht = self.Utility.rho
 
                 vol_ht = vol * 0.15  # heuristic
 
@@ -563,8 +572,9 @@ class BatchReactor(_BaseReactor):
         states_init = conc_init
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
+
             if 'temp_ht' in self.states_uo:
-                tht_init = self.ht_media.temp_in
+                tht_init = self.Utility.temp_in
                 states_init = np.append(states_init, tht_init)
 
         # Create problem
@@ -686,12 +696,12 @@ class CSTR(_BaseReactor):
     def __init__(self, partic_species, name_species=None, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 u_ht=1000, ht_media=None, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket'):
 
         super().__init__(partic_species, name_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         u_ht, ht_media, ht_mode)
+                         h_conv, ht_mode)
 
         self.Inlet = None
         self.oper_mode = 'Continuous'
@@ -805,10 +815,10 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                flow_ht = self.ht_media.vol_flow
-                tht_in = self.ht_media.temp_in
-                cp_ht = self.ht_media.cp
-                rho_ht = self.ht_media.rho
+                flow_ht = self.Utility.vol_flow
+                tht_in = self.Utility.temp_in
+                cp_ht = self.Utility.cp
+                rho_ht = self.Utility.rho
 
                 if 'vol' in self.states_uo:  # Semibatch
                     vol_ht = self.vol_ht
@@ -849,7 +859,7 @@ class CSTR(_BaseReactor):
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
-                tht_init = self.ht_media.temp_in
+                tht_init = self.Utility.temp_in
                 states_init = np.append(states_init, tht_init)
 
         self.resid_time = self.Liquid_1.vol / self.Inlet.vol_flow
@@ -951,13 +961,13 @@ class SemibatchReactor(CSTR):
                  mask_params=None, Inlet=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 u_ht=1000, ht_media=None, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket'):
 
         super().__init__(partic_species, name_species, mask_params,
                          Inlet,
                          base_units, temp_ref,
                          isothermal, reset_states,
-                         u_ht, ht_media, ht_mode)
+                         h_conv, ht_mode)
 
         self.oper_mode = 'Semibatch'
         self.is_continuous = False
@@ -1048,7 +1058,7 @@ class SemibatchReactor(CSTR):
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
-                tht_init = self.ht_media.temp_in
+                tht_init = self.Utility.temp_in
                 states_init = np.append(states_init, tht_init)
 
         merged_params = self.Kinetics.concat_params()
@@ -1130,12 +1140,12 @@ class PlugFlowReactor(_BaseReactor):
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, adiabatic=False,
                  reset_states=False, controls=None,
-                 u_ht=1000, ht_media=None, ht_mode='bath'):
+                 h_conv=1000, ht_mode='bath'):
 
         super().__init__(partic_species, name_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         u_ht, ht_media, ht_mode)
+                         h_conv, ht_mode)
 
         self.is_continuous = True
         self.oper_mode = 'Continuous'
@@ -1205,7 +1215,7 @@ class PlugFlowReactor(_BaseReactor):
             heat_transfer = 0
         else:  # W/m**3
             a_prime = self.diam / 4  # m**2 / m**3
-            heat_transfer = self.u_ht * a_prime * (temp - self.ht_media.temp)
+            heat_transfer = self.u_ht * a_prime * (temp - self.Utility.temp)
 
         flow_term = self.Inlet.vol_flow * cp_vol
 
@@ -1314,7 +1324,7 @@ class PlugFlowReactor(_BaseReactor):
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
             heat_transfer = self.u_ht * a_prime * \
-                (temp - self.ht_media.temp_in)  # W/m**3
+                (temp - self.Utility.temp_in)  # W/m**3
 
         if heat_profile:
             ht_total = trapezoidal_rule(self.vol_centers, heat_transfer)  # W

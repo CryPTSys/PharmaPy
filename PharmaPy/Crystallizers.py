@@ -53,7 +53,7 @@ class _BaseCryst:
 
     def __init__(self, mask_params,
                  method, target_ind, scale,
-                 isothermal, controls, params_control, cfun_solub,
+                 isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
                  reset_states, name_species,
                  u_ht, vol_ht, ht_media, basis, jac_type):
@@ -98,15 +98,16 @@ class _BaseCryst:
         # Controls
         if controls is None:
             self.controls = {}
-            self.params_control = ()
+            self.args_control = ()
         else:
             self.controls = controls
-            if params_control is None:
-                self.params_control = {}
+            if args_control is None:
+                self.args_control = {}
                 for key in self.controls.keys():
-                    self.params_control[key] = ()
+                    self.args_control[key] = ()
             else:
-                self.params_control = params_control
+                self.args_control = {key: list(val)
+                                     for key, val in args_control.items()}
 
         self.isothermal = isothermal
         if 'temp' in self.controls.keys():
@@ -387,10 +388,10 @@ class _BaseCryst:
             temp_ht = None
         elif 'temp' in self.controls.keys():
             # temp = self.controls['temp'](time, self.temp,
-            #                              *self.params_control['temp'],
+            #                              *self.args_control['temp'],
             #                              t_zero=self.elapsed_time)
 
-            temp = self.controls['temp'](time, *self.params_control['temp'])
+            temp = self.controls['temp'](time, *self.args_control['temp'])
             temp_ht = None
         else:
             temp = self.Liquid_1.temp
@@ -670,6 +671,11 @@ class _BaseCryst:
         self.composit = init_liquid
         self.temp = self.Liquid_1.temp
 
+        if 'temp' in self.controls.keys():
+            if self.args_control is not None:
+                if self.args_control['temp'][0] is None:
+                    self.args_control['temp'][0] = self.temp
+
         if self.reset_states:
             self.reset()
 
@@ -762,7 +768,7 @@ class _BaseCryst:
             self.Solid_1.updatePhase(**solid_mod)
 
         if isinstance(modify_controls, dict):
-            self.params_control = modify_controls
+            self.args_control = modify_controls
 
         if self.method == 'moments':
             t_prof, states, sens = self.solve_unit(time_grid=t_vals,
@@ -1260,10 +1266,10 @@ class BatchCryst(_BaseCryst):
             w_conc = states[self.num_distr:num_material]
 
             # temp = self.controls['temp'](time, self.temp,
-            #                              *self.params_control['temp'],
+            #                              *self.args_control['temp'],
             #                              t_zero=self.elapsed_time)
 
-            temp = self.controls['temp'](time, *self.params_control['temp'])
+            temp = self.controls['temp'](time, *self.args_control['temp'])
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
@@ -1356,10 +1362,10 @@ class BatchCryst(_BaseCryst):
     def jac_params(self, time, states, params):
 
         # temp = self.controls['temp'](time, self.temp,
-        #                              *self.params_control['temp'],
+        #                              *self.args_control['temp'],
         #                              t_zero=self.elapsed_time)
 
-        temp = self.controls['temp'](time, *self.params_control['temp'])
+        temp = self.controls['temp'](time, *self.args_control['temp'])
 
         num_states = len(states)
 
@@ -1544,11 +1550,11 @@ class BatchCryst(_BaseCryst):
 
         elif 'temp' in self.controls.keys():
             # temp_controlled = self.controls['temp'](
-            #     time_profile, self.temp, *self.params_control['temp'],
+            #     time_profile, self.temp, *self.args_control['temp'],
             #     t_zero=self.elapsed_time)
 
             temp_controlled = self.controls['temp'](
-                time_profile, *self.params_control['temp'])
+                time_profile, *self.args_control['temp'])
 
             self.temp_runs.append(temp_controlled)
 
@@ -1620,7 +1626,7 @@ class BatchCryst(_BaseCryst):
         if 'temp' in self.controls.keys():
             q_gen, capacitance = q_heat.T
 
-            dT_dt = self.params_control['temp'][0]  # linear T profile
+            dT_dt = self.args_control['temp'][0]  # linear T profile
 
             q_instant = dT_dt * capacitance + q_gen
 
@@ -1926,7 +1932,7 @@ class MSMPR(_BaseCryst):
 
         else:
             temp_controlled = self.controls['temp'](
-                time_profile, self.temp, *self.params_control['temp'],
+                time_profile, self.temp, *self.args_control['temp'],
                 t_zero=self.elapsed_time)
 
             self.temp_runs.append(temp_controlled)

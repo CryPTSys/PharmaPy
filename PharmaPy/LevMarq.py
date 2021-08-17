@@ -15,6 +15,51 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                         full_output=False,
                         lambd_zero=1e-2,
                         args=(), verbose=False):
+    """
+    Optimize function using the Levenberg-Marquardt algorithm
+
+    Parameters
+    ----------
+    x : array-like
+        1D array containing the decision variables.
+    func : callable
+        function with signature func(x, *args), which returns a n_data-sized
+        vector of residuals (x_data - x_model).
+    deriv : callable
+        function that calculates the derivative of func with respect to x.
+        It has the same signature as func, and returns a n_data x n_x matrix
+        containing the jacobian of func
+    fletcher_modif : bool, optional
+        DESCRIPTION. The default is False.
+    max_fun_eval : int, optional
+        maximum number of function evaluations. The default is 100.
+    eps_1 : float, optional
+        stoping criteria for the gradient. The default is 1e-8.
+    eps_2 : float, optional
+        stopping criterion for the step. The default is 1e-8.
+    tol_fun : float, optional
+        stoping criterion for the objective function . The default is 1e-12.
+    full_output : bool, optional
+        If true, the returned result includes optimum x, covariance of x
+        and a dictionary with details about the optimization.
+        The default is False.
+    lambd_zero : float, optional
+        multiplier for the first value of mu. The default is 1e-2.
+    args : tuple, optional
+        additional arguments to pass to func and deriv callables.
+        The default is ().
+    verbose : bool, optional
+        If True, a table with the current value of the objective, gradient
+        and step size is shown as the optimization proceeds.
+        The default is False.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    """
+
     nu = 2
     x = asarray(x)
 
@@ -41,7 +86,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             'eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'))
         print('{:<40}'.format('-'*60))
         print("{:<7} {:<10.3e} {:<10} {:<10.3e} {:<10.3e}".format(
-                num_feval, norm(fun)**2, '---', norm(b_vector), mu))
+            num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
 

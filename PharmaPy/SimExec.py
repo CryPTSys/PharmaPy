@@ -126,6 +126,12 @@ class SimulationExec:
 
         self.execution_order = execution_order
 
+        time_processing = np.zeros(len(self.uos_instances))
+        for ind, uo in enumerate(self.uos_instances.values()):
+            time_processing[ind] = uo.timeProf[-1]
+
+        self.time_processing = time_processing
+
     def GetStreamTable(self, basis='mass'):
 
         # # TODO: include inlets and holdups in the stream table

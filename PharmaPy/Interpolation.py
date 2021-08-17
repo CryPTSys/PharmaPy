@@ -141,7 +141,10 @@ class PiecewiseLagrange:
         self.num_interv = num_interv
         self.y_vals = y_vals
 
-    def evaluate_poly(self, time_eval):
+    def evaluate_poly(self, time_eval, y_init=None):
+        if y_init is not None:
+            self.y_vals[0, 0] = y_init
+
         time_eval = np.atleast_1d(time_eval)
         time_k = self.time_k
 
