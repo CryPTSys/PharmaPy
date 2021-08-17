@@ -555,8 +555,10 @@ class VaporPhase(ThermoPhysicalManager):
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
-        deltahvap = np.zeros_like(self.t_crit)
-        deltahvap[idx] = watson * self.delta_hvap[idx]  # J/mole
+        # deltahvap = np.zeros_like(self.t_crit)
+        # deltahvap[idx] = watson * self.delta_hvap[idx]  # J/mole
+        # deltahvap_ = np.zeros_like(self.t_crit[idx])
+        deltahvap = watson * self.delta_hvap[idx]  # J/mole
 
         if basis == 'mass':
             deltahvap = deltahvap / self.mw[idx] * 1000  # J/kg
