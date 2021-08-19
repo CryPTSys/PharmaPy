@@ -287,14 +287,12 @@ class Drying:
                                       basis='mole')
 
         latent_heat = self.Vapor_1.getHeatVaporization(temp_sol,
-                                                       # idx=self.idx_volatiles,
                                                        basis='mole')
 
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
-        drying_terms_cond = (dry_rate[:, self.idx_volatiles] *
-                             latent_heat).sum(axis=1)
+        drying_terms_cond = (dry_rate * latent_heat).sum(axis=1)
 
         dTcond_dt = (-drying_terms_cond + heat_transf) / denom_cond
 
