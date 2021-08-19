@@ -973,6 +973,7 @@ class ContinuousEvaporator:
 
         self._Inlet = None
         self._Phases = None
+        self._Utility = None
 
         self.vol_tot = vol_drum
 
@@ -1040,6 +1041,15 @@ class ContinuousEvaporator:
         self._Inlet = inlet
 
         self.oper_mode = 'Semibatch'
+
+    @property
+    def Utility(self):
+        return self._Utility
+
+    @Utility.setter
+    def Utility(self, utility):
+        self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
+        self._Utility = utility
 
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']

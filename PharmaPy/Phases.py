@@ -938,6 +938,7 @@ class SolidPhase(ThermoPhysicalManager):
             sum_V_small_term = sum(V_small_j * frac_vol_cry[i + 1:])
 
             V_T_node[i] = V[i] + sum_V_large_term + sum_V_small_term
+
         V_T = max(V_T_node)
 
         porosity = 1 - 1/V_T

@@ -56,7 +56,8 @@ class _BaseCryst:
                  isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
                  reset_states, name_species,
-                 u_ht, vol_ht, ht_media, basis, jac_type):
+                 h_conv, vol_ht, ht_media, basis, jac_type):
+
         """ Construct a Crystallizer object
         Parameters
         ----------
@@ -86,6 +87,7 @@ class _BaseCryst:
         # ---------- Building objects
         self._Phases = None
         self._Kinetics = None
+        self._Utility = None
         self.material_from_upstream = False
 
         self.jac_type = jac_type
@@ -160,7 +162,7 @@ class _BaseCryst:
         self.bipartite = None
 
         # Other parameters
-        self.u_ht = u_ht
+        self.h_conv = h_conv
 
         # Slurry phase
         self.Slurry = None
@@ -255,6 +257,15 @@ class _BaseCryst:
         self.params_fixed = self.Kinetics.concat_params()[ind_false]
 
         self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
+
+    @property
+    def Utility(self):
+        return self._Utility
+
+    @Utility.setter
+    def Utility(self, utility):
+        self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
+        self._Utility = utility
 
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
@@ -1208,14 +1219,14 @@ class BatchCryst(_BaseCryst):
                  cfun_solub=None,
                  adiabatic=False,
                  rad_zero=0, reset_states=False, name_species=None,
-                 u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
+                 h_conv=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
                          scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero,
-                         reset_states, name_species, u_ht, vol_ht, ht_media,
+                         reset_states, name_species, h_conv, vol_ht, ht_media,
                          basis, jac_type)
         """ Construct a Batch Crystallizer object
         Parameters
@@ -1645,13 +1656,13 @@ class MSMPR(_BaseCryst):
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
                  name_species=None,
-                 u_ht=1000, vol_ht=None, ht_media=None, basis='mass_conc',
+                 h_conv=1000, vol_ht=None, ht_media=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
                          scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic, rad_zero,
-                         reset_states, name_species, u_ht, vol_ht, ht_media,
+                         reset_states, name_species, h_conv, vol_ht, ht_media,
                          basis, jac_type)
         """ Construct a MSMPR object
         Parameters
@@ -1852,10 +1863,12 @@ class MSMPR(_BaseCryst):
             dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
 
             # Balance in the jacket
-            flow_ht = self.ht_media.vol_flow
-            tht_in = self.ht_media.temp_in
-            cp_ht = self.ht_media.cp
-            rho_ht = self.ht_media.rho
+            ht_media = self.Utility.evaluate_controls(time)
+            flow_ht = ht_media['vol_flow']
+            tht_in = ht_media['temp_in']
+
+            cp_ht = self.Utility.cp
+            rho_ht = self.Utility.rho
 
             vol_ht = vol*0.14  # m**3
 
