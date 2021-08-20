@@ -116,7 +116,6 @@ class Connection:
         self.y_list = []
 
     def ReceiveData(self):
-
         # Source UO
         if self.Matter is None:
             self.Matter = self.source_uo.Outlet

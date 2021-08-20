@@ -59,8 +59,7 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, run_subset=None,
-                       verbose=True):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True):
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
@@ -106,6 +105,7 @@ class SimulationExec:
 
             for conn in self.connection_instances:
                 if conn.destination_uo is instance:
+                    conn.ReceiveData()  # receive phases from upstream uo
                     conn.TransferData()
 
             instance.solve_unit(**kwargs_run.get(uo_id, {}))
@@ -119,16 +119,17 @@ class SimulationExec:
                 print('Done!')
                 print()
 
-            # Connectivity
-            for conn in self.connection_instances:
-                if conn.source_uo is instance:
-                    conn.ReceiveData()  # receive phases from upstream uo
+            # # Connectivity
+            # for conn in self.connection_instances:
+            #     if conn.source_uo is instance:
+            #         conn.ReceiveData()  # receive phases from upstream uo
 
         self.execution_order = execution_order
 
         time_processing = np.zeros(len(self.uos_instances))
         for ind, uo in enumerate(self.uos_instances.values()):
-            time_processing[ind] = uo.timeProf[-1]
+            if hasattr(uo, 'timeProf'):
+                time_processing[ind] = uo.timeProf[-1]
 
         self.time_processing = time_processing
 

@@ -497,6 +497,8 @@ class DynamicCollector:
 
         self.kwargs_cryst = None
 
+        self.elapsed_time = 0
+
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
         names_solids = ['mass_conc', 'vol_flow', 'temp', 'num_distrib']
@@ -592,6 +594,8 @@ class DynamicCollector:
 
             SemiCryst.names_upstream = self.names_upstream
             SemiCryst.bipartite = self.bipartite
+
+            SemiCryst.elapsed_time = self.elapsed_time
 
             time, states = SemiCryst.solve_unit(runtime, time_grid,
                                                 verbose=verbose)
