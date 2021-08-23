@@ -544,21 +544,22 @@ class VaporPhase(ThermoPhysicalManager):
         #     idx = np.arange(len(self.t_crit))
 
         temp = np.atleast_1d(temp)
+        num_comp = len(self.t_crit)
 
         num_temp = len(temp)
         if num_temp > 1:
             temp = temp[..., np.newaxis]
             idx = np.unique(np.where(temp < self.t_crit)[1])
-            num_cols = num_temp
+            delta_shape = (num_comp, num_temp)
         else:
             idx = np.where(temp < self.t_crit)[0]
-            num_cols = 0
+            delta_shape = num_comp
 
         tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
-        deltahvap = np.zeros((len(self.t_crit), num_cols))
+        deltahvap = np.zeros(delta_shape)
         deltahvap[idx] = (watson * self.delta_hvap[idx]).T  # J/mole
 
         if basis == 'mass':

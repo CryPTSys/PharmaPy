@@ -1630,6 +1630,7 @@ class BatchCryst(_BaseCryst):
             merged_params = self.params_iter
 
         for ind, row in enumerate(states):
+            row = row.copy()
             row[:self.num_distr] *= self.scale  # scale distribution
             q_heat[ind] = self.unit_model(time[ind], row, merged_params,
                                           enrgy_bce=True)
