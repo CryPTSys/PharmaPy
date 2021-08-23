@@ -62,7 +62,8 @@ class Graph:
             else:
                 self.graph[conn.source_uo] = [conn.destination_uo]
 
-            self.graph[conn.destination_uo] = []
+            if conn.destination_uo not in self.graph.keys():
+                self.graph[conn.destination_uo] = []
 
         self.vertices = list(self.graph.keys())
 
