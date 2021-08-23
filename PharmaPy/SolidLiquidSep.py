@@ -429,7 +429,6 @@ class DeliquoringStep:
             profiles = self.concPerVolElement[idx_z]
 
             axis[1].plot(self.timeProf, profiles)
-
             axis[1].set_xlabel('time (s)')
             axis[1].set_ylabel('$C_j$ ($\mathregular{kg \ m^{-3}}$)')
             axis[1].text(1, 1.04, '$z^* = %.1f$' % self.z_centers[idx_z],

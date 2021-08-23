@@ -17,8 +17,9 @@ eps = np.finfo(float).eps
 def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
     # absup = np.maximum(eps, sup_sat)
-    absup = np.abs(sup_sat)
-
+    absup_ = np.abs(sup_sat)
+    
+    absup = max(eps, absup_)
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
     else:

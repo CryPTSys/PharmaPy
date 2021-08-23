@@ -545,23 +545,26 @@ class VaporPhase(ThermoPhysicalManager):
 
         temp = np.atleast_1d(temp)
 
-        if len(temp) > 1:
+        num_temp = len(temp)
+        if num_temp > 1:
             temp = temp[..., np.newaxis]
             idx = np.unique(np.where(temp < self.t_crit)[1])
+            num_cols = num_temp
         else:
             idx = np.where(temp < self.t_crit)[0]
+            num_cols = 0
 
         tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
-        deltahvap = np.zeros_like(self.t_crit)
-        deltahvap[idx] = watson * self.delta_hvap[idx]  # J/mole
+        deltahvap = np.zeros((len(self.t_crit), num_cols))
+        deltahvap[idx] = (watson * self.delta_hvap[idx]).T  # J/mole
 
         if basis == 'mass':
             deltahvap = deltahvap / self.mw[idx] * 1000  # J/kg
 
-        return deltahvap
+        return deltahvap.T
 
     def getEnthalpy(self, temp=None, temp_ref=298.15, mass_frac=None,
                     mole_frac=None, total_h=True, basis='mass'):
