@@ -191,6 +191,10 @@ class SimulationExec:
 
         return stream_table
 
+    def ResetSimulation(self):
+        self.uos_instances = {}
+        self.connection_instances = []
+
     def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
                            spectra=None,
                            fit_spectra=False, global_analysis=True,
