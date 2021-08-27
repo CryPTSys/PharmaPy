@@ -626,13 +626,20 @@ class DynamicCollector:
             self.Phases = (liquid,)
             classify_phases(self)
 
-            problem = Explicit_Problem(self.unit_model, states_init, t0=0)
+            problem = Explicit_Problem(self.unit_model, states_init,
+                                       t0=self.elapsed_time)
             solver = CVode(problem)
 
             if not verbose:
                 solver.verbosity = 50
 
-            time, states = solver.simulate(runtime, ncp_list=time_grid)
+            if runtime is not None:
+                final_time = runtime + self.elapsed_time
+
+            if time_grid is not None:
+                final_time = time_grid[-1]
+
+            time, states = solver.simulate(final_time, ncp_list=time_grid)
 
             self.retrieve_results(time, states)
 
@@ -646,6 +653,7 @@ class DynamicCollector:
 
     def retrieve_results(self, time, states):
         self.timeProf = np.array(time)
+        self.elapsed_time = time[-1]
 
         self.wConcProf = states[:, :self.num_species]
         self.massProf = states[:, self.num_species]

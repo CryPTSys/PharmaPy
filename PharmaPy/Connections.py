@@ -62,7 +62,8 @@ class Graph:
             else:
                 self.graph[conn.source_uo] = [conn.destination_uo]
 
-            self.graph[conn.destination_uo] = []
+            if conn.destination_uo not in self.graph.keys():
+                self.graph[conn.destination_uo] = []
 
         self.vertices = list(self.graph.keys())
 
@@ -121,11 +122,11 @@ class Connection:
             self.Matter = self.source_uo.Outlet
             self.num_species = self.Matter.num_species
 
+            self.Matter.y_upstream = self.source_uo.outputs
+
             if self.source_uo.is_continuous:
-                self.Matter.y_upstream = self.source_uo.outputs
                 self.Matter.time_upstream = self.source_uo.timeProf
             else:
-                self.Matter.y_upstream = self.source_uo.outputs
                 self.Matter.time_upstream = self.source_uo.timeProf[-1]
 
             self.y_list.append(self.source_uo.outputs)

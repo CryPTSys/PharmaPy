@@ -56,7 +56,7 @@ class _BaseCryst:
                  isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
                  reset_states, name_species,
-                 h_conv, vol_ht, ht_media, basis, jac_type):
+                 h_conv, vol_ht, basis, jac_type):
 
         """ Construct a Crystallizer object
         Parameters
@@ -114,8 +114,6 @@ class _BaseCryst:
         self.isothermal = isothermal
         if 'temp' in self.controls.keys():
             self.isothermal = False
-
-        self.ht_media = ht_media
 
         self.method = method
         self.rad = rad_zero
@@ -1219,14 +1217,14 @@ class BatchCryst(_BaseCryst):
                  cfun_solub=None,
                  adiabatic=False,
                  rad_zero=0, reset_states=False, name_species=None,
-                 h_conv=1000, vol_ht=None, ht_media=None, basis='mass_conc',
+                 h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
                          scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero,
-                         reset_states, name_species, h_conv, vol_ht, ht_media,
+                         reset_states, name_species, h_conv, vol_ht,
                          basis, jac_type)
         """ Construct a Batch Crystallizer object
         Parameters
@@ -1657,13 +1655,13 @@ class MSMPR(_BaseCryst):
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
                  name_species=None,
-                 h_conv=1000, vol_ht=None, ht_media=None, basis='mass_conc',
+                 h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
         super().__init__(mask_params, method, target_ind,
                          scale, isothermal, controls, params_control, cfun_solub,
                          adiabatic, rad_zero,
-                         reset_states, name_species, h_conv, vol_ht, ht_media,
+                         reset_states, name_species, h_conv, vol_ht,
                          basis, jac_type)
         """ Construct a MSMPR object
         Parameters

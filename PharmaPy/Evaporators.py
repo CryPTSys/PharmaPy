@@ -351,6 +351,8 @@ class Evaporator:
 
         self.vol_offset = 1
 
+        self.elapsed_time = 0
+
     @property
     def Phases(self):
         return self._Phases
@@ -790,7 +792,7 @@ class Evaporator:
         switches = [True] * len(self.state_events) + [True]
         problem = Implicit_Problem(self.unit_model,
                                    states_initial, sdev_initial,
-                                   t0=0, sw0=switches)
+                                   t0=self.elapsed_time, sw0=switches)
 
         problem.state_events = self.__state_event
         problem.handle_event = self.__handle_event
@@ -809,6 +811,8 @@ class Evaporator:
         if not verbose:
             solver.verbosity = 50
 
+        runtime += self.elapsed_time
+
         # Solve
         time, states, sdot = solver.simulate(runtime)
 
@@ -822,6 +826,7 @@ class Evaporator:
         n_comp = self.num_species + 1
 
         self.time_runs.append(np.asarray(time))
+        self.elapsed_time += time[-1]
 
         fracs = states[:, n_comp:3*n_comp]
         self.xliq_runs.append(fracs[:, :n_comp])

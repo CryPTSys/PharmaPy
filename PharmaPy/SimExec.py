@@ -51,6 +51,7 @@ class SimulationExec:
     def LoadConnections(self):
         for key, value in self.__dict__.items():
             module_name = getattr(value, '__module__', None)
+
             if module_name == 'PharmaPy.Connections':
                 value.ThermoInstance = self.ThermoInstance
 
@@ -87,10 +88,14 @@ class SimulationExec:
 
         execution_order = [x for x in execution_order if x is not None]
         if pick_units is not None:
-            uos_names = list(uos.keys())
-            idx = [uos_names.index(name) for name in pick_units]
-            idx.sort()
-            execution_order = [execution_order[i] for i in idx]
+            uo_vals = list(uos.values())
+            uo_names = list(uos.keys())
+            execution_names = []
+            for obj in execution_order:
+                execution_names.append(uo_names[uo_vals.index(obj)])
+
+            execution_order = [execution_order[execution_names.index(name)]
+                               for name in pick_units]
 
         # Run loop
         for instance in execution_order:
@@ -190,10 +195,6 @@ class SimulationExec:
         # stream_table[stream_table == 0] = None
 
         return stream_table
-
-    def ResetSimulation(self):
-        self.uos_instances = {}
-        self.connection_instances = []
 
     def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
                            spectra=None,
