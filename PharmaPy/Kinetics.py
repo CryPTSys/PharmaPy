@@ -640,12 +640,12 @@ class CrystKinetics:
                 temp = temp[..., np.newaxis]
                 c_satur = (temp**int_coeff * self.coeff_solub).sum(axis=1)
 
-        elif self.solub_type == 'apelblat':
+        elif self.solub_type == 'apelbat':
             a1, a2, a3 = self.coeff_solub
             c_satur = np.exp(a1 + a2/temp + a3*np.log(temp))
         else:
             raise NameError("Bad 'solub_type' name. It must be either "
-                            "'polynomial' or 'apelblat")
+                            "'polynomial' or 'apelbat")
 
         return c_satur
 
