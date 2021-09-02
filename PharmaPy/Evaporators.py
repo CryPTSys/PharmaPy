@@ -1442,6 +1442,7 @@ class ContinuousEvaporator:
 
         self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
         self.heat_duty = trapezoidal_rule(time, self.heat_profile)
+        self.duty_type = [0, 0]  # both are cooling water
 
         self.liqFlowProf = flow_liq
         self.vapFlowProf = flow_vap
