@@ -766,7 +766,7 @@ class Evaporator:
             print('Liquid volume reached a maximum')
             raise TerminateSimulation
 
-    def solve_unit(self, runtime, verbose=True):
+    def solve_unit(self, runtime, verbose=True, sundials_opts=None):
 
         self.args_inputs = (self.Inlet,
                             self.names_upstream,
@@ -810,6 +810,10 @@ class Evaporator:
 
         if not verbose:
             solver.verbosity = 50
+
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
 
         runtime += self.elapsed_time
 
@@ -1316,7 +1320,8 @@ class ContinuousEvaporator:
 
         return states_init, sdot_init
 
-    def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True):
+    def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
+                   sundials_opts=None):
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
@@ -1348,6 +1353,10 @@ class ContinuousEvaporator:
 
             if not verbose:
                 solver.verbosity = 50
+
+            if sundials_opts is not None:
+                for name, val in sundials_opts.items():
+                    setattr(solver, name, val)
 
             # Solve
             time, states, sdot = solver.simulate(runtime)
