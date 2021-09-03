@@ -681,7 +681,7 @@ class _BaseCryst:
         self.temp = self.Liquid_1.temp
 
         if 'temp' in self.controls.keys():
-            if self.args_control is not None:
+            if len(self.args_control['temp']) > 0:
                 if self.args_control['temp'][0] is None:
                     self.args_control['temp'][0] = self.temp
 
