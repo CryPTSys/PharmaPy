@@ -1533,7 +1533,7 @@ class PlugFlowReactor(_BaseReactor):
 
         self.heat_profile = ht_time
         self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
-        self.duty_type = [None, 'water']
+        self.duty_type = [0, 0]
 
     def flatten_states(self):
         if type(self.timeProf) is list:

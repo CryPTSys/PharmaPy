@@ -565,7 +565,7 @@ class DynamicCollector:
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
-        init_dict = self.get_inputs(0)
+        init_dict = self.get_inputs(self.elapsed_time)
         temp_init = init_dict['temp']
 
         self.is_cryst = any('distr' in word for word in init_dict.keys())
@@ -574,7 +574,9 @@ class DynamicCollector:
             path = self.Inlet.Liquid_1.path_data
             vol_init = init_dict['vol_flow'] / 100
             conc_init = init_dict['mass_conc']
-            distr_init = init_dict['num_distrib']
+            distr_init = init_dict['num_distrib'] * vol_init
+
+            vol_init *= (1 - self.Inlet.moments[3])
 
             liquid = LiquidPhase(path, temp=temp_init, mass_conc=conc_init,
                                  vol=vol_init)

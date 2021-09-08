@@ -87,6 +87,7 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
+        execution_names = self.uos_instances.keys()
         if pick_units is not None:
             uo_vals = list(uos.values())
             uo_names = list(uos.keys())
@@ -131,8 +132,8 @@ class SimulationExec:
 
         self.execution_order = execution_order
 
-        time_processing = np.zeros(len(self.uos_instances))
-        for ind, uo in enumerate(self.uos_instances.values()):
+        time_processing = np.zeros(len(execution_order))
+        for ind, uo in enumerate(execution_names):
             if hasattr(uo, 'timeProf'):
                 time_processing[ind] = uo.timeProf[-1]
 
@@ -379,6 +380,21 @@ class SimulationExec:
 
         holdup_comp_mass = (fracs.T * masses_holdups).T
 
+        name_equip = self.uos_instances.keys()
+        if len(inlet_comp_mass) == 0:
+            inlet_comp_mass = np.zeros((len(name_equip),
+                                        len(self.NamesSpecies))
+                                       )
+
+            flow_idx = name_equip
+
+        if len(holdup_comp_mass) == 0:
+            holdup_comp_mass = np.zeros((len(name_equip),
+                                         len(self.NamesSpecies))
+                                        )
+
+            holdup_idx = name_equip
+
         flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
                                columns=self.NamesSpecies)
 
@@ -448,6 +464,28 @@ class SimulationExec:
             return size_equipment, cost_equip
 
     def GetDuties(self, full_output=False):
+        """
+        Get heat duties for all equipment that calculates an energy balance.
+
+        Parameters
+        ----------
+        full_output : bool, optional
+            if True, duties and duty types are returened. The default is False.
+
+        Returns
+        -------
+        heat_duties : pandas dataframe
+            heat duties [J].
+
+        duties_ids : numpy array
+            2D array with first column containing heating type and
+            second column containing refrigeration type, according to the
+            following convention:
+
+            refrigeration: -2, -1, 0 (0 corresponding to cooling water)
+            heating: 1, 2, 3 (1 corresponding to low pressure steam)
+
+        """
         heat_duties = []
         equipment_ids = []
         duty_ids = []
@@ -490,9 +528,9 @@ class SimulationExec:
 
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
 
-        # Raw materials
+        # ---------- Raw materials
         _, raw_materials = self.GetRawMaterials()
-        raw_cost = cost_raw * raw_materials[raw_materials > 0]
+        raw_cost = cost_raw * raw_materials
 
         opex = {'raw_materials': raw_cost.sum(),
                 'heat_duties': sum(duty_cost.sum())}

@@ -30,12 +30,14 @@ def Interpolation(t_data, y_data, time):
 
 class Slurry:
 
-    def __init__(self, vol_slurry=0, mass_slurry=0,
+    def __init__(self, vol_slurry=0,
+                 # mass_slurry=0,
                  x_distrib=None, distrib=None, phases=None):
         self._Phases = phases
 
         self.vol_slurry = vol_slurry
-        self.mass_slurry = mass_slurry
+        # self.mass_slurry = mass_slurry
+        self.mass_slurry = None
 
         self.y_upstream = None
 
@@ -55,6 +57,76 @@ class Slurry:
 
         classify_phases(self)
 
+        # TODO: this is not general enough (Dan - Energetics)
+        if self.distrib is None:
+            vol_sol = self.Solid_1.vol
+            vol_liq = self.Liquid_1.vol
+
+            mass_liq = self.Liquid_1.mass
+            mass_sol = self.Solid_1.mass
+
+            self.vol_slurry = vol_sol + vol_liq
+            self.mass_slurry = mass_liq + mass_sol
+
+            self.x_distrib = self.Solid_1.x_distrib
+            if self.Solid_1.x_distrib is None:
+                self.distrib = self.Solid_1.distrib
+                self.dx = None
+                self.moments = self.Solid_1.moments
+            else:
+                self.distrib = self.Solid_1.distrib / self.vol_slurry
+
+                self.dx = self.Solid_1.dx
+                self.moments = self.Solid_1.getMoments(distrib=self.distrib)
+        else:
+            delta_x = np.diff(self.x_distrib)
+            equal = np.isclose(delta_x[1:], delta_x[:-1]).all()
+
+            if equal:
+                self.dx = delta_x[0]
+            else:  # assume geometric series and make adjustments
+                ratio = self.x_distrib[1] / self.x_distrib[0]
+                x_grid = np.zeros(len(self.x_distrib) + 1)
+                x_gr = np.sqrt(self.x_distrib[1:] * self.x_distrib[:-1])
+
+                x_grid[0] = x_gr[0] / ratio
+                x_grid[-1] = x_gr[-1] * ratio
+
+                x_grid[1:-1] = x_gr
+
+                self.dx = np.diff(x_grid)
+
+            self.Solid_1.x_distrib = self.x_distrib
+            self.Solid_1.dx = self.dx
+
+            self.moments = self.Solid_1.getMoments(distrib=self.distrib)
+
+            if self.vol_slurry > 0:
+                dens_liq = self.Liquid_1.getDensity()
+                dens_sol = self.Solid_1.getDensity()
+                dens_phases = np.array([dens_liq, dens_sol])
+
+                vol_share = self.getFractions()
+                vol_phases = vol_share * self.vol_slurry
+
+                mass_liq, mass_sol = vol_phases * dens_phases
+                self.mass_slurry = np.dot(vol_phases, dens_phases)
+            elif self.mass_slurry > 0:
+                mass_share = self.getFractions(vol_basis=False)
+                mass_phases = self.mass_slurry * mass_share
+
+                mass_liq, mass_sol = mass_phases
+
+                self.vol_slurry = np.dot(mass_phases, 1/dens_phases)
+
+            f_distr = self.vol_slurry * self.distrib
+
+            self.Liquid_1.updatePhase(mass=mass_liq)
+            self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
+
+        self.num_species = self.Liquid_1.num_species
+
+    def __check_distrib(self):
         if self.distrib is None:
             vol_sol = self.Solid_1.vol
             vol_liq = self.Liquid_1.vol
@@ -95,31 +167,6 @@ class Slurry:
 
             self.Solid_1.x_distrib = self.x_distrib
             self.moments = self.Solid_1.getMoments(distrib=self.distrib)
-
-            if self.vol_slurry > 0:
-                dens_liq = self.Liquid_1.getDensity()
-                dens_sol = self.Solid_1.getDensity()
-                dens_phases = np.array([dens_liq, dens_sol])
-
-                vol_share = self.getFractions()
-                vol_phases = vol_share * self.vol_slurry
-
-                mass_liq, mass_sol = vol_phases * dens_phases
-                self.mass_slurry = np.dot(vol_phases, dens_phases)
-            elif self.mass_slurry > 0:
-                mass_share = self.getFractions(vol_basis=False)
-                mass_phases = self.mass_slurry * mass_share
-
-                mass_liq, mass_sol = mass_phases
-
-                self.vol_slurry = np.dot(mass_phases, 1/dens_phases)
-
-            f_distr = self.vol_slurry * self.distrib
-
-            self.Liquid_1.updatePhase(mass=mass_liq)
-            self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
-
-        self.num_species = self.Liquid_1.num_species
 
     def getDensity(self, temp=None, basis='mass', total=False):
 
@@ -220,10 +267,10 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    def __init__(self, vol_flow=0, mass_flow=0, x_distrib=None, distrib=None,
+    def __init__(self, vol_flow=0, x_distrib=None, distrib=None,
                  streams=None):
 
-        super().__init__(vol_flow, mass_flow, x_distrib, distrib, streams)
+        super().__init__(vol_flow, x_distrib, distrib, streams)
 
         self.mass_flow = self.mass_slurry
         # self.mole_flow = self.moles
