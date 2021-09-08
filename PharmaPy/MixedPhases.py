@@ -97,6 +97,8 @@ class Slurry:
                 self.dx = np.diff(x_grid)
 
             self.Solid_1.x_distrib = self.x_distrib
+            self.Solid_1.dx = self.dx
+
             self.moments = self.Solid_1.getMoments(distrib=self.distrib)
 
             if self.vol_slurry > 0:
