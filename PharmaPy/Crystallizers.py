@@ -744,6 +744,14 @@ class _BaseCryst:
         self.retrieve_results(time, states)
         self.flatten_states()
 
+        sat_conc = self.Kinetics.get_solubility(self.tempProf, self.wConcProf)
+        supersat = self.wConcProf[:, self.target_ind] - sat_conc
+
+        if self.Kinetics.rel_super:
+            supersat *= 1 / sat_conc
+
+        self.supsatProf = supersat
+
         # ---------- Organize sensitivity
         if eval_sens:
             sensit = []
@@ -854,14 +862,6 @@ class _BaseCryst:
     def plot_profiles(self, fig_size=None, relative_mu0=False,
                       title=None, time_div=1, plot_solub=True):
 
-        sat_conc = self.Kinetics.get_solubility(self.tempProf, self.wConcProf)
-        supersat = self.wConcProf[:, self.target_ind] - sat_conc
-
-        if self.Kinetics.rel_super:
-            supersat *= 1 / sat_conc
-
-        self.supsatProf = supersat
-
         # if self.method == 'moments':
         mu = self.momProf
         num_mu = mu.shape[1]
@@ -953,9 +953,9 @@ class _BaseCryst:
         ax_temp.legend(('tank', 'jacket'), fontsize=7, loc='best')
 
         # ---------- Concentration
+        c_target = self.wConcProf[:, self.target_ind]
         ax_conc = axes.flatten()[ind + 2]
-        ax_conc.plot(self.timeProf/time_div,
-                     self.wConcProf[:, self.target_ind], 'k')
+        ax_conc.plot(self.timeProf/time_div, c_target, 'k')
 
         target_id = self.name_species[self.target_ind]
 
@@ -964,7 +964,9 @@ class _BaseCryst:
         else:
             ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
 
+        supersat = self.supsatProf
         if plot_solub:
+            sat_conc = c_target / (1 + supersat)
             ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
 
         # Supersaturation
@@ -1447,10 +1449,10 @@ class BatchCryst(_BaseCryst):
         if self.method == 'moments':
             ddistr_dt, transf = self.method_of_moments(distrib, w_conc, temp,
                                                        params, rho_s,
-                                                       vol_slurry)
+                                                       vol=vol_slurry)
         elif self.method == '1D-FVM':
             ddistr_dt, transf = self.fvm_method(distrib, moms, w_conc, temp,
-                                                params, rho_s, vol_slurry)
+                                                params, rho_s, vol=vol_slurry)
 
         # Balance for target
         self.Liquid_1.updatePhase(mass_conc=w_conc, vol=vol_liq)
@@ -2076,11 +2078,12 @@ class SemibatchCryst(MSMPR):
         if self.method == 'moments':
             ddistr_dt, transf = self.method_of_moments(distrib, w_conc, temp,
                                                        params, rho_sol,
-                                                       vol_slurry)
+                                                       vol=vol_slurry)
 
         elif self.method == '1D-FVM':
             ddistr_dt, transf = self.fvm_method(distrib, moms, w_conc, temp,
-                                                params, rho_sol, vol_slurry)
+                                                params, rho_sol,
+                                                vol=vol_slurry)
 
         # ---------- Add flow terms
         # Distribution
