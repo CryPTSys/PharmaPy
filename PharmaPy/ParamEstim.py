@@ -23,7 +23,7 @@ from PharmaPy.LevMarq import levenberg_marquardt
 from PharmaPy.Commons import plot_sens
 
 from itertools import cycle
-from ipopt import minimize_ipopt
+from cyipopt import minimize_ipopt
 
 linestyles = cycle(['-', '--', '-.', ':'])
 
