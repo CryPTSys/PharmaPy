@@ -985,6 +985,7 @@ class ContinuousEvaporator:
         self._Utility = None
 
         self.vol_tot = vol_drum
+        self.vol_liq_set = vol_drum * frac_liq
 
         # Control
         self.k_liq = k_liq
@@ -1083,22 +1084,18 @@ class ContinuousEvaporator:
 
         return input_dict
 
-    def material_balances(self, time, moles_i, x_i, y_i,
-                          mol_liq, mol_vap, pres, temp, u_inputs,
-                          flows_out=False):
-
-        input_flow = u_inputs['mole_flow']
-        input_fracs = u_inputs['mole_frac']
-
-        mw_vap = np.dot(self.VapPhase.mw, y_i.T)
-
+    def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
+                       input_flow):
+        # Volumes
         rho_liq = self.LiqPhase.getDensity(mole_frac=x_i, temp=temp,
                                            basis='mole')  # mol/L
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
         vol_vap = mol_vap * gas_ct * temp / pres
-        vol_eqn = vol_liq + vol_vap - self.vol_tot
 
+        mw_vap = np.dot(self.VapPhase.mw, y_i.T)
+
+        # Gas density
         rho_mol = pres / gas_ct / temp  # mol/m**3
         rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
 
@@ -1107,7 +1104,21 @@ class ContinuousEvaporator:
         flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
         flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + input_flow
-        flow_liq = np.maximum(0, flow_liq)
+        flow_liq = np.maximum(eps, flow_liq)
+
+        return vol_liq, vol_vap, flow_liq, flow_vap
+
+    def material_balances(self, time, moles_i, x_i, y_i,
+                          mol_liq, mol_vap, pres, temp, u_inputs,
+                          flows_out=False):
+
+        input_flow = u_inputs['mole_flow']
+        input_fracs = u_inputs['mole_frac']
+
+        vol_liq, vol_vap, flow_liq, flow_vap = self.get_mole_flows(
+            temp, pres, x_i, y_i, mol_liq, mol_vap, input_flow)
+
+        vol_eqn = vol_liq + vol_vap - self.vol_tot
 
         if flows_out:
             return flow_liq, flow_vap, vol_liq
@@ -1255,7 +1266,7 @@ class ContinuousEvaporator:
                                                                 y_vap=True)
         pres_init = self.pres
 
-        # Mole fractions
+        # Mole fractions  # TODO: equilibrium compositions?
         x_init = self.LiqPhase.mole_frac
         # x_seed = np.append(x_seed, 0)
 
@@ -1267,13 +1278,13 @@ class ContinuousEvaporator:
         vol_liq = self.LiqPhase.vol
 
         self.diam_tank = (4/np.pi * vol_liq)**(1/3)
-        self.vol_liq_set = vol_liq
 
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
             raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
                              r"volume ({:.2f} m3)".format(self.vol_tot,
                                                           vol_liq))
+
         mol_vap = self.pres * vol_vap / gas_ct / temp_bubble_init
 
         self.VapPhase.updatePhase(moles=mol_vap, mole_frac=y_init)
@@ -1285,12 +1296,8 @@ class ContinuousEvaporator:
         inlet_flow = u_inlet['mole_flow']
 
         # Liquid flow
-        rho_liq = self.LiqPhase.getDensity(mole_frac=x_init,
-                                           temp=temp_bubble_init,
-                                           basis='mole')  # mol/L
-
         flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + inlet_flow
-        flow_liq = np.maximum(0, flow_liq)
+        flow_liq = np.maximum(eps, flow_liq)
 
         dm_init = inlet_flow * u_inlet['mole_frac'] - flow_liq * x_init
 

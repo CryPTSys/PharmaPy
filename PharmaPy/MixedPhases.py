@@ -57,25 +57,7 @@ class Slurry:
 
         classify_phases(self)
 
-        if self.vol_slurry > 0:
-            dens_liq = self.Liquid_1.getDensity()
-            dens_sol = self.Solid_1.getDensity()
-            dens_phases = np.array([dens_liq, dens_sol])
-
-            self.__check_distrib()
-
-            vol_share = self.getFractions()
-            vol_phases = vol_share * self.vol_slurry
-
-            mass_liq, mass_sol = vol_phases * dens_phases
-            self.mass_slurry = np.dot(vol_phases, dens_phases)
-
-            self.Liquid_1.updatePhase(mass=mass_liq)
-            self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
-
-        else:
-
-
+        # TODO: this is not general enough (Dan - Energetics)
         if self.distrib is None:
             vol_sol = self.Solid_1.vol
             vol_liq = self.Liquid_1.vol
@@ -283,10 +265,10 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    def __init__(self, vol_flow=0, mass_flow=0, x_distrib=None, distrib=None,
+    def __init__(self, vol_flow=0, x_distrib=None, distrib=None,
                  streams=None):
 
-        super().__init__(vol_flow, mass_flow, x_distrib, distrib, streams)
+        super().__init__(vol_flow, x_distrib, distrib, streams)
 
         self.mass_flow = self.mass_slurry
         # self.mole_flow = self.moles

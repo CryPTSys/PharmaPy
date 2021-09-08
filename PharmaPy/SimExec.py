@@ -87,6 +87,7 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
+        execution_names = self.uos_instances.keys()
         if pick_units is not None:
             uo_vals = list(uos.values())
             uo_names = list(uos.keys())
@@ -131,8 +132,8 @@ class SimulationExec:
 
         self.execution_order = execution_order
 
-        time_processing = np.zeros(len(self.uos_instances))
-        for ind, uo in enumerate(self.uos_instances.values()):
+        time_processing = np.zeros(len(execution_order))
+        for ind, uo in enumerate(execution_names):
             if hasattr(uo, 'timeProf'):
                 time_processing[ind] = uo.timeProf[-1]
 

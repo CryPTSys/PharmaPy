@@ -565,7 +565,7 @@ class DynamicCollector:
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
-        init_dict = self.get_inputs(0)
+        init_dict = self.get_inputs(self.elapsed_time)
         temp_init = init_dict['temp']
 
         self.is_cryst = any('distr' in word for word in init_dict.keys())
