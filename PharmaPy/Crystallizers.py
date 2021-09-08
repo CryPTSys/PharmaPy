@@ -751,6 +751,7 @@ class _BaseCryst:
             supersat *= 1 / sat_conc
 
         self.supsatProf = supersat
+        self.satConcProf = sat_conc
 
         # ---------- Organize sensitivity
         if eval_sens:
@@ -964,12 +965,12 @@ class _BaseCryst:
         else:
             ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
 
-        supersat = self.supsatProf
         if plot_solub:
-            sat_conc = c_target / (1 + supersat)
+            sat_conc = self.satConcProf
             ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
 
         # Supersaturation
+        supersat = self.supsatProf
         ax_supsat = ax_conc.twinx()
         ax_supsat.plot(self.timeProf / time_div, supersat)
         color = ax_supsat.lines[0].get_color()
