@@ -568,6 +568,9 @@ class DynamicCollector:
         init_dict = self.get_inputs(self.elapsed_time)
         temp_init = init_dict['temp']
 
+        # self.name_species = self.Liquid_1.name_species
+        # self.num_species = len(self.name_species)
+
         self.is_cryst = any('distr' in word for word in init_dict.keys())
 
         if self.is_cryst:

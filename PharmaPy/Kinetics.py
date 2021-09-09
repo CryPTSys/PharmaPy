@@ -18,7 +18,7 @@ def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
-    
+
     absup = max(eps, absup_)
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
@@ -337,18 +337,19 @@ class RxnKinetics:
         """
 
         # Identify reactants by the sign of stoichiometic coeff
-        is_reactant = self.stoich_matrix < 0
         conc = np.asarray(conc)
         n_conc = len(conc)
 
+        sign = 2 * (conc >= 0) - 1  # TODO: fractional orders (sign)
         # Compute elementary reaction rate
-        conc = np.abs(conc)
         if conc.ndim == 1:
             f_term = np.zeros(self.num_rxns)
+
             for ind in range(self.num_rxns):
                 f_term[ind] = np.prod(conc**(rxn_orders[ind]))
         else:  # vectorized
             f_term = np.zeros((n_conc, self.num_rxns))
+
             for ind in range(self.num_rxns):
                 f_term[:, ind] = np.prod(conc**(rxn_orders[ind]), axis=1)
 
