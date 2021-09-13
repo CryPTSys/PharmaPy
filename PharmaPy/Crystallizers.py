@@ -1913,6 +1913,9 @@ class MSMPR(_BaseCryst):
         if self.method == '1D-FVM':
             self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
 
+            self.distribVolPercProf = self.Solid_1.convert_distribution(
+                num_distr=distProf)
+
         volflow = self.get_inputs(time_profile)['vol_flow']
 
         num_material = self.num_distr + self.num_species

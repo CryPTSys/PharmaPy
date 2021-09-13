@@ -342,6 +342,7 @@ class RxnKinetics:
 
         sign = 2 * (conc >= 0) - 1  # TODO: fractional orders (sign)
         # Compute elementary reaction rate
+        # conc = abs(conc)
         if conc.ndim == 1:
             f_term = np.zeros(self.num_rxns)
 
