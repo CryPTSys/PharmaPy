@@ -471,10 +471,10 @@ class CrystKinetics:
             of the form S = A + B*T + C*T^2...
         nucl_prim : array-like (3 elements)
             primary nucleation coefficients, with the result given in
-            number of particles per second
+            number of particles per second per cubic meter slurry
         nucl_sec : array-like (4 elements) (optional)
             secondary nucleation coefficients, with the result given in
-            number of particles per second
+            number of particles per second per cubic meter slurry
         growth : array-like (dimension 3) (optional)
             nucleation parameters, with the result given in um/s
         dissolution : array_like (dimension 3) (optional)

@@ -909,8 +909,9 @@ class SolidPhase(ThermoPhysicalManager):
         node_x_dist = (x_dist[:-1] + x_dist[1:]) / 2
         node_CSD = (distrib[:-1] + distrib[1:]) / 2
 
-        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3) # Volume of crystals in each bin
-        frac_vol_cry = vol_cry / np.sum(vol_cry)
+        # Volume of crystals in each bin
+        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
+        frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
 
         vol_particle = kv * node_x_dist**3
         d_part_sphere = (6 * vol_particle / np.pi)**(1/3)
@@ -918,7 +919,7 @@ class SolidPhase(ThermoPhysicalManager):
                                              np.exp(2.946 * (1 - sphericity)))
 
         # Initial porosity
-        D_mean = mom_one/mom_zero
+        D_mean = mom_one/(mom_zero + eps)
         E_0_Jeschar = 0.375 + 0.34 * D_mean/diam_filter  # average porosity of packing of uniform sized spheres [-]
 
         initial_porosity = E_0_Jeschar

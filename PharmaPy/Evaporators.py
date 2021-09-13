@@ -1011,12 +1011,21 @@ class ContinuousEvaporator:
 
         self.is_continuous = True
 
-        self.timeProf = []
-        self.tempProf = []
-        self.presProf = []
+        # self.timeProf = []
+        # self.tempProf = []
+        # self.presProf = []
 
-        self.xliqProf = []
-        self.yvapProf = []
+        # self.xliqProf = []
+        # self.yvapProf = []
+
+        self.time_runs = []
+        self.temp_runs = []
+        self.pres_runs = []
+
+        self.xliq_runs = []
+        self.yvap_runs = []
+        self.molLiq_runs = []
+        self.molVap_runs = []
 
         self.activity_model = activity_model
 
@@ -1378,36 +1387,42 @@ class ContinuousEvaporator:
     def retrieve_results(self, time, states):
         n_comp = self.num_species
 
-        self.timeProf.append(time)
+        self.time_runs.append(time)
 
         fracs = states[:, n_comp:3*n_comp]
-        self.xliqProf.append(fracs[:, :n_comp])
-        self.yvapProf.append(fracs[:, n_comp:])
+        self.xliq_runs.append(fracs[:, :n_comp])
+        self.yvap_runs.append(fracs[:, n_comp:])
 
-        self.molLiqProf = states[:, 3*n_comp]
-        self.molVapProf = states[:, 3*n_comp + 1]
+        self.molLiq_runs.append(states[:, 3*n_comp])
+        self.molVap_runs.append(states[:, 3*n_comp + 1])
 
-        self.presProf.append(states[:, 3*n_comp + 2])
+        self.pres_runs.append(states[:, 3*n_comp + 2])
 
         self.uIntProf = states[:, -2]
-        self.tempProf.append(states[:, -1])
+        self.temp_runs.append(states[:, -1])
 
         # Update phases
-        self.LiqPhase.temp = self.tempProf[-1][-1]
-        self.LiqPhase.pres = self.presProf[-1][-1]
-        self.LiqPhase.updatePhase(mole_frac=self.xliqProf[-1][-1],
-                                  moles=self.molLiqProf[-1])
+        self.LiqPhase.temp = self.temp_runs[-1][-1]
+        self.LiqPhase.pres = self.pres_runs[-1][-1]
+        self.LiqPhase.updatePhase(mole_frac=self.xliq_runs[-1][-1],
+                                  moles=self.molLiq_runs[-1][-1])
 
         self.Phases = self.LiqPhase
 
         inputs_all = self.get_inputs(time)
-        flow_liq, flow_vap, vol_liq = self.material_balances(
-            time,
-            states[:, :n_comp],
-            self.xliqProf[-1], self.yvapProf[-1],
-            self.molLiqProf, self.molVapProf,
-            self.presProf[-1], self.tempProf[-1],
-            inputs_all, flows_out=True)
+        # flow_liq, flow_vap, vol_liq = self.material_balances(
+        #     time,
+        #     states[:, :n_comp],
+        #     self.xliq_runs[-1], self.yvap_runs[-1],
+        #     self.molLiq_runs, self.molVap_runs,
+        #     self.pres_runs[-1], self.temp_runs[-1],
+        #     inputs_all, flows_out=True)
+
+        vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
+            self.temp_runs[-1], self.pres_runs[-1],
+            self.xliq_runs[-1], self.yvap_runs[-1],
+            self.molLiq_runs[-1], self.molVap_runs[-1],
+            inputs_all['mole_flow'])
 
         self.flowLiqProf = flow_liq
         self.flowVapProf = flow_vap
@@ -1415,13 +1430,13 @@ class ContinuousEvaporator:
 
         # Output info
         self.Outlet = LiquidStream(self.LiqPhase.path_data,
-                                   temp=self.tempProf[-1][-1],
-                                   pres=self.presProf[-1][-1],
-                                   mole_frac=self.xliqProf[-1][-1],
+                                   temp=self.temp_runs[-1][-1],
+                                   pres=self.pres_runs[-1][-1],
+                                   mole_frac=self.xliq_runs[-1][-1],
                                    mole_flow=flow_liq[-1])
 
-        self.outputs = np.column_stack((self.xliqProf[-1],
-                                        self.flowLiqProf, self.tempProf[-1]))
+        self.outputs = np.column_stack((self.xliq_runs[-1],
+                                        self.flowLiqProf, self.temp_runs[-1]))
 
         # Heat duties
         self.get_heat_duty(time, states)
@@ -1439,16 +1454,16 @@ class ContinuousEvaporator:
             heat_bce[ind] = energy[1]
 
             temp_bubble = self.LiqPhase.getBubblePoint(
-                pres=self.presProf[-1][ind],
-                mole_frac=self.xliqProf[-1][ind])
+                pres=self.pres_runs[-1][ind],
+                mole_frac=self.xliq_runs[-1][ind])
 
             h_liq[ind] = self.LiqPhase.getEnthalpy(
                 temp=temp_bubble,
-                mole_frac=self.xliqProf[-1][ind], basis='mole')
+                mole_frac=self.xliq_runs[-1][ind], basis='mole')
 
             h_vap[ind] = self.VapPhase.getEnthalpy(
-                temp=self.tempProf[-1][ind],
-                mole_frac=self.yvapProf[-1][ind], basis='mole')
+                temp=self.temp_runs[-1][ind],
+                mole_frac=self.yvap_runs[-1][ind], basis='mole')
 
             flow_liq[ind] = mat[0]
             flow_vap[ind] = mat[1]
@@ -1464,14 +1479,16 @@ class ContinuousEvaporator:
         self.vapFlowProf = flow_vap
 
     def flatten_states(self):
-        if type(self.timeProf) is list:
-            self.xliqProf = np.vstack(self.xliqProf)
-            self.yvapProf = np.vstack(self.yvapProf)
+        self.xliqProf = np.vstack(self.xliq_runs)
+        self.yvapProf = np.vstack(self.yvap_runs)
 
-            # self.volProf = np.concatenate(self.volProf)
-            self.tempProf = np.concatenate(self.tempProf)
-            self.presProf = np.concatenate(self.presProf)
-            self.timeProf = np.concatenate(self.timeProf)
+        # self.volProf = np.concatenate(self.volProf)
+        self.tempProf = np.concatenate(self.temp_runs)
+        self.presProf = np.concatenate(self.pres_runs)
+        self.timeProf = np.concatenate(self.time_runs)
+
+        self.molLiqProf = np.concatenate(self.molLiq_runs)
+        self.molVapProf = np.concatenate(self.molVap_runs)
 
             # if 'temp_ht' in self.states_uo:
             #     self.tempHtProf = np.concatenate(self.tempHtProf)
