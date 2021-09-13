@@ -1569,7 +1569,11 @@ class BatchCryst(_BaseCryst):
         y_outputs = np.delete(states, num_material, axis=1)
 
         if self.method == '1D-FVM':
-            self.distribVolProf = distribProf * self.Solid_1.kv * self.x_grid**3
+            self.distribVolPercProf = self.Solid_1.convert_distribution(
+                num_distr=distribProf)
+
+            self.distribVolProf = distribProf * self.Solid_1.kv * \
+                self.x_grid**3
 
         if self.isothermal:
             self.temp_runs.append(

@@ -798,6 +798,28 @@ class SolidPhase(ThermoPhysicalManager):
             self.mass = mass
             self.vol = mass / self.getDensity()
 
+    def convert_distribution(self, x_distrib=None, num_distr=None,
+                             vol_distr=None, mass=0):
+        if x_distrib is None:
+            x_distrib = self.x_distrib
+
+        if num_distr is not None and vol_distr is not None:
+            raise ValueError("Specify either 'num_distr' or 'vol_distr', "
+                             "not both")
+        elif num_distr is not None:  # convert to vol perc
+            mom_three = self.getMoments(distrib=num_distr, mom_num=3)
+            distrib_out = num_distr * self.dx * x_distrib**3 * self.kv / \
+                mom_three / 1e18
+        elif vol_distr is not None:
+            if mass == 0:
+                raise ValueError("'vol_perc' given, mass must be greater "
+                                 "than zero.")
+            dens = self.getDensity()
+            distrib_out = (mass / dens) * vol_distr / self.kv / \
+                x_distrib**3 / self.dx * 1e18  # number/um
+
+        return distrib_out
+
     def getDistribution(self, x_distrib, distrib):
         dens = self.getDensity()
 
@@ -823,8 +845,8 @@ class SolidPhase(ThermoPhysicalManager):
         if self.mass > 0:
             distrib = distrib / distrib.sum()
             if self.distrib_type == 'vol_perc':
-                distr = (self.mass / dens) * distrib / self.kv / \
-                    x_distrib**3 / self.dx * 1e18  # number/um
+                distr = self.convert_distribution(vol_distr=distrib,
+                                                  mass=self.mass)
             elif self.distrib_type == 'mass_perc':
                 distr = self.mass*distrib / x_distrib**3 / self.kv * 1e18
 
