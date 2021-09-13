@@ -330,7 +330,7 @@ class _BaseCryst:
 
         dissol = dissol  # um/s
 
-        boundary_cond = nucl / (growth + eps)  # num/um or num/um/m**3
+        boundary_cond = nucl / (growth + eps) # num/um or num/um/m**3
         f_aug = np.concatenate(([boundary_cond]*2, csd, [csd[-1]]))
 
         # Flux source terms
