@@ -237,4 +237,5 @@ class Connection:
                     self.destination_uo.KinCryst = self.source_uo.Kinetics
                     self.destination_uo.kwargs_cryst = {
                         'target_ind': self.source_uo.target_ind,
+                        'target_comp': self.source_uo.target_comp,
                         'scale': self.source_uo.scale}

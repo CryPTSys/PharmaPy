@@ -955,13 +955,11 @@ class CSTR(_BaseReactor):
         self.Outlet.tempProf = self.temp_runs[0]
 
         # Output vector
-        self.outputs = states[:, self.idx_inputs]
+        vol_flow = self.get_inputs(time)['vol_flow']
+        self.outputs = np.column_stack((conc_prof, temp_prof, vol_flow))
 
         if self.isothermal:
             self.outputs = np.column_stack((self.outputs, self.temp_runs[-1]))
-
-        vol_flow = np.repeat(self.Inlet.vol_flow, self.outputs.shape[0])
-        self.outputs = np.column_stack((self.outputs, vol_flow))
 
 
 class SemibatchReactor(CSTR):
@@ -1513,6 +1511,8 @@ class PlugFlowReactor(_BaseReactor):
         # Outputs at all times
         conc_out = concPerVolElem[-1]
         temp_out = tempProf[:, -1]
+
+        # vol_flow = self.get_inputs(time)['vol_flow']  # TODO: it should be this
         vol_flow = np.repeat(self.Inlet.vol_flow, len(tempProf))
 
         self.outputs = np.column_stack((conc_out, temp_out, vol_flow))

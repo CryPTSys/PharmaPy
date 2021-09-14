@@ -19,7 +19,7 @@ def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
 
-    absup = max(eps, absup_)
+    absup = np.maximum(eps, absup_)
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
     else:
@@ -506,6 +506,8 @@ class CrystKinetics:
 
         """
 
+        self.target_idx = None
+
         self.temp_ref = temp_ref
         self.rel_super = rel_super
         self.reformulate_kin = reformulate_kin
@@ -651,8 +653,10 @@ class CrystKinetics:
 
         return c_satur
 
-    def get_kinetics(self, conc_target, conc, temp, kv_cry,
+    def get_kinetics(self, conc, temp, kv_cry,
                      moments=None, nucl_sec_out=False):
+
+        conc_target = conc.T[self.target_idx]
 
         # Supersaturation
         conc_sat = self.get_solubility(temp, conc)

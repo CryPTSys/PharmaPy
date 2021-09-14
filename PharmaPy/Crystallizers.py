@@ -52,10 +52,10 @@ class _BaseCryst:
     # @decor_states
 
     def __init__(self, mask_params,
-                 method, target_ind, scale, vol_tank,
+                 method, target_comp, scale, vol_tank,
                  isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
-                 reset_states, name_species,
+                 reset_states,
                  h_conv, vol_ht, basis, jac_type):
 
         """ Construct a Crystallizer object
@@ -92,7 +92,10 @@ class _BaseCryst:
 
         self.jac_type = jac_type
 
-        self.target_ind = target_ind
+        if isinstance(target_comp, str):
+            target_comp = [target_comp]
+
+        self.target_comp = target_comp
 
         self.scale = scale
         self.scale_flag = True
@@ -149,8 +152,6 @@ class _BaseCryst:
         }
 
         # ---------- Names
-        self.name_species = name_species
-
         self.states_uo = ['mass_conc']
         self.names_states_in = ['mass_conc']
 
@@ -213,6 +214,13 @@ class _BaseCryst:
 
             classify_phases(self)  # Solid_1, Liquid_1...
 
+            # Names and target compounds
+            self.name_species = self.Liquid_1.name_species
+
+            name_bool = [name in self.target_comp for name in self.name_species]
+            self.target_ind = np.where(name_bool)[0][0]
+
+            # Save safe copy of original phases
             self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
                                        copy.deepcopy(self.Solid_1)]
 
@@ -285,9 +293,8 @@ class _BaseCryst:
 
         # Kinetic terms
         mu_susp = mu*(1e-6)**np.arange(self.num_distr) / vol  # m**n/m**3_susp
-        nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], comp_kin, temp, kv,
-            mu_susp)
+        nucl, growth, dissol = self.Kinetics.get_kinetics(comp_kin, temp, kv,
+                                                          mu_susp)
 
         growth = growth * self.Kinetics.alpha_fn(conc)
 
@@ -320,8 +327,8 @@ class _BaseCryst:
         else:
             comp_kin = conc
 
-        nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], conc, temp, kv_cry, moms)
+        nucl, growth, dissol = self.Kinetics.get_kinetics(comp_kin, temp,
+                                                          kv_cry, moms)
 
         nucl = nucl * self.scale * vol
 
@@ -622,6 +629,8 @@ class _BaseCryst:
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
                    sundials_opts=None):
+
+        self.Kinetics.target_idx = self.target_ind
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
@@ -1228,20 +1237,19 @@ class _BaseCryst:
 
 
 class BatchCryst(_BaseCryst):
-    def __init__(self, target_ind, mask_params=None,
+    def __init__(self, target_comp, mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
                  isothermal=False, controls=None, params_control=None,
                  cfun_solub=None,
                  adiabatic=False,
-                 rad_zero=0, reset_states=False, name_species=None,
+                 rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
-        super().__init__(mask_params, method, target_ind, scale, vol_tank,
+        super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          isothermal, controls, params_control, cfun_solub,
                          adiabatic,
-                         rad_zero,
-                         reset_states, name_species, h_conv, vol_ht,
+                         rad_zero, reset_states, h_conv, vol_ht,
                          basis, jac_type)
         """ Construct a Batch Crystallizer object
         Parameters
@@ -1670,19 +1678,19 @@ class BatchCryst(_BaseCryst):
 
 
 class MSMPR(_BaseCryst):
-    def __init__(self, target_ind,
+    def __init__(self, target_comp,
                  mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
                  isothermal=False, controls=None, params_control=None,
                  cfun_solub=None, adiabatic=False, rad_zero=0,
-                 reset_states=False, name_species=None,
+                 reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
-        super().__init__(mask_params, method, target_ind, scale, vol_tank,
+        super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          isothermal, controls, params_control,
                          cfun_solub, adiabatic, rad_zero,
-                         reset_states, name_species, h_conv, vol_ht,
+                         reset_states, h_conv, vol_ht,
                          basis, jac_type)
 
         """ Construct a MSMPR object

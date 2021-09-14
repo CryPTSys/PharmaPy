@@ -592,6 +592,7 @@ class DynamicCollector:
                                mass_frac=frac_solid)
             phases = (liquid, solid)
 
+            self.kwargs_cryst.pop('target_ind')
             SemiCryst = SemibatchCryst(method='1D-FVM', adiabatic=True,
                                        **self.kwargs_cryst)
             SemiCryst.Phases = phases
