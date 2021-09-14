@@ -719,7 +719,7 @@ class CSTR(_BaseReactor):
         self._Inlet = inlet_object
 
     def nomenclature(self):
-        self.name_species = self.Liquid_1.name_species
+        # self.name_species = self.Liquid_1.name_species
 
         if not self.isothermal:
             self.states_uo.append('temp')
@@ -892,7 +892,6 @@ class CSTR(_BaseReactor):
         time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         # Store results
-        self.timeProf.append(time)
         self.statesProf = states
         self.states = states[-1]
 
@@ -902,6 +901,7 @@ class CSTR(_BaseReactor):
         return time, states
 
     def retrieve_results(self, time, states):
+        self.time_runs.append(time)
         vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
         if self.isothermal:
@@ -923,7 +923,7 @@ class CSTR(_BaseReactor):
                 tht_prof = None
 
         # Heat profile
-        inputs = self.get_inputs(self.timeProf[-1])
+        inputs = self.get_inputs(self.time_runs[-1])
         self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
                                               tht_prof, inputs,
                                               heat_prof=True)
@@ -942,7 +942,7 @@ class CSTR(_BaseReactor):
         self.vol = self.vol_runs[-1][-1]
 
         self.Liquid_1.temp = self.temp
-        self.Liquid_1.updatePhase(vol=self.vol, concentr=self.concentr)
+        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=self.concentr)
 
         # Outlet stream
         path = self.Inlet.path_data
@@ -951,7 +951,7 @@ class CSTR(_BaseReactor):
                                    vol_flow=self.Inlet.vol_flow)
 
         self.Outlet.concProf = self.conc_runs[0]  # TODO
-        self.Outlet.timeProf = self.timeProf[0]
+        self.Outlet.timeProf = self.time_runs[0]
         self.Outlet.tempProf = self.temp_runs[0]
 
         # Output vector
