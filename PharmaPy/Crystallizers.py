@@ -338,9 +338,12 @@ class _BaseCryst:
 
         if growth > 0:
             theta = f_diff[:-1] / (f_diff[1:] + eps*10)
+            # theta = f_diff[:-1] / (f_diff[1:] + eps)
+            # theta = f_diff[:-1] / f_diff[1:]
         else:
             theta = f_diff[1:] / (f_diff[:-1] + eps*10)
-
+            # theta = f_diff[:-1] / (f_diff[1:] + eps)
+            # theta = f_diff[:-1] / f_diff[1:]
         # Van-Leer limiter
         limiter = np.zeros_like(f_diff)
         limiter[:-1] = (np.abs(theta) + theta) / (1 + np.abs(theta))
