@@ -340,20 +340,20 @@ class RxnKinetics:
         conc = np.asarray(conc)
         n_conc = len(conc)
 
-        sign = 2 * (conc >= 0) - 1  # TODO: fractional orders (sign)
         # Compute elementary reaction rate
-        # conc = abs(conc)
+        conc = np.maximum(eps, conc)
         if conc.ndim == 1:
             f_term = np.zeros(self.num_rxns)
 
             for ind in range(self.num_rxns):
                 f_term[ind] = np.prod(conc**(rxn_orders[ind]))
+                # terms = np.dot(conc, rxn_orders[ind])
+                # f_term = np.exp(terms)
         else:  # vectorized
             f_term = np.zeros((n_conc, self.num_rxns))
 
             for ind in range(self.num_rxns):
                 f_term[:, ind] = np.prod(conc**(rxn_orders[ind]), axis=1)
-
         return f_term
 
     def equilibrium_model(self, conc, temp, deltah_rxn):

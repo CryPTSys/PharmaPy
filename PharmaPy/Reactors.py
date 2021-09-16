@@ -26,6 +26,7 @@ from itertools import cycle
 linestyles = cycle(['-', '--', '-.', ':'])
 
 gas_ct = 8.314  # J/mol/K
+eps = np.finfo(float).eps
 
 
 class _BaseReactor:
@@ -228,7 +229,7 @@ class _BaseReactor:
                                                u_values)
 
         if 'temp' in self.states_uo:
-            energy_bce = self.energy_balances(conc, vol, temp, temp_ht,
+            energy_bce = self.energy_balances(time, conc, vol, temp, temp_ht,
                                               u_values)
 
             balances = np.append(material_bces, energy_bce)
@@ -768,7 +769,7 @@ class CSTR(_BaseReactor):
 
         return dmaterial_dt
 
-    def energy_balances(self, conc, vol, temp, temp_ht, u_inputs,
+    def energy_balances(self, time, conc, vol, temp, temp_ht, u_inputs,
                         heat_prof=False):
 
         inlet_flow = u_inputs['vol_flow']
@@ -822,8 +823,12 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                flow_ht = self.Utility.vol_flow
-                tht_in = self.Utility.temp_in
+                ht_controls = self.Utility.evaluate_controls(time)
+                tht_in = ht_controls['temp_in']
+                flow_ht = ht_controls['vol_flow']
+
+                # flow_ht = self.Utility.vol_flow
+                # tht_in = self.Utility.temp_in
                 cp_ht = self.Utility.cp
                 rho_ht = self.Utility.rho
 
@@ -862,6 +867,7 @@ class CSTR(_BaseReactor):
 
         # Initial states
         states_init = self.Liquid_1.mole_conc
+
         self.num_concentr = len(self.Liquid_1.mole_conc)
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
@@ -1034,6 +1040,7 @@ class SemibatchReactor(CSTR):
 
         # Initial states
         states_init = self.Liquid_1.mole_conc
+
         self.num_concentr = len(self.Liquid_1.mole_conc)
         states_init = np.append(states_init, self.Liquid_1.vol)
 
@@ -1096,7 +1103,8 @@ class SemibatchReactor(CSTR):
 
         # Heat profile
         u_inputs = self.get_inputs(time)
-        self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
+        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
+                                              temp_prof,
                                               tht_prof, u_inputs,
                                               heat_prof=True)
 
@@ -1105,7 +1113,7 @@ class SemibatchReactor(CSTR):
         self.vol_runs.append(vol_prof)
 
         if tht_prof is not None:
-            self.tempHtProf.append(tht_prof)
+            self.tempHt_runs.append(tht_prof)
 
         # Final state
         self.elapsed_time = time[-1]
@@ -1430,6 +1438,9 @@ class PlugFlowReactor(_BaseReactor):
 
         c_init = np.ones((num_discr,
                           self.num_species)) * self.Liquid_1.mole_conc
+
+        # c_init = c_init.astype(np.float64)
+        # c_init[c_init == 0] = eps
 
         self.num_concentr = self.num_species  # TODO: make consistent with Batch
 

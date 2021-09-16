@@ -173,7 +173,7 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
     return pw_logic_exprs, pw_fncs
 
 
-def temp_pw_lin(time, temp_zero, pw_exprs=None, pw_fncs=None, t_zero=0):
+def temp_pw_lin(time, pw_exprs=None, pw_fncs=None, t_zero=0):
     pw_exprs_vals = []
 
     for ind, val in enumerate(pw_exprs):
