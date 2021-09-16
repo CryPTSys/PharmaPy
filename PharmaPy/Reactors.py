@@ -165,12 +165,10 @@ class _BaseReactor:
 
     def heat_transfer(self, temp, temp_ht, vol):
         # Heat transfer area
-        diam = (4/np.pi * vol)**(1/3)  # m
-        area_ht = np.pi * diam**2  # m**2
-
         if self.ht_mode == 'coil':  # Half pipe heat transfer
             pass
         else:
+            area_ht = 4 / self.diam * vol  # m**2
             heat_transf = self.u_ht * area_ht * (temp - temp_ht)
 
         return heat_transf
@@ -485,7 +483,7 @@ class BatchReactor(_BaseReactor):
 
         return dmaterial_dt
 
-    def energy_balances(self, conc, vol, temp, temp_ht, inputs,
+    def energy_balances(self, time, conc, vol, temp, temp_ht, inputs,
                         heat_prof=False):
 
         temp = np.atleast_1d(temp)
@@ -601,6 +599,9 @@ class BatchReactor(_BaseReactor):
                 problem.jac = lambda time, states: self.get_jacobians(
                     time, states, 0, merged_params)
 
+        vol_tank = self.Liquid_1.vol / self.vol_offset
+        self.diam = (4 / np.pi * vol_tank)**(1/3)
+
         # Set solver
         solver = CVode(problem)
 
@@ -654,8 +655,8 @@ class BatchReactor(_BaseReactor):
                 tht_prof = None
 
         # Heat profile
-        self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
-                                              tht_prof, None,
+        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
+                                              temp_prof, tht_prof, None,
                                               heat_prof=True)
 
         if 'temp_ht' in self.states_uo:
@@ -862,6 +863,9 @@ class CSTR(_BaseReactor):
         if self.reset_states:
             self.reset()
 
+        vol_tank = self.Liquid_1.vol / self.vol_offset
+        self.diam = (4 / np.pi * vol_tank)**(1/3)
+
         # # Define inlet streams
         # self.Inlet.Liquid_1.getProps()
 
@@ -930,8 +934,8 @@ class CSTR(_BaseReactor):
 
         # Heat profile
         inputs = self.get_inputs(self.time_runs[-1])
-        self.heat_prof = self.energy_balances(conc_prof, vol_prof, temp_prof,
-                                              tht_prof, inputs,
+        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
+                                              temp_prof, tht_prof, inputs,
                                               heat_prof=True)
 
         self.temp_runs.append(temp_prof)
@@ -983,23 +987,10 @@ class SemibatchReactor(CSTR):
         self.oper_mode = 'Semibatch'
         self.is_continuous = False
 
-        self.vol_max = 0.75 * vol_tank
-        self.diam = (4/np.pi * self.vol_max)**(1/3)  # m
-
-        self.vol_ht = self.vol_max * 0.15
+        self.diam = (4/np.pi * vol_tank)**(1/3)  # m
+        self.vol_ht = vol_tank * 0.15
 
         self.material_from_upstream = False
-
-    def heat_transfer(self, temp, temp_ht, vol):
-        # Geometry
-        circ = np.pi / 4 * self.diam**2  # m**2
-        height = vol / circ  # m
-        area_ht = np.pi * self.diam * height
-
-        # Energy term
-        heat_transf = self.u_ht * area_ht * (temp - temp_ht)
-
-        return heat_transf
 
     def nomenclature(self):
         self.states_uo.append('vol')

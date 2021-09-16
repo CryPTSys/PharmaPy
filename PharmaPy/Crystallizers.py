@@ -2065,6 +2065,19 @@ class MSMPR(_BaseCryst):
 
 
 class SemibatchCryst(MSMPR):
+    def __init__(self, target_comp, vol_tank=None, mask_params=None,
+                 method='1D-FVM', scale=1, isothermal=False, controls=None,
+                 params_control=None, cfun_solub=None, adiabatic=False,
+                 rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
+                 basis='mass_conc', jac_type=None):
+
+        super().__init__(target_comp, mask_params,
+                         method, scale, vol_tank,
+                         isothermal, controls, params_control,
+                         cfun_solub, adiabatic, rad_zero,
+                         reset_states,
+                         h_conv, vol_ht, basis,
+                         jac_type)
 
     def nomenclature(self):
         self.states_uo.append('vol')
