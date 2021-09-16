@@ -18,8 +18,8 @@ def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
     phi_1, phi_2, exp = params
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
-    
-    absup = max(eps, absup_)
+
+    absup = np.maximum(eps, absup_)
     if reformulate:
         pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
     else:
@@ -337,21 +337,23 @@ class RxnKinetics:
         """
 
         # Identify reactants by the sign of stoichiometic coeff
-        is_reactant = self.stoich_matrix < 0
         conc = np.asarray(conc)
         n_conc = len(conc)
 
         # Compute elementary reaction rate
-        conc = np.abs(conc)
+        conc = np.maximum(eps, conc)
         if conc.ndim == 1:
             f_term = np.zeros(self.num_rxns)
+
             for ind in range(self.num_rxns):
                 f_term[ind] = np.prod(conc**(rxn_orders[ind]))
+                # terms = np.dot(conc, rxn_orders[ind])
+                # f_term = np.exp(terms)
         else:  # vectorized
             f_term = np.zeros((n_conc, self.num_rxns))
+
             for ind in range(self.num_rxns):
                 f_term[:, ind] = np.prod(conc**(rxn_orders[ind]), axis=1)
-
         return f_term
 
     def equilibrium_model(self, conc, temp, deltah_rxn):
@@ -470,10 +472,10 @@ class CrystKinetics:
             of the form S = A + B*T + C*T^2...
         nucl_prim : array-like (3 elements)
             primary nucleation coefficients, with the result given in
-            number of particles per second
+            number of particles per second per cubic meter slurry
         nucl_sec : array-like (4 elements) (optional)
             secondary nucleation coefficients, with the result given in
-            number of particles per second
+            number of particles per second per cubic meter slurry
         growth : array-like (dimension 3) (optional)
             nucleation parameters, with the result given in um/s
         dissolution : array_like (dimension 3) (optional)
@@ -503,6 +505,8 @@ class CrystKinetics:
             function with the signature solub_fn(temp, conc)
 
         """
+
+        self.target_idx = None
 
         self.temp_ref = temp_ref
         self.rel_super = rel_super
@@ -649,8 +653,10 @@ class CrystKinetics:
 
         return c_satur
 
-    def get_kinetics(self, conc_target, conc, temp, kv_cry,
+    def get_kinetics(self, conc, temp, kv_cry,
                      moments=None, nucl_sec_out=False):
+
+        conc_target = conc.T[self.target_idx]
 
         # Supersaturation
         conc_sat = self.get_solubility(temp, conc)

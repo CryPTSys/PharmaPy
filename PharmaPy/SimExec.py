@@ -133,7 +133,7 @@ class SimulationExec:
         self.execution_order = execution_order
 
         time_processing = np.zeros(len(execution_order))
-        for ind, uo in enumerate(execution_names):
+        for ind, uo in enumerate(execution_order):
             if hasattr(uo, 'timeProf'):
                 time_processing[ind] = uo.timeProf[-1]
 

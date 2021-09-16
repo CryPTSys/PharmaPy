@@ -67,7 +67,7 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     numerator = trapezoidal_rule(x_grid, csd * alpha_x)
     denominator = solid_phase.moments[0]
 
-    alpha = numerator / denominator
+    alpha = numerator / (denominator + eps)
 
     return alpha
 
@@ -610,7 +610,7 @@ class Filter:
         dens_sol = self.Solid_1.getDensity()
 
         self.alpha = get_alpha(self.Solid_1, sphericity=1, porosity=epsilon,
-                               rho_sol=dens_sol)/1e5
+                               rho_sol=dens_sol)
 
         solid_conc = self.SlurryPhase.getSolidsConcentr()
         solid_conc = max(0, solid_conc)

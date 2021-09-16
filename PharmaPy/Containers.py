@@ -23,6 +23,7 @@ from matplotlib.ticker import AutoMinorLocator
 
 import copy
 
+eps = np.finfo(float).eps
 
 class Mixer:
     def __init__(self, phases=(), vol=None, temp_refer=298.15):
@@ -568,11 +569,14 @@ class DynamicCollector:
         init_dict = self.get_inputs(self.elapsed_time)
         temp_init = init_dict['temp']
 
+        # self.name_species = self.Liquid_1.name_species
+        # self.num_species = len(self.name_species)
+
         self.is_cryst = any('distr' in word for word in init_dict.keys())
 
         if self.is_cryst:
             path = self.Inlet.Liquid_1.path_data
-            vol_init = init_dict['vol_flow'] / 100
+            vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
             distr_init = init_dict['num_distrib'] * vol_init
 
@@ -588,6 +592,7 @@ class DynamicCollector:
                                mass_frac=frac_solid)
             phases = (liquid, solid)
 
+            self.kwargs_cryst.pop('target_ind')
             SemiCryst = SemibatchCryst(method='1D-FVM', adiabatic=True,
                                        **self.kwargs_cryst)
             SemiCryst.Phases = phases

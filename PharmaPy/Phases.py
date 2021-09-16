@@ -798,6 +798,28 @@ class SolidPhase(ThermoPhysicalManager):
             self.mass = mass
             self.vol = mass / self.getDensity()
 
+    def convert_distribution(self, x_distrib=None, num_distr=None,
+                             vol_distr=None, mass=0):
+        if x_distrib is None:
+            x_distrib = self.x_distrib
+
+        if num_distr is not None and vol_distr is not None:
+            raise ValueError("Specify either 'num_distr' or 'vol_distr', "
+                             "not both")
+        elif num_distr is not None:  # convert to vol perc
+            mom_three = self.getMoments(distrib=num_distr, mom_num=3)
+            distrib_out = num_distr * self.dx * x_distrib**3 * self.kv / \
+                mom_three / 1e18
+        elif vol_distr is not None:
+            if mass == 0:
+                raise ValueError("'vol_perc' given, mass must be greater "
+                                 "than zero.")
+            dens = self.getDensity()
+            distrib_out = (mass / dens) * vol_distr / self.kv / \
+                x_distrib**3 / self.dx * 1e18  # number/um
+
+        return distrib_out
+
     def getDistribution(self, x_distrib, distrib):
         dens = self.getDensity()
 
@@ -823,8 +845,8 @@ class SolidPhase(ThermoPhysicalManager):
         if self.mass > 0:
             distrib = distrib / distrib.sum()
             if self.distrib_type == 'vol_perc':
-                distr = (self.mass / dens) * distrib / self.kv / \
-                    x_distrib**3 / self.dx * 1e18  # number/um
+                distr = self.convert_distribution(vol_distr=distrib,
+                                                  mass=self.mass)
             elif self.distrib_type == 'mass_perc':
                 distr = self.mass*distrib / x_distrib**3 / self.kv * 1e18
 
@@ -909,8 +931,9 @@ class SolidPhase(ThermoPhysicalManager):
         node_x_dist = (x_dist[:-1] + x_dist[1:]) / 2
         node_CSD = (distrib[:-1] + distrib[1:]) / 2
 
-        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3) # Volume of crystals in each bin
-        frac_vol_cry = vol_cry / np.sum(vol_cry)
+        # Volume of crystals in each bin
+        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
+        frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
 
         vol_particle = kv * node_x_dist**3
         d_part_sphere = (6 * vol_particle / np.pi)**(1/3)
@@ -918,7 +941,7 @@ class SolidPhase(ThermoPhysicalManager):
                                              np.exp(2.946 * (1 - sphericity)))
 
         # Initial porosity
-        D_mean = mom_one/mom_zero
+        D_mean = mom_one/(mom_zero + eps)
         E_0_Jeschar = 0.375 + 0.34 * D_mean/diam_filter  # average porosity of packing of uniform sized spheres [-]
 
         initial_porosity = E_0_Jeschar

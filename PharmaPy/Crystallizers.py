@@ -52,10 +52,10 @@ class _BaseCryst:
     # @decor_states
 
     def __init__(self, mask_params,
-                 method, target_ind, scale,
+                 method, target_comp, scale, vol_tank,
                  isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
-                 reset_states, name_species,
+                 reset_states,
                  h_conv, vol_ht, basis, jac_type):
 
         """ Construct a Crystallizer object
@@ -92,10 +92,14 @@ class _BaseCryst:
 
         self.jac_type = jac_type
 
-        self.target_ind = target_ind
+        if isinstance(target_comp, str):
+            target_comp = [target_comp]
+
+        self.target_comp = target_comp
 
         self.scale = scale
         self.scale_flag = True
+        self.vol_tank = vol_tank
 
         # Controls
         if controls is None:
@@ -148,8 +152,6 @@ class _BaseCryst:
         }
 
         # ---------- Names
-        self.name_species = name_species
-
         self.states_uo = ['mass_conc']
         self.names_states_in = ['mass_conc']
 
@@ -212,6 +214,13 @@ class _BaseCryst:
 
             classify_phases(self)  # Solid_1, Liquid_1...
 
+            # Names and target compounds
+            self.name_species = self.Liquid_1.name_species
+
+            name_bool = [name in self.target_comp for name in self.name_species]
+            self.target_ind = np.where(name_bool)[0][0]
+
+            # Save safe copy of original phases
             self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
                                        copy.deepcopy(self.Solid_1)]
 
@@ -284,9 +293,8 @@ class _BaseCryst:
 
         # Kinetic terms
         mu_susp = mu*(1e-6)**np.arange(self.num_distr) / vol  # m**n/m**3_susp
-        nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], comp_kin, temp, kv,
-            mu_susp)
+        nucl, growth, dissol = self.Kinetics.get_kinetics(comp_kin, temp, kv,
+                                                          mu_susp)
 
         growth = growth * self.Kinetics.alpha_fn(conc)
 
@@ -319,8 +327,8 @@ class _BaseCryst:
         else:
             comp_kin = conc
 
-        nucl, growth, dissol = self.Kinetics.get_kinetics(
-            comp_kin[self.target_ind], conc, temp, kv_cry, moms)
+        nucl, growth, dissol = self.Kinetics.get_kinetics(comp_kin, temp,
+                                                          kv_cry, moms)
 
         nucl = nucl * self.scale * vol
 
@@ -625,6 +633,8 @@ class _BaseCryst:
                    jac_v_prod=False, verbose=True, test=False,
                    sundials_opts=None):
 
+        self.Kinetics.target_idx = self.target_ind
+
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
             if self.method == 'moments':
@@ -703,6 +713,19 @@ class _BaseCryst:
 
         states_init = np.append(init_solid, init_susp)
 
+        if self.vol_tank is None:
+            if isinstance(self, SemibatchCryst):
+                time_vec = np.linspace(self.elapsed_time, final_time)
+                vol_flow = self.get_inputs(time_vec)['vol_flow']
+
+                self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
+
+            else:
+                self.vol_tank = self.Slurry.vol_slurry
+
+        self.diam_tank = (4/np.pi * self.vol_tank)**(1/3)
+        self.vol_tank *= 1 / self.vol_offset
+
         if 'temp_ht' in self.states_uo:
             states_init = np.concatenate(
                 (states_init, [self.Liquid_1.temp, self.Liquid_1.temp]))
@@ -754,6 +777,7 @@ class _BaseCryst:
             supersat *= 1 / sat_conc
 
         self.supsatProf = supersat
+        self.satConcProf = sat_conc
 
         # ---------- Organize sensitivity
         if eval_sens:
@@ -967,12 +991,12 @@ class _BaseCryst:
         else:
             ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
 
-        supersat = self.supsatProf
         if plot_solub:
-            sat_conc = c_target / (1 + supersat)
+            sat_conc = self.satConcProf
             ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
 
         # Supersaturation
+        supersat = self.supsatProf
         ax_supsat = ax_conc.twinx()
         ax_supsat.plot(self.timeProf / time_div, supersat)
         color = ax_supsat.lines[0].get_color()
@@ -1216,20 +1240,19 @@ class _BaseCryst:
 
 
 class BatchCryst(_BaseCryst):
-    def __init__(self, target_ind, mask_params=None,
-                 method='1D-FVM', scale=1,
+    def __init__(self, target_comp, mask_params=None,
+                 method='1D-FVM', scale=1, vol_tank=None,
                  isothermal=False, controls=None, params_control=None,
                  cfun_solub=None,
                  adiabatic=False,
-                 rad_zero=0, reset_states=False, name_species=None,
+                 rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
-        super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, params_control, cfun_solub,
+        super().__init__(mask_params, method, target_comp, scale, vol_tank,
+                         isothermal, controls, params_control, cfun_solub,
                          adiabatic,
-                         rad_zero,
-                         reset_states, name_species, h_conv, vol_ht,
+                         rad_zero, reset_states, h_conv, vol_ht,
                          basis, jac_type)
         """ Construct a Batch Crystallizer object
         Parameters
@@ -1492,8 +1515,9 @@ class BatchCryst(_BaseCryst):
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
         vol = vol_liq / phi
-        diam = (4/np.pi * vol)**(1/3)
-        area_ht = np.pi * diam**2  # m**2
+
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)
+        area_ht = np.pi * self.diam_tank * height_liq  # m**2
 
         source_term = dh_cryst*cryst_rate
 
@@ -1556,7 +1580,11 @@ class BatchCryst(_BaseCryst):
         y_outputs = np.delete(states, num_material, axis=1)
 
         if self.method == '1D-FVM':
-            self.distribVolProf = distribProf * self.Solid_1.kv * self.x_grid**3
+            self.distribVolPercProf = self.Solid_1.convert_distribution(
+                num_distr=distribProf)
+
+            self.distribVolProf = distribProf * self.Solid_1.kv * \
+                self.x_grid**3
 
         if self.isothermal:
             self.temp_runs.append(
@@ -1653,21 +1681,21 @@ class BatchCryst(_BaseCryst):
 
 
 class MSMPR(_BaseCryst):
-    def __init__(self, target_ind,
+    def __init__(self, target_comp,
                  mask_params=None,
-                 method='1D-FVM', scale=1,
-                 isothermal=False, controls=None, params_control=None, cfun_solub=None,
-                 adiabatic=False,
-                 rad_zero=0, reset_states=False,
-                 name_species=None,
+                 method='1D-FVM', scale=1, vol_tank=None,
+                 isothermal=False, controls=None, params_control=None,
+                 cfun_solub=None, adiabatic=False, rad_zero=0,
+                 reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None):
 
-        super().__init__(mask_params, method, target_ind,
-                         scale, isothermal, controls, params_control, cfun_solub,
-                         adiabatic, rad_zero,
-                         reset_states, name_species, h_conv, vol_ht,
+        super().__init__(mask_params, method, target_comp, scale, vol_tank,
+                         isothermal, controls, params_control,
+                         cfun_solub, adiabatic, rad_zero,
+                         reset_states, h_conv, vol_ht,
                          basis, jac_type)
+
         """ Construct a MSMPR object
         Parameters
         ----------
@@ -1847,8 +1875,8 @@ class MSMPR(_BaseCryst):
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
-        diam = (4/np.pi * vol)**(1/3)
-        area_ht = np.pi * diam**2  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)
+        area_ht = np.pi * self.diam_tank * height_liq  # m**2
 
         # Energy terms (W)
         flow_term = input_flow * (h_in - h_sp)
@@ -1874,7 +1902,7 @@ class MSMPR(_BaseCryst):
             cp_ht = self.Utility.cp
             rho_ht = self.Utility.rho
 
-            vol_ht = vol*0.14  # m**3
+            vol_ht = self.vol_tank*0.14  # m**3
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
@@ -1895,6 +1923,9 @@ class MSMPR(_BaseCryst):
 
         if self.method == '1D-FVM':
             self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
+
+            self.distribVolPercProf = self.Solid_1.convert_distribution(
+                num_distr=distProf)
 
         volflow = self.get_inputs(time_profile)['vol_flow']
 
@@ -2070,8 +2101,12 @@ class SemibatchCryst(MSMPR):
         rho_in_liq, _ = rho_in
 
         input_flow = u_inputs['vol_flow']
+        input_flow = np.max([eps, input_flow])
+
         input_distrib = u_inputs['num_distrib'] * self.scale
         input_conc = u_inputs['mass_conc']
+
+        # print('time = %.2f, vol_liq = %.2e, flowrate = %.2e' % (time, vol_liq, input_flow))
 
         vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_slurry = vol_liq + vol_solid
@@ -2120,6 +2155,7 @@ class SemibatchCryst(MSMPR):
 
         # Input properties
         input_flow = u_inputs['vol_flow']
+        input_flow = np.max([eps, input_flow])
 
         vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol_liq + vol_solid
@@ -2138,10 +2174,6 @@ class SemibatchCryst(MSMPR):
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
-        vol = vol_liq / phi
-        diam = (4/np.pi * vol)**(1/3)
-        area_ht = np.pi * diam**2  # m**2
-
         # Terms
         dens_in_liq = rho_in[0]
         dmass_dt = input_flow * dens_in_liq
@@ -2149,7 +2181,10 @@ class SemibatchCryst(MSMPR):
         accum_term = dmass_dt * h_sp/dens_slurry
         flow_term = input_flow * h_in
 
-        source_term = dh_cryst*cryst_rate
+        source_term = dh_cryst * cryst_rate
+
+        height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
+        area_ht = np.pi * self.diam_tank * height_liq  # m**2
 
         if self.adiabatic:
             ht_term = 0
@@ -2167,7 +2202,7 @@ class SemibatchCryst(MSMPR):
             flow_ht = self.flow_ht
             cp_ht = 4180  # J/kg/K
             rho_ht = 1000
-            vol_ht = vol*0.14  # m**3
+            vol_ht = self.vol_tank*0.14  # m**3
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
