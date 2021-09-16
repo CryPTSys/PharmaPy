@@ -732,10 +732,18 @@ class CSTR(_BaseReactor):
         self.names_states_in = self.names_states_out
 
     def get_inputs(self, time):
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
+        if self.Inlet.Controller is not None:
+            input_dict = self.Inlet.Controller.evaluate_controls(time)
+
+            for name in self.names_states_in:
+                if name not in input_dict.keys():
+                    input_dict[name] = getattr(self.Inlet, name)
+
+        elif self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
             input_dict = {'mole_conc': self.Inlet.mole_conc,
                           'temp': self.Inlet.temp,
                           'vol_flow': self.Inlet.vol_flow}
+
         else:
             all_inputs = self.Inlet.InterpolateInputs(time)
 

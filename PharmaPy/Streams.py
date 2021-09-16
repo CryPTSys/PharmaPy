@@ -43,6 +43,9 @@ class LiquidStream(LiquidPhase):
         self.vol_flow = self.vol
         self.mole_flow = self.moles
 
+        self._Controller = None
+        self.controllable = ('vol_flow', 'temp')
+
         # del self.mass
         # del self.vol
         # del self.moles
@@ -66,6 +69,17 @@ class LiquidStream(LiquidPhase):
 
         self.controls = controls
         self.args_control = args_control
+
+    @property
+    def Controller(self):
+        return self._Controller
+
+    @Controller.setter
+    def Controller(self, control_object):
+        control_object.controllable = self.controllable
+        control_object.parent_instance = self
+
+        self._Controller = control_object
 
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
