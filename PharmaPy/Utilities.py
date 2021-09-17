@@ -50,16 +50,13 @@ class CoolingWater:
         if temp_in is not None:
             self.temp_in = temp_in
 
-    # def evaluate_controls(self, time):
-    #     controls_out = {}
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.controllable:
+                inputs[attr] = getattr(self, attr)
 
-    #     if len(self.controls) > 0:
-    #         for key, fun in self.controls.items():
-    #             args = self.args_control[key]
-    #             controls_out[key] = fun(time, *args)
+        else:
+            inputs = self.DynamicInlet.evaluate_inputs(time)
 
-    #     for name in self.controllable:
-    #         if name not in controls_out.keys():
-    #             controls_out[name] = getattr(self, name)
-
-    #     return controls_out
+        return inputs

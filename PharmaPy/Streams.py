@@ -115,6 +115,17 @@ class LiquidStream(LiquidPhase):
         del self.vol
         del self.moles
 
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.controllable:
+                inputs[attr] = getattr(self, attr)
+
+        else:
+            inputs = self.DynamicInlet(time)
+
+        return inputs
+
 
 class SolidStream(SolidPhase):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,

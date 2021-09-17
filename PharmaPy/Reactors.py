@@ -832,16 +832,10 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                if self.Utility.DynamicInlet is None:
-                    tht_in = self.Utility.temp_in
-                    flow_ht = self.Utility.vol_flow
-                else:
-                    ht_controls = self.Utility.DynamicInlet.evaluate_inputs(time)
-                    tht_in = ht_controls['temp_in']
-                    flow_ht = ht_controls['vol_flow']
+                ht_controls = self.Utility.evaluate_inputs(time)
+                tht_in = ht_controls['temp_in']
+                flow_ht = ht_controls['vol_flow']
 
-                # flow_ht = self.Utility.vol_flow
-                # tht_in = self.Utility.temp_in
                 cp_ht = self.Utility.cp
                 rho_ht = self.Utility.rho
 
@@ -888,7 +882,7 @@ class CSTR(_BaseReactor):
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
-                tht_init = self.Utility.temp_in
+                tht_init = self.Utility.evaluate_inputs(0)['temp_in']
                 states_init = np.append(states_init, tht_init)
 
         self.resid_time = self.Liquid_1.vol / self.Inlet.vol_flow
@@ -1050,7 +1044,7 @@ class SemibatchReactor(CSTR):
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
-                tht_init = self.Utility.temp_in
+                tht_init = self.Utility.evaluate_inputs(0)['temp_in']
                 states_init = np.append(states_init, tht_init)
 
         merged_params = self.Kinetics.concat_params()

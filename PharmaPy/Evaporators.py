@@ -319,7 +319,9 @@ class Evaporator:
         elif state_events is None:
             self.state_events = []
 
+        # Geometry
         self.vol_tot = vol_drum
+        self.diam_tank = (4/np.pi * vol_drum)**(1/3)
         self.area_out = np.pi / 4 * diam_out**2
 
         self.pres = pres
@@ -492,12 +494,8 @@ class Evaporator:
         h_vap = self.VapEvap.getEnthalpy(temp, mole_frac=y_i, basis='mole')
 
         # Heat transfer
-        diam = 0.438
-        height_liq = vol_liq / (np.pi/4 * diam**2)
-        area_ht = np.pi * diam * height_liq  # m**2
-
-        ht_controls = self.Utility.evaluate_controls(time)
-        temp_ht = ht_controls['temp_in']
+        area_ht = 4 / self.diam_tank * vol_liq  # m**2
+        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
 
         heat_transfer = -self.u_ht * area_ht * (temp - temp_ht)
 
@@ -681,8 +679,7 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        ht_controls = self.Utility.evaluate_controls(0)
-        temp_ht = ht_controls['temp_in']
+        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
 
         ht_init = -self.h_conv * area_ht * (temp_init - temp_ht)
 
@@ -987,6 +984,10 @@ class ContinuousEvaporator:
         self.vol_tot = vol_drum
         self.vol_liq_set = vol_drum * frac_liq
 
+        # Geometry
+        self.diam_tank = (4/np.pi * vol_drum)**(1/3)
+        self.area_out = np.pi / 4 * diam_out**2
+
         # Control
         self.k_liq = k_liq
         self.k_vap = k_vap
@@ -995,8 +996,6 @@ class ContinuousEvaporator:
         self.vol_offset = 1
 
         self.adiabatic = adiabatic
-
-        self.area_out = np.pi / 4 * diam_out**2
 
         self.pres = pres
 
@@ -1177,7 +1176,7 @@ class ContinuousEvaporator:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
             area_ht = np.pi * self.diam_tank * height_liq  # m**2
 
-            ht_controls = self.Utility.evaluate_controls(time)
+            ht_controls = self.Utility.evaluate_inputs(time)
             temp_ht = ht_controls['temp_in']
 
             heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
@@ -1285,8 +1284,6 @@ class ContinuousEvaporator:
         # Moles of phases
         mol_liq = self.LiqPhase.moles
         vol_liq = self.LiqPhase.vol
-
-        self.diam_tank = (4/np.pi * vol_liq)**(1/3)
 
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:

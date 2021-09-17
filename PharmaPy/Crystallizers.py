@@ -1892,7 +1892,7 @@ class MSMPR(_BaseCryst):
             dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
 
             # Balance in the jacket
-            ht_media = self.Utility.evaluate_controls(time)
+            ht_media = self.Utility.evaluate_inputs(time)
             flow_ht = ht_media['vol_flow']
             tht_in = ht_media['temp_in']
 
