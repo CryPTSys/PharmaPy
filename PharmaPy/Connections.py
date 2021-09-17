@@ -44,6 +44,39 @@ def get_inputs(time, Inlet, names_upstream, names_states_in, bipartite,
     return input_dict
 
 
+def get_input(time, Inlet, names_upstream, names_states_in, bipartite,
+              num_species, defaults=None, num_distr=0):
+
+    if Inlet is None:
+        input_dict = defaults
+
+    elif hasattr(Inlet, 'y_inlet'):
+        all_inputs = Inlet.InterpolateInputs(time)
+        input_upstream = get_dict_states(names_upstream, num_species,
+                                         num_distr, all_inputs)
+
+        input_dict = {}
+        for key in names_states_in:
+            input_dict[key] = input_upstream.get(bipartite[key])
+
+    elif len(Inlet.controls) > 0:
+        input_dict = {}
+        for key, val in Inlet.controls.items():
+            args = Inlet.args_control[key]
+            input_dict[key] = val(time, *args)
+
+        for key in names_states_in:
+            if key not in input_dict.keys():
+                input_dict[key] = getattr(Inlet, key)
+    else:
+        input_dict = {}
+        for name in names_states_in:
+            val = getattr(Inlet, name)
+            input_dict[name] = val
+
+    return input_dict
+
+
 class Graph:
     def __init__(self, connections=None):
 

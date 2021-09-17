@@ -122,7 +122,7 @@ class LiquidStream(LiquidPhase):
                 inputs[attr] = getattr(self, attr)
 
         else:
-            inputs = self.DynamicInlet(time)
+            inputs = self.DynamicInlet.evaluate_inputs(time)
 
         return inputs
 
