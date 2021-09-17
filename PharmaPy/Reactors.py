@@ -732,8 +732,8 @@ class CSTR(_BaseReactor):
         self.names_states_in = self.names_states_out
 
     def get_inputs(self, time):
-        if self.Inlet.Controller is not None:
-            input_dict = self.Inlet.Controller.evaluate_controls(time)
+        if self.Inlet.DynamicInlet is not None:
+            input_dict = self.Inlet.DynamicInlet.evaluate_inputs(time)
 
             for name in self.names_states_in:
                 if name not in input_dict.keys():
@@ -832,7 +832,7 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_controls = self.Utility.evaluate_controls(time)
+                ht_controls = self.Utility.DynamicInlet.evaluate_inputs(time)
                 tht_in = ht_controls['temp_in']
                 flow_ht = ht_controls['vol_flow']
 

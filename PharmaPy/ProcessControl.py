@@ -21,7 +21,7 @@ class DynamicInput:
 
         self.args_control[variable_name] = args_control
 
-    def evaluate_controls(self, time):
+    def evaluate_inputs(self, time):
         controls_out = {}
 
         for key, fun in self.controls.items():
