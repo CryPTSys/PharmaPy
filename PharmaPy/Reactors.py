@@ -832,9 +832,13 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_controls = self.Utility.DynamicInlet.evaluate_inputs(time)
-                tht_in = ht_controls['temp_in']
-                flow_ht = ht_controls['vol_flow']
+                if self.Utility.DynamicInlet is None:
+                    tht_in = self.Utility.temp_in
+                    flow_ht = self.Utility.vol_flow
+                else:
+                    ht_controls = self.Utility.DynamicInlet.evaluate_inputs(time)
+                    tht_in = ht_controls['temp_in']
+                    flow_ht = ht_controls['vol_flow']
 
                 # flow_ht = self.Utility.vol_flow
                 # tht_in = self.Utility.temp_in
