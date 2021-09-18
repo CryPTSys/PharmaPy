@@ -502,7 +502,7 @@ class DynamicCollector:
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
-        names_solids = ['mass_conc', 'vol_flow', 'temp', 'num_distrib']
+        names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
 
         self.name_idx = 0
 
@@ -578,7 +578,7 @@ class DynamicCollector:
             path = self.Inlet.Liquid_1.path_data
             vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
-            distr_init = init_dict['num_distrib'] * vol_init
+            distr_init = init_dict['distrib'] * vol_init
 
             vol_init *= (1 - self.Inlet.moments[3])
 

@@ -6,13 +6,12 @@ Created on Tue May 26 16:37:29 2020
 """
 
 import numpy as np
-from autograd import numpy as np
+# from autograd import numpy as np
 from autograd import jacobian as jacauto
 from PharmaPy.Commons import mid_fn, trapezoidal_rule
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
-from PharmaPy.NameAnalysis import get_dict_states
 
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -765,11 +764,7 @@ class Evaporator:
 
     def solve_unit(self, runtime, verbose=True, sundials_opts=None):
 
-        self.args_inputs = (self.Inlet,
-                            self.names_upstream,
-                            self.names_states_in,
-                            self.bipartite,
-                            self.num_species)
+        self.args_inputs = (self, self.num_species)
 
         states_initial, sdev_initial = self.init_unit()
 
@@ -1075,23 +1070,6 @@ class ContinuousEvaporator:
         self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
                             'pres', 'temp']
 
-    def get_inputs(self, time):
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_flow': self.Inlet.mole_flow,
-                          'temp': self.Inlet.temp,
-                          'mole_frac': self.Inlet.mole_frac}
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
-
-            inputs = get_dict_states(self.names_upstream, self.num_species,
-                                     0, all_inputs)
-
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
-
-        return input_dict
-
     def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
                        input_flow):
         # Volumes
@@ -1216,7 +1194,7 @@ class ContinuousEvaporator:
         temp = states[-1]
 
         # Inputs
-        u_inputs = self.get_inputs(time)
+        u_inputs = get_inputs(time, *self.args_inputs)
 
         # Material balance
         material_bces = self.material_balances(time, moles_i,
@@ -1298,7 +1276,7 @@ class ContinuousEvaporator:
         # Moles of i
         mol_i = mol_liq * x_init + mol_vap * y_init
 
-        u_inlet = self.get_inputs(0)
+        u_inlet = get_inputs(0, *self.args_inputs)
         inlet_flow = u_inlet['mole_flow']
 
         # Liquid flow
@@ -1335,6 +1313,8 @@ class ContinuousEvaporator:
 
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
                    sundials_opts=None):
+        self.args_inputs = (self, self.num_species)
+
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
@@ -1406,14 +1386,7 @@ class ContinuousEvaporator:
 
         self.Phases = self.LiqPhase
 
-        inputs_all = self.get_inputs(time)
-        # flow_liq, flow_vap, vol_liq = self.material_balances(
-        #     time,
-        #     states[:, :n_comp],
-        #     self.xliq_runs[-1], self.yvap_runs[-1],
-        #     self.molLiq_runs, self.molVap_runs,
-        #     self.pres_runs[-1], self.temp_runs[-1],
-        #     inputs_all, flows_out=True)
+        inputs_all = get_inputs(time, *self.args_inputs)
 
         vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
             self.temp_runs[-1], self.pres_runs[-1],

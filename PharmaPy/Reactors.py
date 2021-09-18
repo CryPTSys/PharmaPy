@@ -11,7 +11,7 @@ from assimulo.problem import Explicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.NameAnalysis import get_dict_states
+from PharmaPy.Connections import get_inputs
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -197,7 +197,7 @@ class _BaseReactor:
     def unit_model(self, time, states, params):
 
         # Calculate inlets
-        u_values = self.get_inputs(time)
+        u_values = get_inputs(time, *self.args_inputs)
 
         conc = states[:self.num_concentr]
 
@@ -461,9 +461,6 @@ class BatchReactor(_BaseReactor):
         self.names_states_in = self.names_states_out + ['temp', 'vol']
         self.names_states_out = self.names_states_in
 
-    def get_inputs(self, time):
-        return None
-
     def material_balances(self, time, conc, vol, temp, inputs):
 
         if self.Kinetics.keq_params is None:
@@ -567,6 +564,8 @@ class BatchReactor(_BaseReactor):
         conc_init = self.Liquid_1.mole_conc[self.mask_species]
         self.conc_inert = self.Liquid_1.mole_conc[~self.mask_species]
         self.num_concentr = len(conc_init)
+
+        self.args_inputs = (self, self.num_concentr, 0)
 
         states_init = conc_init
         if 'temp' in self.states_uo:
@@ -731,28 +730,6 @@ class CSTR(_BaseReactor):
         self.names_states_out += ['temp', 'vol_flow']
         self.names_states_in = self.names_states_out
 
-    def get_inputs(self, time):
-        # if self.Inlet.DynamicInlet is not None:
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            # this calls the DynamicInput object if not None
-            input_dict = self.Inlet.evaluate_inputs(time)
-
-            for name in self.names_states_in:
-                if name not in input_dict.keys():
-                    input_dict[name] = getattr(self.Inlet, name)
-
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
-
-            inputs = get_dict_states(self.names_upstream, self.num_concentr,
-                                     0, all_inputs)
-
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
-
-        return input_dict
-
     def material_balances(self, time, conc, vol, temp, u_inputs):
         inlet_flow = u_inputs['vol_flow']
         inlet_conc = u_inputs['mole_conc']
@@ -856,6 +833,9 @@ class CSTR(_BaseReactor):
         self.params_control = params_control
         self.set_names()
 
+        self.num_concentr = len(self.Liquid_1.mole_conc)
+        self.args_inputs = (self, self.num_concentr, 0)
+
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -875,7 +855,6 @@ class CSTR(_BaseReactor):
         # Initial states
         states_init = self.Liquid_1.mole_conc
 
-        self.num_concentr = len(self.Liquid_1.mole_conc)
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
             if 'temp_ht' in self.states_uo:
@@ -936,7 +915,7 @@ class CSTR(_BaseReactor):
                 tht_prof = None
 
         # Heat profile
-        inputs = self.get_inputs(self.time_runs[-1])
+        inputs = get_inputs(self.time_runs[-1], *self.args_inputs)
         self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
                                               temp_prof, tht_prof, inputs,
                                               heat_prof=True)
@@ -968,7 +947,7 @@ class CSTR(_BaseReactor):
         self.Outlet.tempProf = self.temp_runs[0]
 
         # Output vector
-        vol_flow = self.get_inputs(time)['vol_flow']
+        vol_flow = inputs['vol_flow']
         self.outputs = np.column_stack((conc_prof, temp_prof, vol_flow))
 
         if self.isothermal:
@@ -1019,6 +998,9 @@ class SemibatchReactor(CSTR):
         self.params_control = params_control
         self.set_names()
 
+        self.num_concentr = len(self.Liquid_1.mole_conc)
+        self.args_inputs = (self, self.num_concentr, 0)
+
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -1035,7 +1017,6 @@ class SemibatchReactor(CSTR):
         # Initial states
         states_init = self.Liquid_1.mole_conc
 
-        self.num_concentr = len(self.Liquid_1.mole_conc)
         states_init = np.append(states_init, self.Liquid_1.vol)
 
         if 'temp' in self.states_uo:
@@ -1096,7 +1077,8 @@ class SemibatchReactor(CSTR):
                 tht_prof = None
 
         # Heat profile
-        u_inputs = self.get_inputs(time)
+        u_inputs = get_inputs(time, *self.args_inputs)
+
         self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
                                               temp_prof,
                                               tht_prof, u_inputs,
@@ -1343,29 +1325,12 @@ class PlugFlowReactor(_BaseReactor):
 
         return conc, temp
 
-    def get_inputs(self, time):
-
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_conc': self.Inlet.mole_conc,
-                          'temp': self.Inlet.temp,
-                          'vol_flow': self.Inlet.vol_flow}
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
-
-            inputs = get_dict_states(self.names_upstream, self.num_concentr,
-                                     0, all_inputs)
-
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
-
-        return input_dict
-
     def unit_model(self, time, states, enrgy_bce=False):
 
         conc, temp = self.unravel_states(states)
 
-        inputs = self.get_inputs(time)
+        inputs = get_inputs(time, *self.args_inputs)
+
         conc_in = inputs['mole_conc']
         temp_in = inputs['temp']
         flow_in = inputs['vol_flow']  # m**3/s
@@ -1437,6 +1402,7 @@ class PlugFlowReactor(_BaseReactor):
         # c_init[c_init == 0] = eps
 
         self.num_concentr = self.num_species  # TODO: make consistent with Batch
+        self.args_inputs = (self, self.num_concentr, 0)
 
         if 'temp' in self.states_uo:
             temp_init = np.ones(len(c_init)) * self.Liquid_1.temp
@@ -1474,7 +1440,7 @@ class PlugFlowReactor(_BaseReactor):
                                ) * self.Liquid_1.temp
 
         # Inputs
-        inputs = self.get_inputs(time)
+        inputs = get_inputs(time, *self.args_inputs)
 
         conc_inlet = np.ones((len(states), self.num_species)
                              ) * inputs['mole_conc']

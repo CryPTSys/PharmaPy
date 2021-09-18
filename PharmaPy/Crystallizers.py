@@ -12,11 +12,10 @@ from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import LiquidStream, SolidStream
-from PharmaPy.Phases import LiquidPhase, SolidPhase
 from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule, upwind_fvm, high_resolution_fvm
-from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
+from PharmaPy.Connections import get_inputs
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -388,7 +387,7 @@ class _BaseCryst:
         ind_bces = num_material
 
         # Inputs
-        u_input = self.get_inputs(time)
+        u_input = get_inputs(time, *self.args_inputs)
 
         # Check for volume
         if 'vol' in self.states_uo:
@@ -440,7 +439,7 @@ class _BaseCryst:
                 # self.Inlet.Liquid_1.updatePhase(mass_frac=massfrac_in)
                 rhos_in = self.Inlet.getDensity(temp)
 
-                inlet_distr = u_input['num_distrib']
+                inlet_distr = u_input['distrib']
 
                 mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
                                                        mom_num=3)
@@ -681,6 +680,8 @@ class _BaseCryst:
 
         self.num_species = len(init_liquid)
 
+        self.args_inputs = (self, self.num_species, self.num_distr)
+
         if 'vol' in self.states_uo:  # Batch or semibatch
             vol_init = self.Slurry.getTotalVol()
             init_susp = np.append(init_liquid, vol_init)
@@ -713,7 +714,7 @@ class _BaseCryst:
         if self.vol_tank is None:
             if isinstance(self, SemibatchCryst):
                 time_vec = np.linspace(self.elapsed_time, final_time)
-                vol_flow = self.get_inputs(time_vec)['vol_flow']
+                vol_flow = get_inputs(time_vec, *self.args_inputs)['vol_flow']
 
                 self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
 
@@ -1280,7 +1281,7 @@ class BatchCryst(_BaseCryst):
             self.states_uo.insert(0, 'moments')
 
         elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'num_distrib')
+            self.names_states_in.insert(0, 'distrib')
             self.names_states_out.insert(0, 'total_distrib')
 
             self.states_uo.append('total_distrib')
@@ -1458,9 +1459,6 @@ class BatchCryst(_BaseCryst):
 
         return jacobian[:, self.mask_params]
 
-    def get_inputs(self, time):
-        return None
-
     def material_balances(self, time, distrib, w_conc, temp, vol_liq, params,
                           u_inputs, rhos, moms, phi_in=None):
 
@@ -1533,8 +1531,10 @@ class BatchCryst(_BaseCryst):
             dtemp_dt = (-source_term - ht_term) / capacitance / vol_liq
 
             if temp_ht is not None:
-                tht_in = self.temp_ht_in  # degC
-                flow_ht = self.flow_ht
+                ht_dict = self.Utility.get_inputs(time)
+                tht_in = ht_dict['temp_in']
+                flow_ht = ht_dict['vol_flow']
+
                 cp_ht = 4180  # J/kg/K
                 rho_ht = 1000
                 vol_ht = vol*0.14  # m**3
@@ -1780,33 +1780,11 @@ class MSMPR(_BaseCryst):
             self.states_uo.append('moments')
 
         elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'num_distrib')
+            self.names_states_in.insert(0, 'distrib')
 
-            self.states_uo.append('num_distrib')
+            self.states_uo.append('distrib')
 
         self.names_states_out = self.names_states_in
-
-    def get_inputs(self, time):
-        if hasattr(self.Inlet, 'y_inlet'):
-            all_inputs = self.Inlet.InterpolateInputs(time)
-            input_upstream = get_dict_states(self.names_upstream,
-                                             self.num_species, self.num_distr,
-                                             all_inputs)
-
-            input_dict = {}
-            for key in self.names_states_in:
-                input_dict[key] = input_upstream.get(self.bipartite[key])
-
-            if input_dict['num_distrib'] is None:
-                input_dict['num_distrib'] = np.zeros_like(
-                    self.Solid_1.x_distrib)
-        else:
-            input_dict = {'temp': self.Inlet.Liquid_1.temp,
-                          'mass_conc': self.Inlet.Liquid_1.mass_conc,
-                          'vol_flow': self.Inlet.vol_flow,
-                          'num_distrib': self.Inlet.Solid_1.distrib}
-
-        return input_dict
 
     def material_balances(self, time, distrib, w_conc, temp, vol, params,
                           u_inputs, rhos, moms, phi_in):
@@ -1814,7 +1792,7 @@ class MSMPR(_BaseCryst):
         rho_sol = rhos[0][1]
 
         input_flow = u_inputs['vol_flow']
-        input_distrib = u_inputs['num_distrib'] * self.scale
+        input_distrib = u_inputs['distrib'] * self.scale
         input_conc = u_inputs['mass_conc']
 
         if self.method == 'moments':
@@ -1924,7 +1902,8 @@ class MSMPR(_BaseCryst):
             self.distribVolPercProf = self.Solid_1.convert_distribution(
                 num_distr=distProf)
 
-        volflow = self.get_inputs(time_profile)['vol_flow']
+        inputs = get_inputs(time_profile, *self.args_inputs)
+        volflow = inputs['vol_flow']
 
         num_material = self.num_distr + self.num_species
 
@@ -1949,8 +1928,7 @@ class MSMPR(_BaseCryst):
             self.vol_mult = self.vol_slurry
 
             mass_sol = rho_solid * vol_sol
-            massflow_sol = mom_3 * self.Solid_1.kv * \
-                self.get_inputs(time_profile[-1])['vol_flow'] * rho_solid
+            massflow_sol = mom_3 * self.Solid_1.kv * volflow * rho_solid
 
         if self.isothermal:
             temp_prof = np.ones_like(time_profile) * self.Liquid_1.temp
@@ -2094,7 +2072,7 @@ class SemibatchCryst(MSMPR):
             self.states_uo += mom_names
 
         elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'num_distrib')
+            self.names_states_in.insert(0, 'distrib')
             self.names_states_out.insert(0, 'total_distrib')
 
             self.states_uo.append('total_distrib')
@@ -2113,7 +2091,7 @@ class SemibatchCryst(MSMPR):
         input_flow = u_inputs['vol_flow']
         input_flow = np.max([eps, input_flow])
 
-        input_distrib = u_inputs['num_distrib'] * self.scale
+        input_distrib = u_inputs['distrib'] * self.scale
         input_conc = u_inputs['mass_conc']
 
         # print('time = %.2f, vol_liq = %.2e, flowrate = %.2e' % (time, vol_liq, input_flow))

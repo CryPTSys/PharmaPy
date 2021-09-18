@@ -11,68 +11,83 @@ import numpy as np
 import copy
 
 
-def get_inputs(time, Inlet, names_upstream, names_states_in, bipartite,
-               num_species, defaults=None, num_distr=0):
+# def get_inputs(time, Inlet, names_upstream, names_states_in, bipartite,
+#                num_species, defaults=None, num_distr=0):
 
+#     if Inlet is None:
+#         input_dict = defaults
+
+#     elif hasattr(Inlet, 'y_inlet'):
+#         all_inputs = Inlet.InterpolateInputs(time)
+#         input_upstream = get_dict_states(names_upstream, num_species,
+#                                          num_distr, all_inputs)
+
+#         input_dict = {}
+#         for key in names_states_in:
+#             input_dict[key] = input_upstream.get(bipartite[key])
+
+#     elif len(Inlet.controls) > 0:
+#         input_dict = {}
+#         for key, val in Inlet.controls.items():
+#             args = Inlet.args_control[key]
+#             input_dict[key] = val(time, *args)
+
+#         for key in names_states_in:
+#             if key not in input_dict.keys():
+#                 input_dict[key] = getattr(Inlet, key)
+#     else:
+#         input_dict = {}
+#         for name in names_states_in:
+#             val = getattr(Inlet, name)
+#             input_dict[name] = val
+
+#     return input_dict
+
+def explore_phases(phases, attr):
+    fail = True
+    for phase in phases:
+        value = getattr(phase, attr)
+        fail = value is None
+        if not fail:
+            break
+
+    return value
+
+
+def get_inputs(time, uo, num_species, num_distr=0):
+
+    Inlet = getattr(uo, 'Inlet', None)
+
+    names_upstream = uo.names_upstream
+    names_states_in = uo.names_states_in
+    bipartite = uo.bipartite
     if Inlet is None:
-        input_dict = defaults
+        input_dict = {}
 
-    elif hasattr(Inlet, 'y_inlet'):
+    elif Inlet.y_upstream is None or len(Inlet.y_upstream) == 1:
+        # this internally calls the DynamicInput object if not None
+        input_dict = Inlet.evaluate_inputs(time)
+
+        for name in uo.names_states_in:
+            if name not in input_dict.keys():
+                val = getattr(Inlet, name, None)
+                if val is None:
+                    val = explore_phases(uo.Phases, name)
+
+                input_dict[name] = val
+
+    else:
         all_inputs = Inlet.InterpolateInputs(time)
         input_upstream = get_dict_states(names_upstream, num_species,
                                          num_distr, all_inputs)
 
         input_dict = {}
         for key in names_states_in:
-            input_dict[key] = input_upstream.get(bipartite[key])
+            val = input_upstream.get(bipartite[key])
+            if val is None:
+                val = explore_phases(uo.Phases, key)
 
-    elif len(Inlet.controls) > 0:
-        input_dict = {}
-        for key, val in Inlet.controls.items():
-            args = Inlet.args_control[key]
-            input_dict[key] = val(time, *args)
-
-        for key in names_states_in:
-            if key not in input_dict.keys():
-                input_dict[key] = getattr(Inlet, key)
-    else:
-        input_dict = {}
-        for name in names_states_in:
-            val = getattr(Inlet, name)
-            input_dict[name] = val
-
-    return input_dict
-
-
-def get_input(time, Inlet, names_upstream, names_states_in, bipartite,
-              num_species, defaults=None, num_distr=0):
-
-    if Inlet is None:
-        input_dict = defaults
-
-    elif hasattr(Inlet, 'y_inlet'):
-        all_inputs = Inlet.InterpolateInputs(time)
-        input_upstream = get_dict_states(names_upstream, num_species,
-                                         num_distr, all_inputs)
-
-        input_dict = {}
-        for key in names_states_in:
-            input_dict[key] = input_upstream.get(bipartite[key])
-
-    elif len(Inlet.controls) > 0:
-        input_dict = {}
-        for key, val in Inlet.controls.items():
-            args = Inlet.args_control[key]
-            input_dict[key] = val(time, *args)
-
-        for key in names_states_in:
-            if key not in input_dict.keys():
-                input_dict[key] = getattr(Inlet, key)
-    else:
-        input_dict = {}
-        for name in names_states_in:
-            val = getattr(Inlet, name)
-            input_dict[name] = val
+            input_dict[key] = val
 
     return input_dict
 

@@ -278,6 +278,9 @@ class SlurryStream(Slurry):
         # self.mole_flow = self.moles
         self.vol_flow = self.vol_slurry
 
+        self.DynamicInlet = None
+        self.controllable = ['vol_flow']
+
         # del self.mass
         # del self.moles
         # del self.vol
@@ -368,6 +371,17 @@ class SlurryStream(Slurry):
             y_interpol = interpol.evalSpline(time)
 
         return y_interpol
+
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.controllable:
+                inputs[attr] = getattr(self, attr)
+
+        else:
+            inputs = self.DynamicInlet.evaluate_inputs(time)
+
+        return inputs
 
 
 class Cake:
