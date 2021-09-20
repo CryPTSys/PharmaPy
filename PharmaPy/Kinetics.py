@@ -336,24 +336,8 @@ class RxnKinetics:
             participates in (size n_comp)
         """
 
-        # Identify reactants by the sign of stoichiometic coeff
-        conc = np.asarray(conc)
-        n_conc = len(conc)
-
-        # Compute elementary reaction rate
         conc = np.maximum(eps, conc)
-        if conc.ndim == 1:
-            f_term = np.zeros(self.num_rxns)
-
-            for ind in range(self.num_rxns):
-                f_term[ind] = np.prod(conc**(rxn_orders[ind]))
-                # terms = np.dot(conc, rxn_orders[ind])
-                # f_term = np.exp(terms)
-        else:  # vectorized
-            f_term = np.zeros((n_conc, self.num_rxns))
-
-            for ind in range(self.num_rxns):
-                f_term[:, ind] = np.prod(conc**(rxn_orders[ind]), axis=1)
+        f_term = np.exp(np.dot(np.log(conc), rxn_orders.T))
         return f_term
 
     def equilibrium_model(self, conc, temp, deltah_rxn):

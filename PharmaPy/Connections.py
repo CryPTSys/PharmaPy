@@ -26,6 +26,17 @@ def get_inputs(time, uo, num_species, num_distr=0):
         # this internally calls the DynamicInput object if not None
         input_dict = Inlet.evaluate_inputs(time)
 
+        for name in names_states_in:
+            if name not in input_dict.keys():
+                val = getattr(Inlet, name, None)
+                if val is None:  # search in subphases inside Inlet
+                # if hasattr(uo, 'states_in_phaseid'):
+                    obj_id = uo.states_in_phaseid[name]
+                    instance = getattr(Inlet, obj_id)
+                    val = getattr(instance, name)
+
+                input_dict[name] = val
+
     else:
         all_inputs = Inlet.InterpolateInputs(time)
         input_upstream = get_dict_states(names_upstream, num_species,
@@ -38,16 +49,6 @@ def get_inputs(time, uo, num_species, num_distr=0):
                 val = uo.input_defaults[key]
 
             input_dict[key] = val
-
-    for name in names_states_in:
-        if name not in input_dict.keys():
-            if hasattr(uo, 'states_in_phaseid'):  # Inlet is a MixedPhases obj
-                obj_id = uo.states_in_phaseid[name]
-                instance = getattr(Inlet, obj_id)
-            else:
-                instance = Inlet
-
-            input_dict[name] = getattr(instance, name)
 
     return input_dict
 
