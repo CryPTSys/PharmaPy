@@ -1784,6 +1784,7 @@ class MSMPR(_BaseCryst):
 
             self.states_uo.append('distrib')
 
+        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in
 
     def material_balances(self, time, distrib, w_conc, temp, vol, params,
@@ -2079,6 +2080,7 @@ class SemibatchCryst(MSMPR):
 
         self.names_states_out = self.names_states_out + ['vol', 'temp']
         self.names_states_in += ['vol_flow', 'temp']
+        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
 
     def material_balances(self, time, distrib, w_conc, temp, vol_liq, params,
                           u_inputs, rhos, moms, phi_in):

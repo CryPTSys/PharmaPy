@@ -14,7 +14,7 @@ class DynamicInput:
         # Attributes assigned from UO instance
         self.parent_instance = None
 
-    def add_control(self, variable_name, function, args_control=None):
+    def add_variable(self, variable_name, function, args_control=None):
         self.controls[variable_name] = function
         if args_control is None:
             args_control = ()
