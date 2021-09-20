@@ -35,7 +35,7 @@ def get_inputs(time, uo, num_species, num_distr=0):
         for key in names_states_in:
             val = input_upstream.get(bipartite[key])
             if val is None:
-                val = getattr(Inlet, key)
+                val = uo.input_defaults[key]
 
             input_dict[key] = val
 

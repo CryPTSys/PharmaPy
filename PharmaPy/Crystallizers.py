@@ -216,6 +216,10 @@ class _BaseCryst:
             # Names and target compounds
             self.name_species = self.Liquid_1.name_species
 
+            # Input defaults
+            self.input_defaults = {
+                'distrib': np.zeros_like(self.Solid_1.distrib)}
+
             name_bool = [name in self.target_comp for name in self.name_species]
             self.target_ind = np.where(name_bool)[0][0]
 
