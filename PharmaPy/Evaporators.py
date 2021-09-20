@@ -321,6 +321,7 @@ class Evaporator:
         # Geometry
         self.vol_tot = vol_drum
         self.diam_tank = (4/np.pi * vol_drum)**(1/3)
+        self.area_base = np.pi / 4 * self.diam_tank**2
         self.area_out = np.pi / 4 * diam_out**2
 
         self.pres = pres
@@ -493,7 +494,7 @@ class Evaporator:
         h_vap = self.VapEvap.getEnthalpy(temp, mole_frac=y_i, basis='mole')
 
         # Heat transfer
-        area_ht = 4 / self.diam_tank * vol_liq  # m**2
+        area_ht = 4 / self.diam_tank * vol_liq + self.area_base  # m**2
         temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
 
         heat_transfer = -self.u_ht * area_ht * (temp - temp_ht)
@@ -981,6 +982,7 @@ class ContinuousEvaporator:
 
         # Geometry
         self.diam_tank = (4/np.pi * vol_drum)**(1/3)
+        self.area_base = np.pi / 4 * self.diam_tank**2
         self.area_out = np.pi / 4 * diam_out**2
 
         # Control
@@ -1152,7 +1154,7 @@ class ContinuousEvaporator:
             heat_transfer = 0
         else:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
-            area_ht = np.pi * self.diam_tank * height_liq  # m**2
+            area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
             ht_controls = self.Utility.evaluate_inputs(time)
             temp_ht = ht_controls['temp_in']

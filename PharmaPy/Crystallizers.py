@@ -726,6 +726,7 @@ class _BaseCryst:
                 self.vol_tank = self.Slurry.vol_slurry
 
         self.diam_tank = (4/np.pi * self.vol_tank)**(1/3)
+        self.area_base = np.pi/4 * self.diam_tank**2
         self.vol_tank *= 1 / self.vol_offset
 
         if 'temp_ht' in self.states_uo:
@@ -1516,7 +1517,7 @@ class BatchCryst(_BaseCryst):
         vol = vol_liq / phi
 
         height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq  # m**2
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
 
         source_term = dh_cryst*cryst_rate
 
@@ -1856,7 +1857,7 @@ class MSMPR(_BaseCryst):
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
         height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq  # m**2
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
 
         # Energy terms (W)
         flow_term = input_flow * (h_in - h_sp)
@@ -2178,7 +2179,7 @@ class SemibatchCryst(MSMPR):
         source_term = dh_cryst * cryst_rate
 
         height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq  # m**2
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
 
         if self.adiabatic:
             ht_term = 0

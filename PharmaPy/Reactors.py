@@ -168,7 +168,7 @@ class _BaseReactor:
         if self.ht_mode == 'coil':  # Half pipe heat transfer
             pass
         else:
-            area_ht = 4 / self.diam * vol  # m**2
+            area_ht = 4 / self.diam * vol + self.area_base  # m**2
             heat_transf = self.u_ht * area_ht * (temp - temp_ht)
 
         return heat_transf
@@ -600,6 +600,7 @@ class BatchReactor(_BaseReactor):
 
         vol_tank = self.Liquid_1.vol / self.vol_offset
         self.diam = (4 / np.pi * vol_tank)**(1/3)
+        self.area_base = np.pi/4 * self.diam**2
 
         # Set solver
         solver = CVode(problem)
@@ -848,6 +849,7 @@ class CSTR(_BaseReactor):
 
         vol_tank = self.Liquid_1.vol / self.vol_offset
         self.diam = (4 / np.pi * vol_tank)**(1/3)
+        self.area_base = np.pi/4 * self.diam**2
 
         # # Define inlet streams
         # self.Inlet.Liquid_1.getProps()
@@ -971,6 +973,7 @@ class SemibatchReactor(CSTR):
 
         self.diam = (4/np.pi * vol_tank)**(1/3)  # m
         self.vol_ht = vol_tank * 0.15
+        self.area_base = np.pi/4 * self.diam**2
 
         self.material_from_upstream = False
 
