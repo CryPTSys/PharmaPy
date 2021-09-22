@@ -1652,7 +1652,7 @@ class BatchCryst(_BaseCryst):
 
         self.outputs = y_outputs
 
-        # self.get_heat_duty(time, states)
+        self.get_heat_duty(time, states)
 
     def get_heat_duty(self, time, states):
         q_heat = np.zeros((len(time), 2))
@@ -1672,8 +1672,10 @@ class BatchCryst(_BaseCryst):
             q_gen, capacitance = q_heat.T
 
             dT_dt = self.args_control['temp'][0]  # linear T profile
+            dT_dt = np.diff(self.temp_runs[-1]) / np.diff(self.time_runs[-1])
 
-            q_instant = dT_dt * capacitance + q_gen
+            q_instant = dT_dt * capacitance[1:] + q_gen[1:]
+            time = time[1:]
 
         else:
             q_instant = q_heat  # TODO: write for other scenarios
