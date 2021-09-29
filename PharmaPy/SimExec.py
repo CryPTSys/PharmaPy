@@ -242,14 +242,21 @@ class SimulationExec:
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
 
-        param_seed = target_unit.Kinetics.concat_params()
+        if hasattr(target_unit, 'Kinetics'):
+            param_seed = target_unit.Kinetics.concat_params()
+        else:
+            param_seed = target_unit.params
         # param_seed = param_seed[target_unit.mask_params]
 
         name_params = []
 
         for ind, logic in enumerate(target_unit.mask_params):
             if logic:
-                name_params.append(target_unit.Kinetics.name_params[ind])
+                if hasattr(target_unit, 'Kinetics'):
+                    name_params.append(target_unit.Kinetics.name_params[ind])
+                else:
+                    name_params.append(target_unit.name_params[ind])
+
 
         name_states = target_unit.states_uo
 

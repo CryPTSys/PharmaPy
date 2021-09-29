@@ -530,8 +530,11 @@ class BatchReactor(_BaseReactor):
             dtemp_dt = (source_term - ht_term) / capacitance  # K/s
 
             if 'temp_ht' in self.states_uo:
-                flow_ht = self.Utility.vol_flow
-                tht_in = self.Utility.temp_in
+                ht_dict = self.Utility.evaluate_inputs(time)
+
+                flow_ht = ht_dict['vol_flow']
+                tht_in = ht_dict['temp_in']
+
                 cp_ht = self.Utility.cp
                 rho_ht = self.Utility.rho
 
@@ -1302,8 +1305,9 @@ class PlugFlowReactor(_BaseReactor):
             heat_transfer = np.zeros_like(self.vol_discr)
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
-            heat_transfer = self.u_ht * a_prime * \
-                (temp - self.Utility.temp_in)  # W/m**3
+
+            temp_ht = self.Utility.evaluate_inputs(time)['temp_in']
+            heat_transfer = self.u_ht * a_prime * (temp - temp_ht)  # W/m**3
 
         if heat_profile:
             ht_total = trapezoidal_rule(self.vol_centers, heat_transfer)  # W

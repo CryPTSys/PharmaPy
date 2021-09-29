@@ -1671,7 +1671,7 @@ class BatchCryst(_BaseCryst):
         if 'temp' in self.controls.keys():
             q_gen, capacitance = q_heat.T
 
-            dT_dt = self.args_control['temp'][0]  # linear T profile
+            # dT_dt = self.args_control['temp'][0]  # linear T profile
             dT_dt = np.diff(self.temp_runs[-1]) / np.diff(self.time_runs[-1])
 
             q_instant = dT_dt * capacitance[1:] + q_gen[1:]

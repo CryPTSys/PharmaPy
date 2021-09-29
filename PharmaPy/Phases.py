@@ -745,8 +745,8 @@ class SolidPhase(ThermoPhysicalManager):
         elif distrib is not None:
             x_distrib = np.asarray(x_distrib)
 
-            self.distrib = self.getDistribution(x_distrib, distrib)
             self.x_distrib = x_distrib
+            self.distrib = self.getDistribution(x_distrib, distrib)
 
             self.num_distrib = len(distrib)
             self.num_mom = num_mom
@@ -757,10 +757,11 @@ class SolidPhase(ThermoPhysicalManager):
             solid_spec = True
 
         else:
-            print('Neither moment nor distribution data was '
-                  'provided for this SolidPhase object. Make sure to provide '
-                  'one of the two either when declaring this phase, or in a '
-                  'Slurry object to which this phase is aggregated')
+            pass
+            # print('Neither moment nor distribution data was '
+            #       'provided for this SolidPhase object. Make sure to provide '
+            #       'one of the two either when declaring this phase, or in a '
+            #       'Slurry object to which this phase is aggregated')
 
         # Mass and volume
         dens = self.getDensity()
@@ -808,6 +809,7 @@ class SolidPhase(ThermoPhysicalManager):
                              "not both")
         elif num_distr is not None:  # convert to vol perc
             mom_three = self.getMoments(distrib=num_distr, mom_num=3)
+            mom_three[mom_three==0] = eps
             distrib_out = num_distr * self.dx * x_distrib**3 * self.kv / \
                 mom_three / 1e18
         elif vol_distr is not None:
