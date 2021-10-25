@@ -546,6 +546,8 @@ class Filter:
         self.mask_params = [True, True]
         self.states_uo = ['mass_filtrate', 'mass_retained']
 
+        self.deltaP = None
+
     @property
     def Phases(self):
         return self._Phases
@@ -588,8 +590,12 @@ class Filter:
     def unit_model(self, time, states, sw):
         if self.oper_mode == 'Batch':
             mass_liquid = states
-            material_balance = self.material_balance(
-                time, mass_liquid, self.deltaP)
+            material_balance = self.material_balance(time, mass_liquid,
+                                                     self.deltaP)
+
+        # print(material_balance)
+        # print(time)
+        # print(mass_liquid)
 
         return material_balance
 
@@ -747,7 +753,7 @@ class Filter:
 
         self.reset()
 
-        deltaP = 4.137e4
+        deltaP = self.deltaP
         time, states = self.solve_unit(time_grid=time_vals, deltaP=deltaP,
                                        model_params=params, verbose=False)
 

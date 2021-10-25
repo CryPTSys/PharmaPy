@@ -340,79 +340,7 @@ class SimulationExec:
         return (raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids,
                 holdups_ids)
 
-    def GetRawMaterials(self):
-        # ---------- CAPEX
-        # Raw materials
-        (raw_flows, raw_holdups, time_flows,
-         flow_idx, holdup_idx) = self.get_raw_objects()
 
-        # Flows
-        fracs = []
-        masses_inlets = np.zeros(len(raw_flows))
-        for ind, obj in enumerate(raw_flows):
-            try:
-                masses_inlets[ind] = obj.mass_flow
-            except:
-                masses_inlets[ind] = obj.mass
-
-            fracs.append(obj.mass_frac)
-
-        masses_inlets *= time_flows
-
-        fracs = np.array(fracs)
-
-        inlet_comp_mass = (fracs.T * masses_inlets).T
-
-        # Holdups
-        fracs = []
-        masses_holdups = np.zeros(len(raw_holdups))
-        for ind, obj in enumerate(raw_holdups):
-            if isinstance(obj, list):
-                masa = [elem.mass for elem in obj]
-                masa = np.array(masa)
-
-                frac = [elem.mass_frac for elem in obj]
-                frac = (np.array(frac).T * masa).T
-                frac = frac.sum(axis=0)
-
-                mass = 1
-            else:
-                mass = obj.mass
-                frac = obj.mass_frac
-
-            masses_holdups[ind] = mass
-            fracs.append(frac)
-
-        fracs = np.array(fracs)
-
-        holdup_comp_mass = (fracs.T * masses_holdups).T
-
-        name_equip = self.uos_instances.keys()
-        if len(inlet_comp_mass) == 0:
-            inlet_comp_mass = np.zeros((len(name_equip),
-                                        len(self.NamesSpecies))
-                                       )
-
-            flow_idx = name_equip
-
-        if len(holdup_comp_mass) == 0:
-            holdup_comp_mass = np.zeros((len(name_equip),
-                                         len(self.NamesSpecies))
-                                        )
-
-            holdup_idx = name_equip
-
-        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
-                               columns=self.NamesSpecies)
-
-        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
-                                 columns=self.NamesSpecies)
-
-        raw_df = pd.concat((flow_df, holdup_df), axis=0,
-                           keys=('inlets', 'holdups'))
-        raw_total = raw_df.sum(axis=0)
-
-        return raw_df, raw_total
 
     def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
                  f_pres=None, f_mat=None, min_capacity=None):
@@ -470,6 +398,121 @@ class SimulationExec:
 
             return size_equipment, cost_equip
 
+    def GetLabor(self, wage=35, full_output=False, pick_equip=None):
+        has_solids = []
+        is_batch = []
+
+        for uo in self.uos_instances.values():
+            if uo.__class__.__name__ != 'Mixer':
+
+                if hasattr(uo, 'Phases'):
+                    if isinstance(uo.Phases, list):
+                        is_solid = [phase.__class__.__name__ == 'SolidPhase'
+                                    for phase in uo.Phases]
+                    else:
+                        is_solid = [
+                            uo.Phases.__class__.__name__ == 'SolidPhase']
+                else:
+                    is_solid = [False]  # Mixers
+
+                has_solids.append(any(is_solid))
+
+                oper = uo.oper_mode == 'Batch' or uo.oper_mode == 'Semibatch'
+                is_batch.append(oper)
+
+        has_solids = np.array(has_solids, dtype=bool)
+        is_batch = np.array(is_batch, dtype=bool)
+
+        num_shift = has_solids * (2 + is_batch) + ~has_solids * (1 + is_batch)
+        if pick_equip is not None:
+            num_shift = num_shift[pick_equip]
+
+        num_shift = sum(num_shift)
+
+        hr_week = 40
+        num_week = 48
+        labor_cost = 1.20 * num_shift * 5 * (hr_week * num_week) * wage  # USD/yr
+
+        if full_output:
+            return {'num_workers': num_shift, 'labor_cost': labor_cost}
+        else:
+            return labor_cost
+
+    def GetRawMaterials(self, include_holdups=True):
+        name_equip = self.uos_instances.keys()
+
+        # Raw materials
+        (raw_flows, raw_holdups, time_flows,
+         flow_idx, holdup_idx) = self.get_raw_objects()
+
+        # Flows
+        fracs = []
+        masses_inlets = np.zeros(len(raw_flows))
+        for ind, obj in enumerate(raw_flows):
+            try:
+                masses_inlets[ind] = obj.mass_flow
+            except:
+                masses_inlets[ind] = obj.mass
+
+            fracs.append(obj.mass_frac)
+
+        masses_inlets *= time_flows
+
+        fracs = np.array(fracs)
+
+        inlet_comp_mass = (fracs.T * masses_inlets).T
+
+        holdup_comp_mass = []
+        if include_holdups:
+            fracs = []
+            masses_holdups = np.zeros(len(raw_holdups))
+            for ind, obj in enumerate(raw_holdups):
+                if isinstance(obj, list):
+                    masa = [elem.mass for elem in obj]
+                    masa = np.array(masa)
+
+                    frac = [elem.mass_frac for elem in obj]
+                    frac = (np.array(frac).T * masa).T
+                    frac = frac.sum(axis=0)
+
+                    mass = 1
+                else:
+                    mass = obj.mass
+                    frac = obj.mass_frac
+
+                masses_holdups[ind] = mass
+                fracs.append(frac)
+
+            fracs = np.array(fracs)
+
+            holdup_comp_mass = (fracs.T * masses_holdups).T
+
+        if len(holdup_comp_mass) == 0:
+            holdup_comp_mass = np.zeros((len(name_equip),
+                                         len(self.NamesSpecies))
+                                        )
+
+            holdup_idx = name_equip
+
+        if len(inlet_comp_mass) == 0:
+            inlet_comp_mass = np.zeros((len(name_equip),
+                                        len(self.NamesSpecies))
+                                       )
+
+            flow_idx = name_equip
+
+        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
+                               columns=self.NamesSpecies)
+
+        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
+                                 columns=self.NamesSpecies)
+
+        raw_df = pd.concat((flow_df, holdup_df), axis=0,
+                           keys=('inlets', 'holdups'))
+        raw_total = raw_df.sum(axis=0)
+
+        return raw_df, raw_total
+
     def GetDuties(self, full_output=False):
         """
         Get heat duties for all equipment that calculates an energy balance.
@@ -515,7 +558,8 @@ class SimulationExec:
         else:
             return heat_duties
 
-    def GetOPEX(self, cost_raw, full_output=False):
+    def GetOPEX(self, cost_raw, full_output=False, include_holdups=True,
+                picks_labor=None):
         cost_raw = np.asarray(cost_raw)
 
         # ---------- Heat duties
@@ -536,14 +580,18 @@ class SimulationExec:
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
 
         # ---------- Raw materials
-        _, raw_materials = self.GetRawMaterials()
+        _, raw_materials = self.GetRawMaterials(include_holdups)
         raw_cost = cost_raw * raw_materials
 
+        # ---------- Labor
+        labor = self.GetLabor(full_output=True, pick_equip=picks_labor)
+
         opex = {'raw_materials': raw_cost.sum(),
-                'heat_duties': sum(duty_cost.sum())}
+                'heat_duties': sum(duty_cost.sum()),
+                'labor': labor['labor_cost']}
 
         if full_output:
-            return opex, duty_cost, raw_cost
+            return opex, duty_cost, raw_cost, labor
         else:
             return opex
 

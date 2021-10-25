@@ -623,6 +623,7 @@ class BatchReactor(_BaseReactor):
         self.states = states[-1]
 
         self.retrieve_results(time, states)
+        self.flatten_states()
 
         if eval_sens:
             sensit = []

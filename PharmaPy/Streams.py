@@ -44,7 +44,7 @@ class LiquidStream(LiquidPhase):
         self.mole_flow = self.moles
 
         self._DynamicInlet = None
-        self.controllable = ('vol_flow', 'temp')
+        self.controllable = ('mass_flow', 'mole_flow', 'vol_flow', 'temp')
 
         # del self.mass
         # del self.vol
