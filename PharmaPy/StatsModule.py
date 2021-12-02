@@ -309,13 +309,13 @@ class StatisticsClass:
         # Remember that multiple datasets are allowed
         y_boot = []
         for ind in range(self.inst.num_datasets):
-            std_dev = std_dev[ind].reshape(-1, self.inst.num_xs[ind])
+            std_reshaped = std_dev[ind].reshape(-1, self.inst.num_xs[ind])
             residual = self.weighted_resid[ind].reshape(-1,
                                                         self.inst.num_xs[ind])
 
             y_states = []
             for ct, row in enumerate(self.y_nominal[ind]):
-                resid = residual[ct] * std_dev[ct]
+                resid = residual[ct] * std_reshaped[ct]
                 boots = np.random.choice(resid,
                                          size=(num_samples,
                                                self.inst.num_xs[ind]),

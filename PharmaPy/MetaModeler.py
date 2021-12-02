@@ -8,8 +8,8 @@ Created on Thu Mar 11 11:18:25 2021
 
 
 class MetaModelingClass:
-    def __init__(self, file_name, class_name, model_type='ODE', oper_mode='batch',
-                 name_states=None):
+    def __init__(self, file_name, class_name, model_type='ODE',
+                 oper_mode='batch', name_states=None, has_stages=False):
 
         self.file_name = file_name
         self.class_name = class_name
@@ -17,13 +17,14 @@ class MetaModelingClass:
         self.model_type = model_type
         self.oper_mode = oper_mode
         self.name_states = name_states
+        self.has_stages = has_stages
 
         self.method_arguments = {
             'Phases': ('phases', ),
             'unit_model': ('time', 'states'),
             'material_balances': ['time'],
             'energy_balances': ['time'],
-            'solve_model': ('runtime=None', ),
+            'solve_model': ('runtime', ),
             'retrieve_results': ('time', 'states')}
 
         if name_states is not None:
@@ -67,6 +68,23 @@ class MetaModelingClass:
                 '\n'
                 ]
 
+            if self.has_stages:
+                reshape_lines = [
+                    ' '*8 + 'states_reord = []\n',
+                    ' '*8 + 'for array, num in zip(states_split, self.len_states_orig):\n',
+                    ' '*12 + 'if num == 1:\n',
+                    ' '*16 + 'states_reord.append(array)\n',
+                    ' '*12 + 'else:\n',
+                    ' '*16 + 'states_reord.append(array.reshape(-1, num))\n\n',
+                    ' '*8 + 'states_split = states_reord\n']
+
+                count = 1
+                for line in reshape_lines:
+                    assign_snippet.insert(count, line)
+                    count += 1
+
+            open_object.write(' ' * 8 + "'''This method will work by itself and does not need any user manipulation.\n")
+            open_object.write(' ' * 8 + "Fill material and energy balances with your model.'''\n\n")
             open_object.write(' ' * 8 + '# Create a dictionary of states\n')
             open_object.writelines(assign_snippet)
 
@@ -86,6 +104,9 @@ class MetaModelingClass:
 
         elif method_name == 'solve_model' and self.name_states is not None:
             open_object.write(' '*8 + '# Change these nums accordingly\n')
+            open_object.write(' '*8 + '# If the model has stages, these nums '
+                              'are the number of variables per plate, thus '
+                              'a scalar variable would have num = 1\n')
 
             for state in self.name_states:
                 open_object.write(' ' * 8 + 'num_{} = 1\n'.format(
@@ -95,8 +116,14 @@ class MetaModelingClass:
             len_states = ', '.join(len_states)
 
             open_object.write(
-                '\n' + ' ' * 8 + 'len_states = np.array([{}])\n\n'.format(
+                '\n' + ' ' * 8 + 'len_states = np.array([{}])\n'.format(
                     len_states))
+
+            if self.has_stages:
+                open_object.write(
+                    '\n' + ' ' * 8 + 'self.len_states_orig = len_states.copy()\n')
+                open_object.write(
+                    '\n' + ' ' * 8 + 'len_states *= self.num_stages\n\n')
 
             open_object.write(
                 ' '*8 + 'self.acum_len = len_states.cumsum()[:-1]\n')
@@ -116,9 +143,9 @@ class MetaModelingClass:
             open_object.writelines(init_states)
 
             assimulo_snippet = [
-                ' '*8 + 'problem = Explicit_Problem(self.unit_model)\n',
-                ' '*8 + 'solver = CVode(problem)\n',
-                '\n' + ' '*8 + 'time, states = solver.solve()\n\n']
+                ' '*8 + 'problem = %s(self.unit_model)\n' % self.problem,
+                ' '*8 + 'solver = %s(problem)\n' % self.solver,
+                '\n' + ' '*8 + 'time, states = solver.solve(runtime)\n\n']
 
             open_object.writelines(assimulo_snippet)
 
@@ -126,6 +153,11 @@ class MetaModelingClass:
 
         elif method_name == 'retrieve_results' and self.name_states is not None:
             if self.model_type == 'ODE':
+                assign_outputs = [
+                    ' '*8 + 'outputs_split = np.split(states, np.acum_len, axis=1)\n',
+                    ' '*8 + 'model_outputs = dict(zip(self.name_states, outputs_split))\n',
+                    ]
+            elif self.model_type == 'DAE':
                 assign_outputs = [
                     ' '*8 + 'outputs_split = np.split(states, np.acum_len, axis=1)\n',
                     ' '*8 + 'model_outputs = dict(zip(self.name_states, outputs_split))\n',
@@ -143,9 +175,11 @@ class MetaModelingClass:
         op = open(self.file_name, 'w')
 
         if self.model_type == 'DAE':
-            solver = 'from assimulo.solvers import IDA\n\n'
+            self.solver = 'IDA'
+            self.problem = 'Implicit_Problem'
         else:
-            solver = 'from assimulo.solvers import CVode\n\n'
+            self.solver = 'CVode'
+            self.problem = 'Explicit_Problem'
 
         if self.model_type == 'PDE':
             pharmapy_modules = [
@@ -155,9 +189,9 @@ class MetaModelingClass:
 
         packages = [
             'import numpy as np\n',
-            'from assimulo.problem import Explicit_Problem\n',
+            'from assimulo.problem import %s\n' % self.problem,
             'from PharmaPy.Phases import classify_phases\n',
-            solver,
+            'from assimulo.solvers import %s\n\n' % self.solver,
             '\n']
 
         packages += pharmapy_modules
@@ -168,6 +202,11 @@ class MetaModelingClass:
             args_init = ['num_nodes']
         elif self.model_type == 'ODE':
             args_init = []
+        elif self.model_type == 'DAE':
+            args_init = []
+
+        if self.has_stages:
+            args_init.append('num_stages')
 
         displayed_args_init = [' '*8 + 'self.{} = {}\n'.format(arg, arg)
                                for arg in args_init]

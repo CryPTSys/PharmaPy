@@ -14,6 +14,8 @@ from collections import OrderedDict
 import time
 from PharmaPy.Connections import Graph
 
+from PharmaPy.Commons import trapezoidal_rule
+
 
 class SimulationExec:
     def __init__(self, pure_path):
@@ -292,56 +294,6 @@ class SimulationExec:
 
         return results
 
-    def get_raw_objects(self):
-        raw_inlets = []
-        inlets_ids = []
-
-        raw_holdups = []
-        holdups_ids = []
-
-        time_inlets = []
-
-        for ind, uo in enumerate(self.execution_order):
-            # Inlets (flows)
-            if hasattr(uo, 'Inlet'):
-                if uo.Inlet is not None:
-                    if uo.Inlet.y_upstream is None:
-                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
-                        raw_inlets.append(inlet)
-
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        else:
-                            time_inlets.append(uo.timeProf[-1])
-
-                        inlets_ids.append(uo.id_uo)
-
-            elif hasattr(uo, 'Inlets'):
-                for inlet in uo.Inlets:
-                    if inlet.y_upstream is None:
-                        raw_inlets.append(inlet)
-
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        else:
-                            time_inlets.append(uo.timeProf[-1])
-
-                        inlets_ids.append(uo.id_uo)
-
-            # Initial holdups
-            if hasattr(uo, '__original_phase__'):
-                if uo.oper_mode == 'Continuous':
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-                elif not uo.material_from_upstream:
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-
-        return (raw_inlets, raw_holdups, np.array(time_inlets), inlets_ids,
-                holdups_ids)
-
-
-
     def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
                  f_pres=None, f_mat=None, min_capacity=None):
 
@@ -438,7 +390,59 @@ class SimulationExec:
         else:
             return labor_cost
 
-    def GetRawMaterials(self, include_holdups=True):
+    def get_raw_objects(self):
+        raw_inlets = []
+        inlets_ids = []
+
+        raw_holdups = []
+        holdups_ids = []
+
+        time_inlets = []
+
+        for ind, uo in enumerate(self.execution_order):
+            # Inlets (flows)
+            if hasattr(uo, 'Inlet'):
+                if uo.Inlet is not None:
+                    if uo.Inlet.y_upstream is None:
+                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+                        raw_inlets.append(inlet)
+
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        elif uo.Inlet.DynamicInlet is not None:
+                            time_inlets.append(uo.timeProf)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
+                        inlets_ids.append(uo.id_uo)
+
+            elif hasattr(uo, 'Inlets'):
+                for inlet in uo.Inlets:
+                    if inlet.y_upstream is None:
+                        raw_inlets.append(inlet)
+
+                        if uo.oper_mode == 'Batch':
+                            time_inlets.append(1)
+                        elif inlet.DynamicInlet is not None:
+                            time_inlets.append(uo.timeProf)
+                        else:
+                            time_inlets.append(uo.timeProf[-1])
+
+                        inlets_ids.append(uo.id_uo)
+
+            # Initial holdups
+            if hasattr(uo, '__original_phase__'):
+                if uo.oper_mode == 'Continuous':
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+                elif not uo.material_from_upstream:
+                    raw_holdups.append(uo.__original_phase__)
+                    holdups_ids.append(uo.id_uo)
+
+        return (raw_inlets, raw_holdups, time_inlets, inlets_ids,
+                holdups_ids)
+
+    def GetRawMaterials(self, include_holdups=True, steady_state=False):
         name_equip = self.uos_instances.keys()
 
         # Raw materials
@@ -449,14 +453,37 @@ class SimulationExec:
         fracs = []
         masses_inlets = np.zeros(len(raw_flows))
         for ind, obj in enumerate(raw_flows):
-            try:
-                masses_inlets[ind] = obj.mass_flow
-            except:
-                masses_inlets[ind] = obj.mass
+            if hasattr(obj, 'DynamicInlet') and obj.DynamicInlet is not None:
+                qty_str = ('mass_flow', 'mole_flow')
+                mass_profile = obj.evaluate_inputs(time_flows[ind])
+                for string in qty_str:
+                    massprof = mass_profile[string]
+                    isarray = isinstance(massprof, np.ndarray)
+
+                    if isarray:
+                        qty_unit = string
+                        mass_profile = massprof
+                        break
+                if qty_unit == 'mole_flow':
+                    mass_profile *= obj.mw_av / 1000  # kg/s
+
+                if steady_state:
+                    masses_inlets[ind] = mass_profile[-1] * time_flows[ind][-1]
+                else:
+                    masses_inlets[ind] = trapezoidal_rule(time_flows[ind],
+                                                          mass_profile)
+
+                # pass
+
+            else:
+                try:
+                    masses_inlets[ind] = obj.mass_flow * time_flows[ind]
+                except:
+                    masses_inlets[ind] = obj.mass
+
+                # masses_inlets[ind] *= time_flows
 
             fracs.append(obj.mass_frac)
-
-        masses_inlets *= time_flows
 
         fracs = np.array(fracs)
 
@@ -559,7 +586,7 @@ class SimulationExec:
             return heat_duties
 
     def GetOPEX(self, cost_raw, full_output=False, include_holdups=True,
-                picks_labor=None):
+                picks_labor=None, steady_raw=False):
         cost_raw = np.asarray(cost_raw)
 
         # ---------- Heat duties
@@ -580,7 +607,7 @@ class SimulationExec:
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
 
         # ---------- Raw materials
-        _, raw_materials = self.GetRawMaterials(include_holdups)
+        _, raw_materials = self.GetRawMaterials(include_holdups, steady_raw)
         raw_cost = cost_raw * raw_materials
 
         # ---------- Labor
@@ -590,8 +617,10 @@ class SimulationExec:
                 'heat_duties': sum(duty_cost.sum()),
                 'labor': labor['labor_cost']}
 
+        consumption = {'raw_materials': raw_materials, 'duties': duties}
+
         if full_output:
-            return opex, duty_cost, raw_cost, labor
+            return opex, duty_cost, raw_cost, labor, consumption
         else:
             return opex
 

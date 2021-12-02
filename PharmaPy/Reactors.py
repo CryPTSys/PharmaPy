@@ -1107,6 +1107,8 @@ class SemibatchReactor(CSTR):
         self.Liquid_1.temp = self.temp
         self.Liquid_1.vol = self.vol
         self.Liquid_1.updatePhase(vol=self.vol, mole_conc=self.concentr)
+        self.Outlet = self.Liquid_1
+        self.outputs = states
 
 
 class PlugFlowReactor(_BaseReactor):

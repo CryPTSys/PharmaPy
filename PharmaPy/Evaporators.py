@@ -5,15 +5,15 @@ Created on Tue May 26 16:37:29 2020
 @author: dcasasor
 """
 
-# import numpy as np
-from autograd import numpy as np
+import numpy as np
+# from autograd import numpy as np
 from autograd import jacobian as jacauto
 from PharmaPy.Commons import mid_fn, trapezoidal_rule
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
 
-from scipy.optimize import fsolve, root
+from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
@@ -115,18 +115,14 @@ class IsothermalFlash:
 
         return balance
 
-    def solve_unit(self, v_seed=0.5, xtol_solver=np.sqrt(eps), opt_solver={}):
+    def solve_unit(self):
 
         # Set seeds
-        l_seed = 1 - 0.5
+        l_seed = 0.5
+        v_seed = 0.5
 
-        x_seed = self.Inlet.mole_frac
-
-        y_seed = x_seed * self.Inlet.getKeqVLE()
-        y_seed = y_seed / y_seed.sum()
-
-        # x_seed = np.ones(self.num_comp) * 1 / self.num_comp
-        # y_seed = x_seed
+        x_seed = np.ones(self.num_comp) * 1 / self.num_comp
+        y_seed = x_seed
 
         seed = np.concatenate(([l_seed], x_seed, y_seed, [v_seed]))
 
@@ -134,7 +130,7 @@ class IsothermalFlash:
         # jac_eqns = jacauto(self.unit_model)
 
         # Solve nonlinear system
-        solution = root(self.unit_model, seed, **opt_solver).x
+        solution = fsolve(self.unit_model, seed, full_output=False)
         # fprime=jac_eqns,
 
         # Retrieve solution
@@ -172,9 +168,11 @@ class IsothermalFlash:
 
 
 class AdiabaticFlash:
-    def __init__(self, pres_drum, div_factor=1e3, gamma_method='ideal'):
+    def __init__(self, pres_drum, div_factor=1e3, gamma_method='ideal',
+                 mult_midfun=1):
         self.pres = pres_drum
         self.div_factor = div_factor
+        self.mult_midfun = mult_midfun
 
         self._Inlet = None
 
@@ -214,7 +212,7 @@ class AdiabaticFlash:
 
         diff_frac = np.sum(x_i - y_i)
         args_mid = np.array([vap, diff_frac, vap - 1])
-        vap_flow = mid_fn(args_mid)
+        vap_flow = mid_fn(args_mid) * self.mult_midfun
 
         material = np.concatenate((
             np.array([global_bce]),
@@ -256,30 +254,25 @@ class AdiabaticFlash:
 
         return balances
 
-    def solve_unit(self, v_seed=0.5, opt_solver={}):
+    def solve_unit(self, v_seed=0.5):
         x_seed = np.ones(self.num_comp) * 1 / self.num_comp
-        x_seed = self.Inlet.mole_frac
-
-        y_seed = x_seed * self.Inlet.getKeqVLE()
-        y_seed = y_seed / y_seed.sum()
+        y_seed = x_seed
 
         l_seed = 1 - v_seed
+        # x_seed = self.Inlet.mole_frac
+        # y_seed = x_seed * self.Inlet.getKeqVLE(pres=self.pres)
 
         temp_seed = self.Inlet.temp
 
         seed = np.concatenate(([l_seed], x_seed, y_seed, [v_seed, temp_seed]))
 
-        method = opt_solver.pop('method', 'hybr')
-        result = root(self.unit_model, seed, method=method, options=opt_solver)
-
-        solution = result.x
+        # jac_eqns = jacauto(self.unit_model)
+        solution = fsolve(self.unit_model, seed)
+        # fprime=jac_eqns)
 
         # Retrieve solution
-        frac_liq = solution[0]
-        frac_vap = solution[-2]
-
-        liq_flash = frac_liq * self.in_flow
-        vap_flash = frac_vap * self.in_flow
+        liq_flash = solution[0] * self.in_flow
+        vap_flash = solution[-2] * self.in_flow
         temp = solution[-1]
 
         fracs = solution[1:2*self.num_comp + 1]
@@ -312,7 +305,8 @@ class Evaporator:
                  pres=101325, diam_out=2.54e-2,
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
-                 activity_model='ideal', state_events=None):
+                 activity_model='ideal', state_events=None,
+                 stop_at_maxvol=True):
 
         self._Inlet = None
         self._Phases = None
@@ -328,6 +322,8 @@ class Evaporator:
             self.state_events = [state_events]
         elif state_events is None:
             self.state_events = []
+
+        self.stop_at_maxvol = stop_at_maxvol
 
         # Geometry
         self.vol_tot = vol_drum
@@ -410,7 +406,7 @@ class Evaporator:
 
         inlet_inert = LiquidStream(paths, **inlet_dict)
         self._Inlet = inlet_inert
-        self._Inlet.DynamicInlet = inlet.DynamicInlet
+        self._Inlet.DynamicInlet = self.Inlet_orig.DynamicInlet
 
         self.oper_mode = 'Semibatch'
         # self.paths = paths
@@ -630,62 +626,45 @@ class Evaporator:
         if vol_vap < 0:
             raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
                              r"volume ({:.2f} m3)".format(self.vol_tot, vol_liq))
-
         mol_vap = self.pres * vol_vap / gas_ct / temp_init
         mol_tot = mol_liq + mol_vap
 
-        run_flash = True
+        # Moles of i
+        moli_seed = mol_liq * x_seed + mol_vap * y_seed
 
-        if run_flash:
-            v_frac = mol_vap / mol_tot
+        # ---------- Create new phase with inert gas and run adiabatic flash
+        z_flash = moli_seed / moli_seed.sum()
+        pres_in = self.LiqPhase.pres
 
-            # Moles of i
-            moli_seed = mol_liq * x_seed + mol_vap * y_seed
+        self.LiqEvap = LiquidPhase(self.paths, temp_init, pres=pres_in,
+                                   moles=mol_tot, mole_frac=z_flash)
 
-            # ----- Create new phase with inert gas and run adiabatic flash
-            z_flash = moli_seed / moli_seed.sum()
+        FlashInit = AdiabaticFlash(pres_drum=pres_init,
+                                   gamma_method=self.activity_model,
+                                   mult_midfun=1e4)
+        FlashInit.Inlet = self.LiqEvap
+        FlashInit.solve_unit()
 
-            self.LiqEvap = LiquidPhase(self.paths, temp_init, pres=pres_init,
-                                       moles=mol_tot, mole_frac=z_flash)
+        # Update phases and initial states with flash results
+        self.LiqEvap = FlashInit.LiquidOut
+        self.VapEvap = FlashInit.VaporOut
 
-            FlashInit = AdiabaticFlash(pres_drum=pres_init,
-                                       gamma_method=self.activity_model)
+        x_init = FlashInit.LiquidOut.mole_frac
+        y_init = FlashInit.VaporOut.mole_frac
 
-            # FlashInit = IsothermalFlash(temp_drum=temp_init,
-            #                             pres_drum=pres_init,
-            #                             gamma_method=self.activity_model)
-
-            FlashInit.Inlet = self.LiqEvap
-
-            optim_opts = {'method': 'hybr', 'xtol': 1e-8}
-            FlashInit.solve_unit(v_seed=v_frac, opt_solver=optim_opts)
-
-            # Update phases and initial states with flash results
-            self.LiqEvap = FlashInit.LiquidOut
-            self.VapEvap = FlashInit.VaporOut
-
-            x_init = FlashInit.LiquidOut.mole_frac
-            y_init = FlashInit.VaporOut.mole_frac
-
-            if abs(y_init[-1]) > 1:
-                x_init[-1] = 1 - x_init[:-1].sum()
-                y_init[-1] = 1 - y_init[:-1].sum()
-                # print(y_init[:-1].sum())
-
-            temp_init = FlashInit.LiquidOut.temp
-
-            mol_liq = FlashInit.LiquidOut.moles
-            dens_liq = self.LiqEvap.getDensity(basis='mole')
-            vol_liq = mol_liq / dens_liq / 1000
-            vol_vap = self.vol_tot - vol_liq
-
-            mol_vap = pres_init * vol_vap / gas_ct / temp_init
-
-            mol_vent = self.VapEvap.moles - mol_vap
-
-        else:
-            x_init = x_seed
+        if not np.isclose(y_init.sum(), 1, atol=1e-4):  # TODO: does this make sense?
             y_init = y_seed
+
+        temp_init = FlashInit.LiquidOut.temp
+
+        mol_liq = FlashInit.LiquidOut.moles
+        dens_liq = self.LiqEvap.getDensity(basis='mole')
+        vol_liq = mol_liq / dens_liq / 1000
+        vol_vap = self.vol_tot - vol_liq
+
+        mol_vap = pres_init * vol_vap / gas_ct / temp_init
+
+        mol_vent = self.VapEvap.moles - mol_vap
 
         mol_i = mol_liq * x_init + mol_vap * y_init
         mol_tot = mol_liq + mol_vap
@@ -758,9 +737,11 @@ class Evaporator:
                 events.append(event_flag)
 
             # Maximum liquid constraint
-            rho_liq = self.LiqEvap.getDensity(mole_frac=dict_states['x_liq'],
-                                              temp=dict_states['temp'][0],
-                                              basis='mole')
+            rho_liq = self.LiqEvap.getDensity(
+                mole_frac=dict_states['x_liq'],
+                temp=dict_states['temp'][0],
+                basis='mole')
+
             vol_liq = dict_states['mol_liq'][0] / rho_liq / 1000  # m**3
 
             events.append(self.vol_tot - vol_liq)
@@ -791,7 +772,11 @@ class Evaporator:
 
         if state_event[-1]:
             print('Liquid volume reached a maximum')
-            raise TerminateSimulation
+
+            if self.stop_at_maxvol:
+                raise TerminateSimulation
+            else:
+                print('Warning: liquid volume reached maximum tank volume')
 
     def solve_unit(self, runtime, verbose=True, sundials_opts=None):
 
@@ -1085,7 +1070,7 @@ class ContinuousEvaporator:
 
         self._Inlet = inlet
 
-        # self.oper_mode = 'Semibatch'
+        self.oper_mode = 'Semibatch'
 
     @property
     def Utility(self):

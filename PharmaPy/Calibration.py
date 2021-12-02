@@ -13,19 +13,20 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 class PCR_calibration:
-    def __init__(self, data, num_comp=None, standarize=False, snv=False):
+    def __init__(self, data, num_comp=None, standarize=False, snv=False,
+                 y_name=None, y_suffixes=None):
         self.data = data
         self.standarize = standarize
         self.snv = snv
 
         data_mean = data.mean(axis=0)
         data_std = data.std(axis=0)
-        
+
         if snv:
             self.data_centered = self.__center_data(data)
         else:
             self.data_centered = self.__center_data(data, data_mean, data_std)
-            
+
         self.data_mean = data_mean
         self.data_std = data_std
 
@@ -36,6 +37,12 @@ class PCR_calibration:
             self.num_comp = len(self.svd_dict['sv'])
         else:
             self.num_comp = num_comp
+
+        if y_name is None:
+            y_name = 'y_'
+
+        self.y_name = y_name
+        self.y_suffixes = y_suffixes
 
     def __center_data(self, data=None, mean=None, std=None):
         if mean is None and std is None:
@@ -120,6 +127,13 @@ class PCR_calibration:
         return fig, axes
 
     def get_regression(self, y_data, num_comp=None, update_instance=True):
+
+        if self.y_suffixes is None:
+            self.y_suffixes = ['%i' % num for num in range(1, len(y_data))]
+
+        self.y_labels = [r'$' + self.y_name + ('{%s}' % suffix) + '$'
+                         for suffix in self.y_suffixes]
+
         if num_comp is None:
             num_comp = self.num_comp
 
@@ -153,7 +167,7 @@ class PCR_calibration:
 
     def predict(self, inputs, regression_coeff=None):
         inputs = np.atleast_2d(inputs)
-        
+
         if self.snv:
             inputs_centered = self.__center_data(inputs)
         else:
@@ -189,8 +203,10 @@ class PCR_calibration:
 
         return mse, residuals
 
-    def plot_parity(self):
-        fig, axis = plt.subplots(figsize=(4, 3.5))
+    def plot_parity(self, figsize=None):
+        if figsize is None:
+            figsize = (4, 3.5)
+        fig, axis = plt.subplots(figsize=figsize)
 
         markers = ['o', 's', 'd', '*']
 
@@ -209,16 +225,16 @@ class PCR_calibration:
         for ind in range(self.y_data.shape[1]):
             axis.plot(self.y_data[:, ind], y_pred[:, ind],
                       marker=markers[ind], mfc='None', ls='',
-                      label='$y_%i$' % (ind + 1))
+                      label=self.y_labels[ind])
 
         axis.legend()
 
-        axis.set_xlabel('$y_{data}$')
-        axis.set_ylabel('$y_{model}$')
+        axis.set_xlabel('$%s{data}$' % self.y_name)
+        axis.set_ylabel('$%s{model}$' % self.y_name)
 
         axis.xaxis.set_minor_locator(AutoMinorLocator(2))
         axis.yaxis.set_minor_locator(AutoMinorLocator(2))
-        
+
         axis.text(1, 1.04, 'num_components = %i' % self.num_comp,
                   transform=axis.transAxes, ha='right')
 

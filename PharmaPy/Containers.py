@@ -100,7 +100,24 @@ class Mixer:
 
             timegrid_ref = None
             for ind, inlet in enumerate(self.Inlets):
-                if inlet.y_upstream is None:
+                if inlet.DynamicInlet is not None:
+                    for inl in inlets:
+                        timegrid_ref = getattr(inl, 'time_upstream', None)
+                        if timegrid_ref is not None:
+                            break
+
+                    self.timeProf = timegrid_ref
+                    di = inlet.DynamicInlet.evaluate_inputs(timegrid_ref)
+                    dim = len(di['mass_flow'])
+
+                    temp_prof = np.ones(dim) * inlet.temp
+                    massfrac_prof = np.tile(inlet.mass_frac, (dim, 1))
+
+                    massfracs.append(massfrac_prof)
+                    masses.append(di['mass_flow'])  # TODO: unit conversion if inlet as units of moles/vol
+                    temps.append(temp_prof)  # TODO: what if T is controlled?
+
+                elif inlet.y_upstream is None:
                     massfracs.append(inlet.mass_frac)
                     temps.append(inlet.temp)
                     masses.append(inlet.mass_flow)

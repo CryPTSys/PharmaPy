@@ -839,6 +839,7 @@ class ParameterEstimation:
 
         heatmap = axis_heat.imshow(corr_masked, cmap='RdBu', aspect='equal',
                                    vmin=-1, vmax=1)
+
         divider = make_axes_locatable(axis_heat)
         cax = divider.append_axes("right", size="5%", pad=0.05)
 
