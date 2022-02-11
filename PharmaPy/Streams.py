@@ -6,21 +6,22 @@ Created on Wed May 27 10:12:13 2020
 """
 
 from PharmaPy.Phases import LiquidPhase, SolidPhase, VaporPhase
-from PharmaPy.Interpolation import NewtonInterpolation, SplineInterpolation
+from PharmaPy.Interpolation import NewtonInterpolation
+from scipy.interpolate import CubicSpline
 import numpy as np
 
 
-def Interpolation(t_data, y_data, time):
+def Interpolation(t_data, y_data, time, newton=True, num_points=3):
     idx_time = np.argmin(abs(time - t_data))
 
     idx_lower = max(0, idx_time - 1)
-    idx_upper = idx_lower + 3
+    idx_upper = min(len(t_data) - 1, idx_lower + num_points)
 
     t_interp = t_data[idx_lower:idx_upper]
     y_interp = y_data[idx_lower:idx_upper]
 
+    # Newton interpolation (quadratic, three points)
     interp = NewtonInterpolation(t_interp, y_interp)
-
     y_target = interp.evalPolynomial(time)
 
     return y_target
@@ -31,7 +32,7 @@ class LiquidStream(LiquidPhase):
                  mass_flow=0, vol_flow=0, mole_flow=0,
                  controls=None, args_control=None,
                  mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None,
-                 ind_solv=None):
+                 ind_solv=None, num_interpolation_points=3):
 
         super().__init__(path_thermo, temp, pres,
                          mass=mass_flow, vol=vol_flow, moles=mole_flow,
@@ -70,6 +71,8 @@ class LiquidStream(LiquidPhase):
         self.controls = controls
         self.args_control = args_control
 
+        self.num_interpolation_points = num_interpolation_points
+
     @property
     def DynamicInlet(self):
         return self._DynamicInlet
@@ -84,10 +87,11 @@ class LiquidStream(LiquidPhase):
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
             y_interpol = Interpolation(self.time_upstream, self.y_inlet,
-                                       time)
+                                       time,
+                                       num_points=self.num_interpolation_points)
         else:
-            interpol = SplineInterpolation(self.time_upstream, self.y_inlet)
-            y_interpol = interpol.evalSpline(time)
+            interpol = CubicSpline(self.time_upstream, self.y_inlet)
+            y_interpol = interpol(time)
 
         return y_interpol
 

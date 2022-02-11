@@ -29,11 +29,21 @@ gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
+def check_stoichiometry(stoich, mws):
+    mass_bce = np.dot(stoich, mws)
+
+    if not np.allclose(mass_bce, 0):
+        print("Warning! Material balance closure not attained with "
+              "provided stoichiometric matrix. "
+              "Check 'stoich_matrix' argument passed to the "
+              "aggregated Kinetic instance.")
+
+
 class _BaseReactor:
     def __init__(self, partic_species, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
-                 h_conv, ht_mode):
+                 h_conv, ht_mode, return_sens):
         """
 
         Parameters
@@ -41,6 +51,12 @@ class _BaseReactor:
         oper_mode : str
             Operation mode of the reactor. It takes one of the following
             values: 'Batch', 'Semibatch', 'CSTR'
+
+        return_sens : bool (optional, default = True)
+            whether or not the paramest_wrapper method should return
+            the sensitivity system along with the concentratio profiles.
+            Use False if you want the parameter estimation platform to
+            estimate the sensitivity system using finite differences
 
         """
         self.distributed_uo = False
@@ -73,6 +89,7 @@ class _BaseReactor:
         self.mask_params = mask_params
 
         self.sensit = None
+        self.return_sens = return_sens
 
         # Outputs
         self.reset_states = reset_states
@@ -284,7 +301,7 @@ class _BaseReactor:
         self.Liquid_1.timeProf = self.timeProf
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
-                         modify_controls=None, reorder=True):
+                         modify_controls=None, reorder=True, run_args={}):
 
         self.reset()
 
@@ -297,18 +314,29 @@ class _BaseReactor:
         self.Kinetics.set_params(params)
         self.elapsed_time = 0
 
-        t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                               verbose=False,
-                                               eval_sens=True)
+        if self.return_sens:
+            t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                                   verbose=False,
+                                                   eval_sens=True, **run_args)
 
-        if reorder:
-            sens = reorder_sens(sens)
+            if reorder:
+                sens = reorder_sens(sens)
+            else:
+                sens = np.stack(sens)
+
+            c_prof = states[:, :self.Kinetics.num_species]
+
+            return c_prof, sens
+
         else:
-            sens = np.stack(sens)
+            t_prof, states = self.solve_unit(time_grid=t_vals,
+                                             verbose=False,
+                                             eval_sens=False, **run_args)
 
-        c_prof = states[:, :self.Kinetics.num_species]
+            c_prof = states[:, :self.Kinetics.num_species]
 
-        return c_prof, sens
+            return c_prof
+
 
     def plot_profiles(self, fig_size=None, title=None, time_div=1, q_div=1,
                       pick_idx=None, black_white=False):
@@ -436,12 +464,12 @@ class BatchReactor(_BaseReactor):
     def __init__(self, partic_species, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket', return_sens=True):
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         h_conv, ht_mode)
+                         h_conv, ht_mode, return_sens)
 
         self.oper_mode = 'Batch'
         self.is_continuous = False
@@ -552,9 +580,13 @@ class BatchReactor(_BaseReactor):
         return dtemp_dt
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
-                   params_control=None, verbose=True):
+                   params_control=None, verbose=True, timesim_limit=0):
 
         self.set_names()
+
+        # check_stoichiometry(self.Kinetics.stoich_matrix,
+        #                     self.Liquid_1.mw[self.mask_species])
+
         self.params_control = params_control
 
         if runtime is not None:
@@ -607,6 +639,10 @@ class BatchReactor(_BaseReactor):
 
         # Set solver
         solver = CVode(problem)
+
+        if timesim_limit:
+            solver.report_continuously = True
+            solver.time_limit = timesim_limit
 
         if eval_sens:
             solver.sensmethod = 'SIMULTANEOUS'
@@ -702,12 +738,12 @@ class CSTR(_BaseReactor):
     def __init__(self, partic_species, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket', return_sens=True):
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         h_conv, ht_mode)
+                         h_conv, ht_mode, return_sens)
 
         self._Inlet = None
         self.oper_mode = 'Continuous'
@@ -965,12 +1001,12 @@ class SemibatchReactor(CSTR):
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='jacket'):
+                 h_conv=1000, ht_mode='jacket', return_sens=True):
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref,
                          isothermal, reset_states, controls,
-                         h_conv, ht_mode)
+                         h_conv, ht_mode, return_sens)
 
         self.oper_mode = 'Semibatch'
         self.is_continuous = False
@@ -1117,12 +1153,12 @@ class PlugFlowReactor(_BaseReactor):
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, adiabatic=False,
                  reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='bath'):
+                 h_conv=1000, ht_mode='bath', return_sens=True):
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         h_conv, ht_mode)
+                         h_conv, ht_mode, return_sens)
 
         self.is_continuous = True
         self.oper_mode = 'Continuous'

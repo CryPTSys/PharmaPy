@@ -80,14 +80,14 @@ class RxnKinetics:
             model. It must be a dictionary with the following structure:
                 {'k_vals': (phi_1, phi_2, ...), 'E_vals': (Ea_1, Ea_2, ...)}
             The keys must be as shown
-        params_f : array-like
+        params_f : array-like (optional)
             parameters for the concentration-dependent term in the kinetic
             model. If no custom model is provided through the 'kinetic_model'
             argument, then params_f are interpreted as the reaction orders of
-            an built-in elementary reaction kinetic model.
+            a built-in elementary reaction kinetic model.
             The params_f argument is optional only if no custom model is provided.
             If not given, the reaction orders are set to the stoichiometric
-            coefficients.
+            coefficients for the involved reactants
 
 
         """
@@ -189,7 +189,7 @@ class RxnKinetics:
                     orders = abs(is_reactant * self.stoich_matrix)
                     self.fit_paramsf = False
                 else:
-                    orders = params['params_f']
+                    orders = np.asarray(params['params_f'])
 
                 if orders.ndim == 1:
                     orders = orders[np.newaxis, ...]
@@ -220,8 +220,8 @@ class RxnKinetics:
         num_kpar = len(self.phi_1)
 
         if self.reformulate_kin:
-            name_k = ['\\phi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
-            name_e = ['\\phi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_k = ['\\varphi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_e = ['\\varphi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
         else:
             name_k = ['k_%i' % ind for ind in range(1, num_kpar + 1)]
             name_e = ['E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
@@ -380,7 +380,7 @@ class RxnKinetics:
 
         f_term = self.elem_f_model(conc, self.params_f)
 
-        conc_correc = np.maximum(np.ones_like(conc) * 1e-20, conc)
+        conc_correc = np.maximum(np.ones_like(conc) * eps, conc)
 
         num_orders = self.order_map.sum()
         drate_dorder = np.zeros((self.num_rxns, num_orders))

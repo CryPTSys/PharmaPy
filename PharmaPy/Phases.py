@@ -135,8 +135,10 @@ class LiquidPhase(ThermoPhysicalManager):
             if less_than_one:
                 if verbose:
                     print()
-                    print('The sum of mass fractions sum is less than 0.99')
-                    print(mass_frac)
+                    print('PharmaPy Warning: '
+                          'The sum of mass fractions is less than 0.99 '
+                          '(sum(mass_frac) = %.4f) for %s object'
+                          % (sum_fracs, self.__class__.__name__))
                     print()
 
             self.__calcComposition()
@@ -151,7 +153,10 @@ class LiquidPhase(ThermoPhysicalManager):
             if verbose:
                 if sum_fracs < 0.99:
                     print()
-                    print('The sum of mass fractions sum is less than 0.99')
+                    print('PharmaPy Warning: '
+                          'The sum of mole fractions is less than 0.99 '
+                          '(sum(mole_frac) = %.4f) for %s object'
+                          % (sum_fracs, self.__class__.__name__))
                     print(mole_frac)
                     print()
 

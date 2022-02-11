@@ -168,11 +168,13 @@ class IsothermalFlash:
 
 
 class AdiabaticFlash:
-    def __init__(self, pres_drum, div_factor=1e3, gamma_method='ideal',
-                 mult_midfun=1):
+    def __init__(self, pres_drum, div_energybce=1e3, gamma_method='ideal',
+                 mult_midfun=1, seed_basedon_input=False):
         self.pres = pres_drum
-        self.div_factor = div_factor
+
+        self.div_energybce = div_energybce
         self.mult_midfun = mult_midfun
+        self.seed_basedon_input = seed_basedon_input
 
         self._Inlet = None
 
@@ -232,7 +234,7 @@ class AdiabaticFlash:
         h_feed = self.Inlet.getEnthalpy(temp_ref=temp, basis='mole')
 
         energy_bce = liq * h_liq + vap * h_vap - h_feed
-        energy_bce = np.atleast_1d(energy_bce / self.div_factor)
+        energy_bce = np.atleast_1d(energy_bce / self.div_energybce)
 
         return energy_bce
 
@@ -255,12 +257,16 @@ class AdiabaticFlash:
         return balances
 
     def solve_unit(self, v_seed=0.5):
-        x_seed = np.ones(self.num_comp) * 1 / self.num_comp
-        y_seed = x_seed
+
+        if self.seed_basedon_input:
+            x_seed = self.Inlet.mole_frac
+            y_seed = x_seed * self.Inlet.getKeqVLE(pres=self.pres)
+            y_seed = y_seed / y_seed.sum()
+        else:
+            x_seed = np.ones(self.num_comp) * 1 / self.num_comp
+            y_seed = x_seed
 
         l_seed = 1 - v_seed
-        # x_seed = self.Inlet.mole_frac
-        # y_seed = x_seed * self.Inlet.getKeqVLE(pres=self.pres)
 
         temp_seed = self.Inlet.temp
 
@@ -306,7 +312,7 @@ class Evaporator:
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
                  activity_model='ideal', state_events=None,
-                 stop_at_maxvol=True):
+                 stop_at_maxvol=True, flash_kwds=None):
 
         self._Inlet = None
         self._Phases = None
@@ -324,6 +330,11 @@ class Evaporator:
             self.state_events = []
 
         self.stop_at_maxvol = stop_at_maxvol
+
+        if flash_kwds is None:
+            self.flash_kwds = {}
+        else:
+            self.flash_kwds = flash_kwds
 
         # Geometry
         self.vol_tot = vol_drum
@@ -361,6 +372,7 @@ class Evaporator:
         self.vol_offset = 1
 
         self.elapsed_time = 0
+        self.allow_flow = True
 
     @property
     def Phases(self):
@@ -406,7 +418,9 @@ class Evaporator:
 
         inlet_inert = LiquidStream(paths, **inlet_dict)
         self._Inlet = inlet_inert
-        self._Inlet.DynamicInlet = self.Inlet_orig.DynamicInlet
+
+        if self.Inlet_orig.DynamicInlet is not None:
+            self._Inlet.DynamicInlet = self.Inlet_orig.DynamicInlet
 
         self.oper_mode = 'Semibatch'
         # self.paths = paths
@@ -554,6 +568,8 @@ class Evaporator:
         else:
             u_inputs = get_inputs(time, *self.args_inputs)
 
+        u_inputs['mole_flow'] *= self.allow_flow
+
         if states_dot is None:
             # Material balance
             material_bces = self.material_balances(time, moles_i,
@@ -641,7 +657,8 @@ class Evaporator:
 
         FlashInit = AdiabaticFlash(pres_drum=pres_init,
                                    gamma_method=self.activity_model,
-                                   mult_midfun=1e4)
+                                   **self.flash_kwds)
+
         FlashInit.Inlet = self.LiqEvap
         FlashInit.solve_unit()
 
@@ -771,14 +788,16 @@ class Evaporator:
                     raise TerminateSimulation
 
         if state_event[-1]:
-            print('Liquid volume reached a maximum')
+            print('Liquid volume reached maximum tank volume at t = %.2f'
+                  % solver.t)
 
             if self.stop_at_maxvol:
                 raise TerminateSimulation
             else:
-                print('Warning: liquid volume reached maximum tank volume')
+                self.allow_flow = False
 
-    def solve_unit(self, runtime, verbose=True, sundials_opts=None):
+    def solve_unit(self, runtime, verbose=True, sundials_opts=None,
+                   timesim_limit=0):
 
         self.args_inputs = (self, self.num_species)
 
@@ -816,6 +835,10 @@ class Evaporator:
         solver.make_consistent('IDA_YA_YDP_INIT')
         solver.suppress_alg = True
 
+        if timesim_limit:
+            solver.report_continuously = True
+            solver.time_limit = timesim_limit
+
         if not verbose:
             solver.verbosity = 50
 
@@ -827,6 +850,8 @@ class Evaporator:
 
         # Solve
         time, states, sdot = solver.simulate(runtime)
+
+        self.allow_flow = True  # Restore value for further analysis
 
         self.retrieve_results(time, states)
         self.flatten_states()
@@ -986,7 +1011,7 @@ class ContinuousEvaporator:
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
                  h_conv=1000, temp_ht=298.15,
-                 activity_model='ideal'):
+                 activity_model='ideal', num_interp_points=3, mult_flash=1):
 
         self._Inlet = None
         self._Phases = None
@@ -1039,6 +1064,8 @@ class ContinuousEvaporator:
         self.molVap_runs = []
 
         self.activity_model = activity_model
+        self.num_interp_points = num_interp_points
+        self.mult_flash = mult_flash
 
         self.nomenclature()
 
@@ -1069,6 +1096,7 @@ class ContinuousEvaporator:
     def Inlet(self, inlet):  # Create an inlet with additional species (N2)
 
         self._Inlet = inlet
+        self._Inlet.num_interpolation_points = self.num_interp_points
 
         self.oper_mode = 'Semibatch'
 
@@ -1329,7 +1357,7 @@ class ContinuousEvaporator:
         return states_init, sdot_init
 
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
-                   sundials_opts=None):
+                   sundials_opts=None, timesim_limit=0):
         self.args_inputs = (self, self.num_species)
 
         states_initial, sdev_initial = self.init_unit()
@@ -1360,6 +1388,10 @@ class ContinuousEvaporator:
             solver = IDA(problem)
             solver.make_consistent('IDA_YA_YDP_INIT')
             solver.suppress_alg = True
+
+            if timesim_limit:
+                solver.report_continuously = True
+                solver.time_limit = timesim_limit
 
             if not verbose:
                 solver.verbosity = 50

@@ -15,13 +15,35 @@ from itertools import combinations
 import time
 
 
+class ParallelProblem:
+    def __init__(self, instance):
+        self.instance = instance
+
+    def run_fit(self, sample):
+        self.instance.y_fit = sample
+
+        # Optimize
+        params, _, _ = self.instance.optimize_fn(
+            method=self.instance.opt_method,
+            verbose=False, store_iter=False,
+            optim_options=self.instance.optim_options)
+
+        return params
+
+
+
 class StatisticsClass:
 
     def __init__(self, estimation_instance, alpha=0.95):
 
         # Values from the instance
         inst = estimation_instance
-        self.jac = inst.info_opt['jac']
+        jac = inst.info_opt['jac']
+
+        self.a_matrix = jac.dot(jac.T)
+        self.a_inv = np.linalg.inv(self.a_matrix)
+        self.jac = jac
+
         self.params = inst.params_convg.copy()
         self.params_unactive = inst.param_seed[inst.map_fixed]
 
@@ -58,9 +80,11 @@ class StatisticsClass:
         self.sigma_t = None
         self.boot_params = None
 
-    def get_intervals(self, verbose=True):
+    def get_intervals(self, covar_params=None, verbose=True, set_self=True):
 
-        covar_params = self.inst.covar_params
+        if covar_params is None:
+            covar_params = self.inst.covar_params
+
         sigma_params = np.sqrt(np.diag(covar_params))
 
         t_stat = stats.t.ppf((1 + self.alpha)/2, self.dof)
@@ -96,13 +120,14 @@ class StatisticsClass:
 
             print('{:<55}'.format('-'*57))
 
-        self.confid_intervals = confidence_int
-        self.covar_params = covar_params
-        self.intervals_array = intervals_array
+        if set_self:
+            self.confid_intervals = confidence_int
+            self.covar_params = covar_params
+            self.intervals_array = intervals_array
 
         return confidence_int
 
-    def confidence_regions(self, alphas=None):
+    def confidence_regions(self, param_means, alphas=None):
         """
         Generate pairwise confidence ellipses. For three or more parameters,
         the 2D projections are calculated as described in 'Nonlinear
@@ -131,7 +156,7 @@ class StatisticsClass:
         for comb, name in zip(self.combs, self.name_pairs):
             comb = list(comb)
 
-            param_pair = self.params[comb]
+            param_pair = param_means[comb].values
             diff = list(indexes.difference(comb))
 
             if len(diff) == 0:
@@ -197,7 +222,7 @@ class StatisticsClass:
             height = side_len[1] * 2
 
             rectangle = Rectangle(param_pair - side_len, width, height,
-                                  fill=False, zorder=5)
+                                  fill=False, zorder=5, alpha=0.4)
 
             # Store
             ellipses.append(ellipse)
@@ -208,23 +233,39 @@ class StatisticsClass:
 
         return ellipses, rectangles, axes_len, width_height
 
-    def plot_pairwise(self, alphas=None, bounding_box=False, fig_size=(5, 5)):
+    def plot_pairwise(self, boots=None, alphas=None, bounding_box=False,
+                      interval_bounds=True, fig_size=(5, 5)):
 
-        if self.boot_params is None:
+        boot_params = boots
+
+        if boot_params is None:
+            boot_params = self.boot_params
+            confid_interv = self.intervals_array
+
+        else:
+            covar_boots = np.cov(boot_params.T)
+            confid_interv = self.get_intervals(covar_boots, verbose=False,
+                                               set_self=False)
+
+            confid_interv = np.vstack(list(confid_interv.values()))
+
+        if boot_params is None:
             raise RuntimeError(
                 "No data to plot. Run 'bootstrap_params' method first ")
 
-        params = pd.DataFrame(self.boot_params)
+        params = pd.DataFrame(boot_params)
+        param_means = params.mean(axis=0)
 
         axes = pd.plotting.scatter_matrix(params, figsize=fig_size,
-                                          hist_kwds={'bins': 50}, zorder=10)
+                                          hist_kwds={'bins': 50}, zorder=10,
+                                          density_kwds={'s': 10})
 
         for ind in range(self.num_par):
             axes[ind, 0].set_ylabel(self.inst.name_params_plot[ind])
             axes[self.num_par - 1, ind].set_xlabel(
                 self.inst.name_params_plot[ind])
 
-        regions = self.confidence_regions(alphas=alphas)
+        regions = self.confidence_regions(param_means, alphas=alphas)
         for ind, vals in enumerate(regions.values()):
             ovals = vals['ellipses']
             bounding = vals['rectangles']
@@ -234,18 +275,19 @@ class StatisticsClass:
 
                 axes[idx].add_patch(region)
 
-                # Show confidence intervals
-                intervals = self.intervals_array[idx[::-1], :]
-                for row in intervals.T:
-                    axes[idx].axvline(row[0], ls='--', zorder=0)
-                    axes[idx].axhline(row[1], ls='--', zorder=0)
+                if interval_bounds:
+                    # Show confidence intervals
+                    intervals = confid_interv[idx[::-1], :]
+                    for row in intervals.T:
+                        axes[idx].axvline(row[0], ls='--', zorder=0)
+                        axes[idx].axhline(row[1], ls='--', zorder=0)
 
                 # axes[idx].autoscale()
 
                 if bounding_box:
                     axes[idx].add_patch(box)
 
-            param_pair = self.params[list(idx)[::-1]]
+            param_pair = param_means[list(idx)[::-1]].values
             axes[idx].scatter(*param_pair, marker='+', color='k')
 
             width_height = vals['rectangle_dims']
@@ -302,32 +344,41 @@ class StatisticsClass:
 
         return samples, conc_bootstrap, fig, axis
 
-    def get_bootsamples(self, num_samples):
+    def get_bootsamples(self, num_samples, fix_initial=False):
         # Create bootstrap samples
         std_dev = self.inst.stdev_data
 
         # Remember that multiple datasets are allowed
         y_boot = []
-        for ind in range(self.inst.num_datasets):
+        for ind in range(self.inst.num_datasets):  # datasets
             std_reshaped = std_dev[ind].reshape(-1, self.inst.num_xs[ind])
             residual = self.weighted_resid[ind].reshape(-1,
                                                         self.inst.num_xs[ind])
 
             y_states = []
-            for ct, row in enumerate(self.y_nominal[ind]):
+            for ct, row in enumerate(self.y_nominal[ind]):  # states
                 resid = residual[ct] * std_reshaped[ct]
+
+                resid = resid[fix_initial:]
+
                 boots = np.random.choice(resid,
-                                         size=(num_samples,
-                                               self.inst.num_xs[ind]),
+                                         size=(num_samples, len(resid)),
                                          replace=True)
 
-                y_states.append(self.y_nominal[ind][ct] + boots)
+                y_generated = self.y_nominal[ind][ct][fix_initial:] - boots
+
+                if fix_initial:
+                    y_generated = np.insert(y_generated, 0,
+                                            self.y_nominal[ind][ct][0],
+                                            axis=1)
+
+                y_states.append(y_generated)
 
             y_boot.append(np.hstack(y_states))
 
         return y_boot
 
-    def bootstrap_params(self, num_samples=100):
+    def bootstrap_params(self, num_samples=100, parallel=None):
         y_samples = self.get_bootsamples(num_samples)
 
         # Run parameter estimation
@@ -337,18 +388,50 @@ class StatisticsClass:
         # self.inst.param_seed = params_complete  # start from nominal params
 
         tic = time.time()
-        for ind in range(num_samples):
-            # Update bootstraped data for all the experimental runs
-            self.inst.y_fit = [y[ind] for y in y_samples]
+        if parallel is None:
+            for ind in range(num_samples):
+                # Update bootstraped data for all the experimental runs
+                self.inst.y_fit = [y[ind] for y in y_samples]
 
-            # Optimize
-            params, hess_inv, info = self.inst.optimize_fn(
-                method=self.inst.opt_method,
-                verbose=False, store_iter=False,
-                optim_options=self.inst.optim_options)
+                # Optimize
+                try:
+                    params, hess_inv, info = self.inst.optimize_fn(
+                        method=self.inst.opt_method,
+                        verbose=False, store_iter=False,
+                        optim_options=self.inst.optim_options)
+                except:
+                    print('Optimization failed.')
+                    params = [np.nan] * self.inst.num_params
 
-            # Store
-            boot_params[ind] = params
+                # Store
+                boot_params[ind] = params
+        else:
+            from pathos import multiprocessing as mp
+
+            def run_fit(sample):
+                self.inst.y_fit = sample
+
+                # Optimize
+                params, _, _ = self.inst.optimize_fn(
+                    method=self.inst.opt_method,
+                    verbose=False, store_iter=False,
+                    optim_options=self.inst.optim_options)
+
+                return params
+
+            num_cores = parallel['num_cpus']
+
+            reorganized_samples = []
+            for ind in range(num_samples):
+                reorg = [y[ind] for y in y_samples]
+                reorganized_samples.append(reorg)
+
+            pool = mp.ProcessingPool(num_cores)
+            problem = ParallelProblem(self.inst)
+
+            __spec__ = None
+            boots_parallel = pool.map(problem.run_fit, reorganized_samples)
+            pool.close()
 
         toc = time.time()
 

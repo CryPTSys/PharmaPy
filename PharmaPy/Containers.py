@@ -485,9 +485,10 @@ class Mixer:
 
 class DynamicCollector:
     def __init__(self, Inlet=None, timeshift_factor=1.5, temp_refer=298.15,
-                 tau=None, name_species=None):
+                 tau=None, name_species=None, num_interp_points=3):
 
         self.Inlet = Inlet
+        self.num_interp_points = num_interp_points
         # if self.inlet is not None:
         #     classify_phases(self.inlet)
 
@@ -610,6 +611,7 @@ class DynamicCollector:
             phases = (liquid, solid)
 
             self.kwargs_cryst.pop('target_ind')
+            self.kwargs_cryst['num_interp_points'] = self.num_interp_points
             SemiCryst = SemibatchCryst(method='1D-FVM', adiabatic=True,
                                        **self.kwargs_cryst)
             SemiCryst.Phases = phases

@@ -631,7 +631,7 @@ class _BaseCryst:
     def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
-                   sundials_opts=None):
+                   sundials_opts=None, timesim_limit=0):
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -749,6 +749,10 @@ class _BaseCryst:
         solver = CVode(problem)
         solver.iter = 'Newton'
         solver.discr = 'BDF'
+
+        if timesim_limit:
+            solver.report_continuously = True
+            solver.time_limit = timesim_limit
 
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
@@ -1124,7 +1128,31 @@ class _BaseCryst:
 
         return fig, ax
 
-    def plot_csd_2d(self, fig_size=(5, 4)):
+    def plot_csd_2d(self, fig_size=(5, 4), times=None, pallette='BuGn',
+                    logy=False):
+
+        distrib = self.distribProf
+        if times is not None:
+            time_idx = [np.argmin(abs(self.timeProf - time)) for time in times]
+            distrib = distrib[time_idx]
+
+        fig, axis = plt.subplots(figsize=fig_size)
+
+        pal = getattr(plt.cm, pallette)
+        colors = pal(np.linspace(0.2, 1, len(distrib)))
+
+        for ind, color in enumerate(colors):
+            axis.semilogx(self.x_grid, distrib[ind], color=color)
+
+            if logy:
+                axis.set_yscale('symlog')
+
+        axis.set_xlabel('Crystal size ($\mathregular{\mu m}$)')
+        axis.set_ylabel('$f$')
+
+        return fig, axis
+
+    def plot_csd_heatmap(self, fig_size=(5, 4)):
         self.flatten_states()
 
         if self.method != '1D-FVM':
@@ -1692,7 +1720,7 @@ class MSMPR(_BaseCryst):
                  cfun_solub=None, adiabatic=False, rad_zero=0,
                  reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None):
+                 jac_type=None, num_interp_points=3):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          isothermal, controls, params_control,
@@ -1717,6 +1745,7 @@ class MSMPR(_BaseCryst):
         self.nomenclature()
 
         self.vol_offset = 0.75
+        self.num_interp_points = num_interp_points
 
     @property
     def Inlet(self):
@@ -1725,6 +1754,7 @@ class MSMPR(_BaseCryst):
     @Inlet.setter
     def Inlet(self, inlet_object):
         self._Inlet = inlet_object
+        self._Inlet.num_interpolation_points = self.num_interp_points
 
     def solve_steady_state(self, frac_seed, temp):
 
@@ -2055,7 +2085,7 @@ class SemibatchCryst(MSMPR):
                  method='1D-FVM', scale=1, isothermal=False, controls=None,
                  params_control=None, cfun_solub=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
-                 basis='mass_conc', jac_type=None):
+                 basis='mass_conc', jac_type=None, num_interp_points=3):
 
         super().__init__(target_comp, mask_params,
                          method, scale, vol_tank,
@@ -2063,7 +2093,7 @@ class SemibatchCryst(MSMPR):
                          cfun_solub, adiabatic, rad_zero,
                          reset_states,
                          h_conv, vol_ht, basis,
-                         jac_type)
+                         jac_type, num_interp_points)
 
     def nomenclature(self):
         self.states_uo.append('vol')

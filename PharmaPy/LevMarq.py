@@ -61,6 +61,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     """
 
     nu = 2
+    beta = nu
     x = asarray(x)
 
     num_iter = 0
@@ -97,6 +98,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             break
 
         x_new = x + lm_step
+        # print(x_new)
         fun_new = func(x_new, *args)
         jac_new = deriv(x_new, *args)
 
@@ -123,13 +125,15 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                 reason = 'Small gradient'
                 break
 
-            mu = mu * max(1/3, 1 - (2*rho - 1)**3)  # Nielsen update
+            mu = mu * max(1/3, 1 - (beta - 1) * (2*rho - 1)**3)  # After Nielsen
             nu = 2
         else:
             mu = mu * nu  # decrease step size
             nu = 2 * nu
 
-        # print(mu)
+        beta = nu
+
+        # print(nu)
 
         if verbose:
             print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}".format(
@@ -149,10 +153,15 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         print()
 
     if full_output:
-        output_dict = {'fun': fun, 'jac': jac,
-                       'norm_step': norm(lm_step),
-                       'stop_criterion': reason, 'num_iter': num_iter,
-                       'num_fun_eval': num_feval}
+        if max_fun_eval == 0:
+            output_dict = {'fun': fun, 'jac': jac, 'num_iter': num_iter,
+                           'num_fun_eval': num_feval}
+        else:
+            output_dict = {'fun': fun, 'jac': jac,
+                           'norm_step': norm(lm_step),
+                           'stop_criterion': reason, 'num_iter': num_iter,
+                           'num_fun_eval': num_feval}
+
         return x, covar_x, output_dict
     else:
         return x

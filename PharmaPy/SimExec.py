@@ -18,7 +18,7 @@ from PharmaPy.Commons import trapezoidal_rule
 
 
 class SimulationExec:
-    def __init__(self, pure_path):
+    def __init__(self, pure_path, time_limits={}):
 
         # Interfaces
         self.ThermoInstance = ThermoPhysicalManager(pure_path)
@@ -30,12 +30,13 @@ class SimulationExec:
         self.StreamTable = None
         self.UnitOperations = OrderedDict()
         self.UOCounter = 0
-        self.RxnSets = {}
 
         self.uos_instances = {}
         self.oper_mode = []
         self.connection_instances = []
         self.connection_names = []
+
+        self.time_limits = time_limits
 
     def LoadUOs(self):
         uos_modules = ('Reactors', 'Crystallizers', 'Containers',
@@ -137,7 +138,7 @@ class SimulationExec:
         time_processing = np.zeros(len(execution_order))
         for ind, uo in enumerate(execution_order):
             if hasattr(uo, 'timeProf'):
-                time_processing[ind] = uo.timeProf[-1]
+                time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
 
         self.time_processing = time_processing
 
@@ -200,9 +201,9 @@ class SimulationExec:
         return stream_table
 
     def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+                           wrapper_kwargs=None,
                            spectra=None,
                            fit_spectra=False, global_analysis=True,
-                           wrapper_args=[],
                            phase_modifiers=None, control_modifiers=None,
                            measured_ind=None, optimize_flags=None,
                            jac_fun=None,
@@ -233,12 +234,20 @@ class SimulationExec:
             else:
                 control_modifiers = [control_modifiers] * len(phase_modifiers)
 
-        args_wrapper = list(zip(phase_modifiers, control_modifiers))
+        if wrapper_kwargs is None:
+            wrapper_kwargs = {}
 
-        if len(args_wrapper) == 1:
-            args_wrapper = args_wrapper[0]
+        keys = ['modify_phase', 'modify_controls']
 
-        args_wrapper = list(args_wrapper) + wrapper_args
+        kwargs_wrapper = list(zip(phase_modifiers, control_modifiers))
+
+        kwargs_wrapper = [dict(zip(keys, item)) for item in kwargs_wrapper]
+
+        for di in kwargs_wrapper:
+            di.update({'run_args': wrapper_kwargs})
+
+        # if len(kwargs_wrapper) == 1:
+        #     kwargs_wrapper = kwargs_wrapper[0]
 
         # Get 1D array of parameters from the UO class
         if param_seed is not None:
@@ -259,7 +268,6 @@ class SimulationExec:
                 else:
                     name_params.append(target_unit.name_params[ind])
 
-
         name_states = target_unit.states_uo
 
         # Instantiate parameter estimation
@@ -267,7 +275,7 @@ class SimulationExec:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
                 param_seed, x_data, spectra, global_analysis,
-                args_fun=args_wrapper, measured_ind=measured_ind,
+                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
                 jac_fun=jac_fun, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)
@@ -275,7 +283,7 @@ class SimulationExec:
             self.ParamInst = ParameterEstimation(
                 target_unit.paramest_wrapper,
                 param_seed, x_data, y_data,
-                args_fun=args_wrapper, measured_ind=measured_ind,
+                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
                 optimize_flags=optimize_flags,
                 jac_fun=jac_fun, covar_data=covar_data,
                 name_params=name_params, name_states=name_states)

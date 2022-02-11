@@ -9,6 +9,7 @@ Created on Tue Apr 14 22:06:49 2020
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
+from scipy.special import comb
 
 
 class NewtonInterpolation:
@@ -63,6 +64,18 @@ class NewtonInterpolation:
             p = a[n - k] + (x_eval - self.x_data[n - k])*p
 
         return p
+
+
+def smoothstep(x, x_min=0, x_max=1, N=1):
+    x = np.clip((x - x_min) / (x_max - x_min), 0, 1)
+
+    result = 0
+    for n in range(0, N + 1):
+        result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x)**n
+
+    result *= x ** (N + 1)
+
+    return result
 
 
 class SplineInterpolation:
