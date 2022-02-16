@@ -221,9 +221,13 @@ class ParameterEstimation:
                                      for ind in range(self.num_params)]
         else:
             self.name_params_total = name_params
-            self.name_params = [name_params[ind]
-                                for ind in range(len(name_params))
-                                if self.map_variable[ind]]
+            if len(name_params) > sum(self.map_variable):
+                self.name_params = [name_params[ind]
+                                    for ind in range(len(name_params))
+                                    if self.map_variable[ind]]
+            else:
+                self.name_params = name_params
+
             self.name_params_plot = [r'$' + name + '$'
                                      for name in self.name_params]
 

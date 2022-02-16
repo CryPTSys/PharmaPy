@@ -802,7 +802,7 @@ class _BaseCryst:
 
     def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None,
-                         scale_factor=1e-3):
+                         scale_factor=1e-3, run_args=None):
         self.reset()
         self.params_iter = params
 
@@ -821,39 +821,63 @@ class _BaseCryst:
         if isinstance(modify_controls, dict):
             self.args_control = modify_controls
 
+        analytical = True
+
         if self.method == 'moments':
-            t_prof, states, sens = self.solve_unit(time_grid=t_vals,
-                                                   eval_sens=True,
-                                                   verbose=False)
 
-            sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
+            if analytical:
+                t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                                       eval_sens=True,
+                                                       verbose=False)
 
-            mu = states[:, :self.num_distr]
+                sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
 
-            # convert to mm**n
-            factor = (scale_factor)**np.arange(self.num_distr)
+                mu = states[:, :self.num_distr]
 
-            sens_mom = [elem * fact for elem, fact in zip(sens_sep, factor)]
-            sens_sep = sens_mom + sens_sep[self.num_distr:]
+                # convert to mm**n
+                factor = (scale_factor)**np.arange(self.num_distr)
 
-            mu *= factor  # mm
+                sens_mom = [elem * fact
+                            for elem, fact in zip(sens_sep, factor)]
 
-            mu_zero = mu[:, 0][..., np.newaxis]
+                sens_sep = sens_mom + sens_sep[self.num_distr:]
 
-            sens_zero = sens_sep[0]
-            for ind, sens_j in enumerate(sens_sep[1:self.num_distr]):
-                mu_j = mu[:, ind + 1][..., np.newaxis]
-                div_rule = (sens_j * mu_zero - sens_zero * mu_j) \
-                    / (mu_zero**2 + eps)
+                mu *= factor  # mm
 
-                sens_sep[ind + 1] = div_rule
+                mu_zero = mu[:, 0][..., np.newaxis] + eps
 
-            mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+                sens_zero = sens_sep[0]
+                for ind, sens_j in enumerate(sens_sep[1:self.num_distr]):
+                    mu_j = mu[:, ind + 1][..., np.newaxis]
+                    div_rule = (sens_j * mu_zero - sens_zero * mu_j) \
+                        / (mu_zero**2 + eps)
 
-            states_out = np.column_stack((mu, states[:, self.num_distr:]))
-            sens_out = np.vstack(sens_sep)
+                    sens_sep[ind + 1] = div_rule
 
-            return states_out, sens_out
+                mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+
+                states_out = np.column_stack((mu, states[:, self.num_distr:]))
+                sens_out = np.vstack(sens_sep)
+
+                return states_out, sens_out
+
+            else:
+                t_prof, states = self.solve_unit(time_grid=t_vals,
+                                                 eval_sens=False,
+                                                 verbose=False)
+
+                # convert to mm**n
+                factor = (scale_factor)**np.arange(self.num_distr)
+                mu = states[:, :self.num_distr]
+                mu *= factor  # mm
+
+                mu_zero = mu[:, 0][..., np.newaxis] + eps
+
+                mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+
+                states_out = np.column_stack((mu, states[:, self.num_distr:]))
+
+                return states_out
 
         else:
             t_prof, states_out = self.solve_unit(time_grid=t_vals,
@@ -1359,8 +1383,8 @@ class BatchCryst(_BaseCryst):
 
             g_exp = self.Kinetics.params['growth'][-1]
             bp_exp = self.Kinetics.params['nucl_prim'][-1]
-            bs_exp = self.Kinetics.params['nucl_sec'][-2]
-            bs2_exp = self.Kinetics.params['nucl_sec'][-1]
+            k_s, _, bs_exp, bs2_exp = self.Kinetics.params['nucl_sec']
+            # bs2_exp = self.Kinetics.params['nucl_sec'][-1]
 
             jacobian = np.zeros((num_states, num_states))
 
@@ -1372,7 +1396,15 @@ class BatchCryst(_BaseCryst):
 
             # dfu0_dmu3
             jacobian[0, self.num_distr - 1] = vol_liq * bs2_exp * b_sec / \
-                moms[3]
+                (moms[3] + eps)
+
+            # ssat = (conc_tg - c_sat) / c_sat
+
+            # # bsec_other = k_s * ssat**bs_exp * (kv * moms[3])**bs2_exp
+            # dfu0_dmu3 = k_s * ssat**bs_exp * bs2_exp * kv * \
+            #     (kv * moms[3])**(bs2_exp - 1)
+
+            # jacobian[0, self.num_distr - 1] = dfu0_dmu3
 
             # Second moment column (concentration eqns)
             dtr_mu2 = 3 * kv * gr * rho_c * \

@@ -340,6 +340,7 @@ class _BaseReactor:
 
     def plot_profiles(self, fig_size=None, title=None, time_div=1, q_div=1,
                       pick_idx=None, black_white=False):
+
         self.flatten_states()
 
         if pick_idx is None:

@@ -107,18 +107,22 @@ class StatisticsClass:
         intervals_array = np.array(intervals_array)
 
         if verbose:
+            alperc = self.alpha * 100
             print('')
-            print('{:<55}'.format('-'*57))
-            print("{:<12} {:^15} {:^15} {:^15}".format(
-                    'param', 'low', 'value', 'high'))
-            print('{:<55}'.format('-'*57))
+            print('{:<55}'.format('-'*100))
+            print("{:<12} {:^15} {:^15} {:^15} {:^15} {:^15}".format(
+                    'param', 'lb', 'mean', 'ub',
+                    "%i%% CI (+/-)" % alperc, "%i%% CI (+/- %%)" % alperc))
+
+            print('{:<55}'.format('-'*100))
 
             for ind, (key, val) in enumerate(confidence_int.items()):
                 low, high = val
-                print("{:<12} {:^15.3e} {:^15.3e} {:^15.3e}".format(
-                        key, low, self.params[ind], high))
+                perc = abs(sigma_t[key] / self.params[ind]) * 100
+                print("{:<12} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.5f}".format(
+                        key, low, self.params[ind], high, sigma_t[key], perc))
 
-            print('{:<55}'.format('-'*57))
+            print('{:<55}'.format('-'*100))
 
         if set_self:
             self.confid_intervals = confidence_int

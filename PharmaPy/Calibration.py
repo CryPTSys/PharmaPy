@@ -13,10 +13,10 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 class PCR_calibration:
-    def __init__(self, data, num_comp=None, standarize=False, snv=False,
+    def __init__(self, data, num_comp=None, standardize=True, snv=False,
                  y_name=None, y_suffixes=None):
         self.data = data
-        self.standarize = standarize
+        self.standardize = standardize
         self.snv = snv
 
         data_mean = data.mean(axis=0)
@@ -26,6 +26,7 @@ class PCR_calibration:
             self.data_centered = self.__center_data(data)
         else:
             self.data_centered = self.__center_data(data, data_mean, data_std)
+            # self.data_centered = self.__center_data(data, None, None)
 
         self.data_mean = data_mean
         self.data_std = data_std
@@ -46,19 +47,23 @@ class PCR_calibration:
 
     def __center_data(self, data=None, mean=None, std=None):
         if mean is None and std is None:
-            mean = data.mean(axis=1)[..., np.newaxis]
-            std = data.std(axis=1)[..., np.newaxis]
+            mean = data.mean(axis=0)
+            std = data.std(axis=0)
 
         data_centered = data - mean
 
-        if self.snv or self.standarize:
+        if self.snv or self.standardize:
             data_centered *= 1 / std
 
         return data_centered
 
-    def __get_projections(self):
+    def __get_projections(self, data=None, n_comp=None):
+
+        if data is None:
+            data = self.data_centered
+
         # Perform SVD
-        u_m, sv, v_nt = np.linalg.svd(self.data_centered)
+        u_m, sv, v_nt = np.linalg.svd(data)
         v_n = v_nt.T
 
         # Percent of explained variance
@@ -70,7 +75,10 @@ class PCR_calibration:
         svd_dict = {'U': u_m, 'sv': sv, 'V': v_n, 'V_trunc': v_trunc}
 
         # Projections
-        projections = np.dot(self.data_centered, svd_dict['V'])
+        projections = np.dot(data, v_n)
+
+        if n_comp is not None:
+            projections = projections[:, :n_comp]
 
         return projections, explained_var, svd_dict
 
@@ -137,11 +145,12 @@ class PCR_calibration:
         if num_comp is None:
             num_comp = self.num_comp
 
+        # scores = self.projections[:, :num_comp]
         scores = self.projections[:, :num_comp]
 
         scores_inv = np.linalg.pinv(scores)  # pseudoinverse of scores
 
-        # Regression coefficeints wrt principal components
+        # Regression coefficients w.r.t. principal components
         if y_data.ndim == 1:
             y_data = y_data[..., np.newaxis]
 
@@ -149,50 +158,90 @@ class PCR_calibration:
         y_center = y_data - y_means
         q_coeff = np.dot(scores_inv, y_center)
 
-        # Regression coefficeints wrt original X
-        regression_coeff = np.dot(self.svd_dict['V'][:, :num_comp],
-                                  q_coeff)
+        regression_coeff = q_coeff
 
         self.y_data = y_data
         self.y_center = y_center
         self.y_means = y_means
+
         if update_instance:
             self.regression_coeff = regression_coeff
+            self.num_comp = num_comp
 
             y_pred = self.predict(self.data)
             residuals = y_data - y_pred
             self.residuals = residuals
 
+        # # Regression coefficients w.r.t. original X
+        # regression_coeff = np.dot(self.svd_dict['V'][:, :num_comp],
+        #                           q_coeff)
+
+
+        # if update_instance:
+        #     self.regression_coeff = regression_coeff
+
+        #     y_pred = self.predict(self.data)
+        #     residuals = y_data - y_pred
+        #     self.residuals = residuals
+
         return regression_coeff
 
-    def predict(self, inputs, regression_coeff=None):
+    def predict(self, inputs, num_comp=None, regression_coeff=None,
+                full_output=False):
         inputs = np.atleast_2d(inputs)
 
         if self.snv:
             inputs_centered = self.__center_data(inputs)
         else:
-            inputs_centered = self.__center_data(inputs, self.data_mean,
-                                                 self.data_std)
+            inputs_centered = self.__center_data(inputs)
 
         if regression_coeff is None:
             coeff = self.regression_coeff
         else:
             coeff = regression_coeff
 
-        response = np.dot(inputs_centered, coeff) + self.y_means
+        if num_comp is None:
+            num_comp = self.num_comp
 
-        return response
+        p_matrix = self.svd_dict['V'][:, :num_comp]
+        new_projections = np.dot(inputs_centered, p_matrix)
 
-    def evaluate_mse(self):
+        # new_projections, _, di = self.__get_projections(inputs_centered,
+        #                                                 num_comp)
+
+
+        response = np.dot(new_projections, coeff) + self.y_means
+
+        num_data = self.y_data.size
+
+        if full_output:
+            resid = response - self.y_data
+            mse = 1 / num_data * np.dot(resid.T, resid)
+            info_out = {'x_projected': new_projections, 'y_pred': response,
+                        'MSE': mse}
+
+            return info_out
+        else:
+
+            return response
+
+    def evaluate_mse(self, num_comp=None):
+
+        if num_comp is None:
+            pc_counter = range(len(self.svd_dict['sv']))
+        else:
+            pc_counter = range(num_comp)
+
         mse = []
         residuals = []
 
         n_data = np.prod(self.y_data.shape)
-        for n_component in range(len(self.svd_dict['sv'])):
+        for n_component in pc_counter:
             coeff = self.get_regression(self.y_data, n_component + 1,
                                         update_instance=False)
 
-            pred = self.predict(self.data, regression_coeff=coeff)
+            pred = self.predict(self.data, regression_coeff=coeff,
+                                num_comp=n_component + 1)
 
             resid = self.y_data - pred
 
@@ -239,3 +288,6 @@ class PCR_calibration:
                   transform=axis.transAxes, ha='right')
 
         return fig, axis
+
+    def cross_validation(self, num_groups=10):
+        perm = np.random.permutation(self.data.shape[0])
