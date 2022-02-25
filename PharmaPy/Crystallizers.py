@@ -63,13 +63,28 @@ class _BaseCryst:
         """ Construct a Crystallizer object
         Parameters
         ----------
+        mask_params : TODO
+        method : str
+            Choice of the numerical method. Options are: 'moments', '1D-FVM'
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
+        scale : float
+            Scaling factor by which crystal size distribution will be 
+            multiplied.
+        vol_tank : TODO - Remove, it comes from Phases module.
+        isothermal : bool
+            Whether the energy balace is considered (i.e dT/dt = 0)
+        controls : dict of dicts
+            
+        
+        
+        
         oper_mode : str
             Operation mode of the reactor. It takes one of the following
             values: 'Batch', 'MSMPR', 'Semibatch'. If 'Semibatch', it is
             assumed that an antisolvent stream is entering the tank.
-        target_comp : str, list of strings
-            Name of the crystallizing compound(s) from .json file.
-            
+        
+          
         """
 
         if jac_type == 'AD':
