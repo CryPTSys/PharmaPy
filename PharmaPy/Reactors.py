@@ -31,6 +31,7 @@ gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
+
 def check_stoichiometry(stoich, mws):
     mass_bce = np.dot(stoich, mws)
 
