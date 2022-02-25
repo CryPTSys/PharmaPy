@@ -285,7 +285,7 @@ class NameAnalyzer:
                           matter_object):
         up, down = prefix_up, prefix_down
 
-        if 'num' in up and 'total' in down:
+        if 'distrib' in up and 'total' in down:
             distrib_out = distrib
         elif 'num' in up and 'vol' in down:
             pass

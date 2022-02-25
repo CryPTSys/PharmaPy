@@ -61,6 +61,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     """
 
     nu = 2
+    beta = nu
     x = asarray(x)
 
     num_iter = 0
@@ -76,8 +77,12 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         d_diag = eye(len(x))
 
     mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
+    # mu = lambd_zero
 
     num_feval = 0
+
+    print('Seed:')
+    # print(x)
 
     if verbose:
         print()
@@ -89,7 +94,6 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
-
         lm_step = solve(a_matrix + mu*d_diag, -b_vector)
 
         if norm(lm_step) < eps_2 * norm(x):
@@ -97,6 +101,10 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             break
 
         x_new = x + lm_step
+        print('iteration %i' % num_feval)
+        # print(x_new)
+
+        # print(x_new)
         fun_new = func(x_new, *args)
         jac_new = deriv(x_new, *args)
 
@@ -123,13 +131,15 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                 reason = 'Small gradient'
                 break
 
-            mu = mu * max(1/3, 1 - (2*rho - 1)**3)  # Nielsen update
+            mu = mu * max(1/3, 1 - (beta - 1) * (2*rho - 1)**3)  # After Nielsen
             nu = 2
         else:
             mu = mu * nu  # decrease step size
             nu = 2 * nu
 
-        # print(mu)
+        beta = nu
+
+        # print(nu)
 
         if verbose:
             print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}".format(
@@ -149,10 +159,15 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         print()
 
     if full_output:
-        output_dict = {'fun': fun, 'jac': jac,
-                       'norm_step': norm(lm_step),
-                       'stop_criterion': reason, 'num_iter': num_iter,
-                       'num_fun_eval': num_feval}
+        if max_fun_eval == 0:
+            output_dict = {'fun': fun, 'jac': jac, 'num_iter': num_iter,
+                           'num_fun_eval': num_feval}
+        else:
+            output_dict = {'fun': fun, 'jac': jac,
+                           'norm_step': norm(lm_step),
+                           'stop_criterion': reason, 'num_iter': num_iter,
+                           'num_fun_eval': num_feval}
+
         return x, covar_x, output_dict
     else:
         return x

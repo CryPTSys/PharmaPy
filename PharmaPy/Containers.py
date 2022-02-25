@@ -100,7 +100,24 @@ class Mixer:
 
             timegrid_ref = None
             for ind, inlet in enumerate(self.Inlets):
-                if inlet.y_upstream is None:
+                if inlet.DynamicInlet is not None:
+                    for inl in inlets:
+                        timegrid_ref = getattr(inl, 'time_upstream', None)
+                        if timegrid_ref is not None:
+                            break
+
+                    self.timeProf = timegrid_ref
+                    di = inlet.DynamicInlet.evaluate_inputs(timegrid_ref)
+                    dim = len(di['mass_flow'])
+
+                    temp_prof = np.ones(dim) * inlet.temp
+                    massfrac_prof = np.tile(inlet.mass_frac, (dim, 1))
+
+                    massfracs.append(massfrac_prof)
+                    masses.append(di['mass_flow'])  # TODO: unit conversion if inlet as units of moles/vol
+                    temps.append(temp_prof)  # TODO: what if T is controlled?
+
+                elif inlet.y_upstream is None:
                     massfracs.append(inlet.mass_frac)
                     temps.append(inlet.temp)
                     masses.append(inlet.mass_flow)
@@ -468,9 +485,10 @@ class Mixer:
 
 class DynamicCollector:
     def __init__(self, Inlet=None, timeshift_factor=1.5, temp_refer=298.15,
-                 tau=None, name_species=None):
+                 tau=None, name_species=None, num_interp_points=3):
 
         self.Inlet = Inlet
+        self.num_interp_points = num_interp_points
         # if self.inlet is not None:
         #     classify_phases(self.inlet)
 
@@ -502,7 +520,7 @@ class DynamicCollector:
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
-        names_solids = ['mass_conc', 'vol_flow', 'temp', 'num_distrib']
+        names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
 
         self.name_idx = 0
 
@@ -578,7 +596,7 @@ class DynamicCollector:
             path = self.Inlet.Liquid_1.path_data
             vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
-            distr_init = init_dict['num_distrib'] * vol_init
+            distr_init = init_dict['distrib'] * vol_init
 
             vol_init *= (1 - self.Inlet.moments[3])
 
@@ -593,6 +611,7 @@ class DynamicCollector:
             phases = (liquid, solid)
 
             self.kwargs_cryst.pop('target_ind')
+            self.kwargs_cryst['num_interp_points'] = self.num_interp_points
             SemiCryst = SemibatchCryst(method='1D-FVM', adiabatic=True,
                                        **self.kwargs_cryst)
             SemiCryst.Phases = phases

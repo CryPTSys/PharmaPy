@@ -6,13 +6,12 @@ Created on Tue May 26 16:37:29 2020
 """
 
 import numpy as np
-from autograd import numpy as np
+# from autograd import numpy as np
 from autograd import jacobian as jacauto
-from PharmaPy.Commons import mid_fn, trapezoidal_rule
+from PharmaPy.Commons import mid_fn, trapezoidal_rule, eval_state_events, handle_events
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
-from PharmaPy.NameAnalysis import get_dict_states
 
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -169,9 +168,13 @@ class IsothermalFlash:
 
 
 class AdiabaticFlash:
-    def __init__(self, pres_drum, div_factor=1e3, gamma_method='ideal'):
+    def __init__(self, pres_drum, div_energybce=1e3, gamma_method='ideal',
+                 mult_midfun=1, seed_basedon_input=False):
         self.pres = pres_drum
-        self.div_factor = div_factor
+
+        self.div_energybce = div_energybce
+        self.mult_midfun = mult_midfun
+        self.seed_basedon_input = seed_basedon_input
 
         self._Inlet = None
 
@@ -211,7 +214,7 @@ class AdiabaticFlash:
 
         diff_frac = np.sum(x_i - y_i)
         args_mid = np.array([vap, diff_frac, vap - 1])
-        vap_flow = mid_fn(args_mid)
+        vap_flow = mid_fn(args_mid) * self.mult_midfun
 
         material = np.concatenate((
             np.array([global_bce]),
@@ -231,7 +234,7 @@ class AdiabaticFlash:
         h_feed = self.Inlet.getEnthalpy(temp_ref=temp, basis='mole')
 
         energy_bce = liq * h_liq + vap * h_vap - h_feed
-        energy_bce = np.atleast_1d(energy_bce / self.div_factor)
+        energy_bce = np.atleast_1d(energy_bce / self.div_energybce)
 
         return energy_bce
 
@@ -253,11 +256,17 @@ class AdiabaticFlash:
 
         return balances
 
-    def solve_unit(self):
-        l_seed = 0.5
-        x_seed = np.ones(self.num_comp) * 1 / self.num_comp
-        y_seed = x_seed
-        v_seed = 0.5
+    def solve_unit(self, v_seed=0.5):
+
+        if self.seed_basedon_input:
+            x_seed = self.Inlet.mole_frac
+            y_seed = x_seed * self.Inlet.getKeqVLE(pres=self.pres)
+            y_seed = y_seed / y_seed.sum()
+        else:
+            x_seed = np.ones(self.num_comp) * 1 / self.num_comp
+            y_seed = x_seed
+
+        l_seed = 1 - v_seed
 
         temp_seed = self.Inlet.temp
 
@@ -302,7 +311,20 @@ class Evaporator:
                  pres=101325, diam_out=2.54e-2,
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
-                 activity_model='ideal', state_events=None):
+                 activity_model='ideal', state_events=None,
+                 stop_at_maxvol=True, flash_kwds=None):
+
+        """
+        Parameters
+        ----------
+        vol_drum : float
+            Total drum volume (m**3)
+        pres : float
+            pressure set (Pa)
+
+        """
+
+
 
         self._Inlet = None
         self._Phases = None
@@ -319,7 +341,17 @@ class Evaporator:
         elif state_events is None:
             self.state_events = []
 
+        self.stop_at_maxvol = stop_at_maxvol
+
+        if flash_kwds is None:
+            self.flash_kwds = {}
+        else:
+            self.flash_kwds = flash_kwds
+
+        # Geometry
         self.vol_tot = vol_drum
+        self.diam_tank = (4/np.pi * vol_drum)**(1/3)
+        self.area_base = np.pi / 4 * self.diam_tank**2
         self.area_out = np.pi / 4 * diam_out**2
 
         self.pres = pres
@@ -352,6 +384,7 @@ class Evaporator:
         self.vol_offset = 1
 
         self.elapsed_time = 0
+        self.allow_flow = True
 
     @property
     def Phases(self):
@@ -397,6 +430,9 @@ class Evaporator:
 
         inlet_inert = LiquidStream(paths, **inlet_dict)
         self._Inlet = inlet_inert
+
+        if self.Inlet_orig.DynamicInlet is not None:
+            self._Inlet.DynamicInlet = self.Inlet_orig.DynamicInlet
 
         self.oper_mode = 'Semibatch'
         # self.paths = paths
@@ -492,12 +528,8 @@ class Evaporator:
         h_vap = self.VapEvap.getEnthalpy(temp, mole_frac=y_i, basis='mole')
 
         # Heat transfer
-        diam = 0.438
-        height_liq = vol_liq / (np.pi/4 * diam**2)
-        area_ht = np.pi * diam * height_liq  # m**2
-
-        ht_controls = self.Utility.evaluate_controls(time)
-        temp_ht = ht_controls['temp_in']
+        area_ht = 4 / self.diam_tank * vol_liq + self.area_base  # m**2
+        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
 
         heat_transfer = -self.u_ht * area_ht * (temp - temp_ht)
 
@@ -547,6 +579,8 @@ class Evaporator:
                         'temp': 298.15}
         else:
             u_inputs = get_inputs(time, *self.args_inputs)
+
+        u_inputs['mole_flow'] *= self.allow_flow
 
         if states_dot is None:
             # Material balance
@@ -634,7 +668,9 @@ class Evaporator:
                                    moles=mol_tot, mole_frac=z_flash)
 
         FlashInit = AdiabaticFlash(pres_drum=pres_init,
-                                   gamma_method=self.activity_model)
+                                   gamma_method=self.activity_model,
+                                   **self.flash_kwds)
+
         FlashInit.Inlet = self.LiqEvap
         FlashInit.solve_unit()
 
@@ -681,8 +717,7 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        ht_controls = self.Utility.evaluate_controls(0)
-        temp_ht = ht_controls['temp_in']
+        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
 
         ht_init = -self.h_conv * area_ht * (temp_init - temp_ht)
 
@@ -731,9 +766,11 @@ class Evaporator:
                 events.append(event_flag)
 
             # Maximum liquid constraint
-            rho_liq = self.LiqEvap.getDensity(mole_frac=dict_states['x_liq'],
-                                              temp=dict_states['temp'][0],
-                                              basis='mole')
+            rho_liq = self.LiqEvap.getDensity(
+                mole_frac=dict_states['x_liq'],
+                temp=dict_states['temp'][0],
+                basis='mole')
+
             vol_liq = dict_states['mol_liq'][0] / rho_liq / 1000  # m**3
 
             events.append(self.vol_tot - vol_liq)
@@ -763,16 +800,18 @@ class Evaporator:
                     raise TerminateSimulation
 
         if state_event[-1]:
-            print('Liquid volume reached a maximum')
-            raise TerminateSimulation
+            print('Liquid volume reached maximum tank volume at t = %.2f'
+                  % solver.t)
 
-    def solve_unit(self, runtime, verbose=True, sundials_opts=None):
+            if self.stop_at_maxvol:
+                raise TerminateSimulation
+            else:
+                self.allow_flow = False
 
-        self.args_inputs = (self.Inlet,
-                            self.names_upstream,
-                            self.names_states_in,
-                            self.bipartite,
-                            self.num_species)
+    def solve_unit(self, runtime, verbose=True, sundials_opts=None,
+                   timesim_limit=0):
+
+        self.args_inputs = (self, self.num_species)
 
         states_initial, sdev_initial = self.init_unit()
 
@@ -808,6 +847,10 @@ class Evaporator:
         solver.make_consistent('IDA_YA_YDP_INIT')
         solver.suppress_alg = True
 
+        if timesim_limit:
+            solver.report_continuously = True
+            solver.time_limit = timesim_limit
+
         if not verbose:
             solver.verbosity = 50
 
@@ -819,6 +862,8 @@ class Evaporator:
 
         # Solve
         time, states, sdot = solver.simulate(runtime)
+
+        self.allow_flow = True  # Restore value for further analysis
 
         self.retrieve_results(time, states)
         self.flatten_states()
@@ -974,11 +1019,12 @@ class Evaporator:
 
 class ContinuousEvaporator:
     def __init__(self, vol_drum, adiabatic=True,
-                 pres=101325, diam_out=2.54e-2, frac_liq=0.5,
+                 pressure=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
                  h_conv=1000, temp_ht=298.15,
-                 activity_model='ideal'):
+                 activity_model='ideal', num_interp_points=3, mult_flash=1,
+                 state_events=None):
 
         self._Inlet = None
         self._Phases = None
@@ -986,6 +1032,11 @@ class ContinuousEvaporator:
 
         self.vol_tot = vol_drum
         self.vol_liq_set = vol_drum * frac_liq
+
+        # Geometry
+        self.diam_tank = (4/np.pi * vol_drum)**(1/3)
+        self.area_base = np.pi / 4 * self.diam_tank**2
+        self.area_out = np.pi / 4 * diam_out**2
 
         # Control
         self.k_liq = k_liq
@@ -996,9 +1047,7 @@ class ContinuousEvaporator:
 
         self.adiabatic = adiabatic
 
-        self.area_out = np.pi / 4 * diam_out**2
-
-        self.pres = pres
+        self.pres = pressure
 
         # Jacobians
         self.jac_states = jacauto(self.unit_model, 1)
@@ -1011,12 +1060,7 @@ class ContinuousEvaporator:
 
         self.is_continuous = True
 
-        # self.timeProf = []
-        # self.tempProf = []
-        # self.presProf = []
-
-        # self.xliqProf = []
-        # self.yvapProf = []
+        self.tau = None
 
         self.time_runs = []
         self.temp_runs = []
@@ -1028,8 +1072,12 @@ class ContinuousEvaporator:
         self.molVap_runs = []
 
         self.activity_model = activity_model
+        self.num_interp_points = num_interp_points
+        self.mult_flash = mult_flash
 
         self.nomenclature()
+
+        self.state_event_list = state_events
 
     @property
     def Phases(self):
@@ -1058,6 +1106,7 @@ class ContinuousEvaporator:
     def Inlet(self, inlet):  # Create an inlet with additional species (N2)
 
         self._Inlet = inlet
+        self._Inlet.num_interpolation_points = self.num_interp_points
 
         self.oper_mode = 'Semibatch'
 
@@ -1074,24 +1123,11 @@ class ContinuousEvaporator:
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'mole_flow', 'temp']
         self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
-                            'pres', 'temp']
+                            'pres', 'U_internal', 'temp']
 
-    def get_inputs(self, time):
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_flow': self.Inlet.mole_flow,
-                          'temp': self.Inlet.temp,
-                          'mole_frac': self.Inlet.mole_frac}
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
-
-            inputs = get_dict_states(self.names_upstream, self.num_species,
-                                     0, all_inputs)
-
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
-
-        return input_dict
+        self.name_differential = ['moles_i', 'U_internal']
+        self.name_algebraic = ['x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+                               'pres', 'temp']
 
     def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
                        input_flow):
@@ -1175,9 +1211,9 @@ class ContinuousEvaporator:
             heat_transfer = 0
         else:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
-            area_ht = np.pi * self.diam_tank * height_liq  # m**2
+            area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
-            ht_controls = self.Utility.evaluate_controls(time)
+            ht_controls = self.Utility.evaluate_inputs(time)
             temp_ht = ht_controls['temp_in']
 
             heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
@@ -1196,7 +1232,7 @@ class ContinuousEvaporator:
 
             return out_energy
 
-    def unit_model(self, time, states, states_dot=None, params=None,
+    def unit_model(self, time, states, states_dot=None, sw=None, params=None,
                    enrgy_bce=False):
 
         n_comp = self.num_species
@@ -1217,7 +1253,7 @@ class ContinuousEvaporator:
         temp = states[-1]
 
         # Inputs
-        u_inputs = self.get_inputs(time)
+        u_inputs = get_inputs(time, *self.args_inputs)
 
         # Material balance
         material_bces = self.material_balances(time, moles_i,
@@ -1286,8 +1322,6 @@ class ContinuousEvaporator:
         mol_liq = self.LiqPhase.moles
         vol_liq = self.LiqPhase.vol
 
-        self.diam_tank = (4/np.pi * vol_liq)**(1/3)
-
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
             raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
@@ -1301,7 +1335,7 @@ class ContinuousEvaporator:
         # Moles of i
         mol_i = mol_liq * x_init + mol_vap * y_init
 
-        u_inlet = self.get_inputs(0)
+        u_inlet = get_inputs(0, *self.args_inputs)
         inlet_flow = u_inlet['mole_flow']
 
         # Liquid flow
@@ -1317,8 +1351,21 @@ class ContinuousEvaporator:
         hvap_init = self.VapPhase.getEnthalpy(temp_bubble_init, basis='mole',
                                               mole_frac=y_init)
 
+        # Heat transfer
+        if self.adiabatic:
+            heat_transfer = 0
+        else:
+            height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
+            area_ht = np.pi * self.diam_tank * height_liq + self.area_base
+
+            ht_controls = self.Utility.evaluate_inputs(0)
+            temp_ht = ht_controls['temp_in']
+
+            heat_transfer = self.h_conv * area_ht * (temp_bubble_init -
+                                                     temp_ht)
+
         # Disregard vapor flow at the beginning (vapor phase is at P_0)
-        du_init = inlet_flow * hin_init - flow_liq * hliq_init   # bce - dU_dt
+        du_init = inlet_flow * hin_init - flow_liq * hliq_init - heat_transfer  # bce - dU_dt
 
         # Internal energy
         u_init = mol_liq * hliq_init + mol_vap * hvap_init - \
@@ -1336,8 +1383,36 @@ class ContinuousEvaporator:
 
         return states_init, sdot_init
 
+    def _get_tau(self):
+        time_upstream = getattr(self.Inlet, 'time_upstream')
+        if time_upstream is None:
+            time_upstream = [0]
+
+        inputs = get_inputs(time_upstream[-1], self, self.num_species)
+
+        dens_inlet = self.LiqPhase.getDensity(mole_frac=inputs['mole_frac'],
+                                              temp=inputs['temp'],
+                                              basis='mole') * 1000  # mol/m**3
+
+        volflow_in = inputs['mole_flow'] / dens_inlet
+        tau = self.vol_liq_set / volflow_in
+
+        self.tau = tau
+        return tau
+
+    def _eval_state_events(self, time, states, sdot, sw):
+
+        events = eval_state_events(
+            time, states, sw, self.len_states,
+            self.name_states, self.state_event_list, sdot=sdot,
+            discretized_model=False, state_map=self.state_map)
+
+        return events
+
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
-                   sundials_opts=None):
+                   sundials_opts=None, timesim_limit=0, any_event=True):
+        self.args_inputs = (self, self.num_species)
+
         states_initial, sdev_initial = self.init_unit()
 
         # ---------- Solve
@@ -1346,6 +1421,9 @@ class ContinuousEvaporator:
                                   np.zeros(2*n_comp + 3),
                                   [1, 0])
                                  )
+        # dM_i/dt, (x_i, y_i), (P, M_L, M_V), (dU/dt, T)
+        state_map = [1] + [0] * 2 + [0] * 3 + [1, 0]
+        self.state_map = state_map
 
         # ---------- Solve problem
         if steady_state:
@@ -1354,18 +1432,40 @@ class ContinuousEvaporator:
 
             return steady_solution
         elif solve:
-            # Create problem
-            problem = Implicit_Problem(self.unit_model,
-                                       states_initial, sdev_initial,
-                                       t0=0)
+            if self.state_event_list is None:
+                problem = Implicit_Problem(self.unit_model,
+                                           states_initial, sdev_initial,
+                                           t0=0)
+            else:
+                switches = [True] * len(self.state_event_list)
+
+                problem = Implicit_Problem(self.unit_model,
+                                           states_initial, sdev_initial,
+                                           t0=0, sw0=switches)
+
+                def new_handle(solver, info):
+                    return handle_events(
+                        solver, info, self.state_event_list,
+                        any_event=any_event)
+
+                problem.state_events = self._eval_state_events
+                problem.handle_event = new_handle
 
             problem.algvar = alg_map
+            self.alg_map = alg_map
             # problem.jac = self.unit_jacobian
+
+            # See self.name_states
+            self.len_states = [self.num_species] * 3 + [1] * 5
 
             # Set solver
             solver = IDA(problem)
             solver.make_consistent('IDA_YA_YDP_INIT')
             solver.suppress_alg = True
+
+            if timesim_limit:
+                solver.report_continuously = True
+                solver.time_limit = timesim_limit
 
             if not verbose:
                 solver.verbosity = 50
@@ -1409,14 +1509,7 @@ class ContinuousEvaporator:
 
         self.Phases = self.LiqPhase
 
-        inputs_all = self.get_inputs(time)
-        # flow_liq, flow_vap, vol_liq = self.material_balances(
-        #     time,
-        #     states[:, :n_comp],
-        #     self.xliq_runs[-1], self.yvap_runs[-1],
-        #     self.molLiq_runs, self.molVap_runs,
-        #     self.pres_runs[-1], self.temp_runs[-1],
-        #     inputs_all, flows_out=True)
+        inputs_all = get_inputs(time, *self.args_inputs)
 
         vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
             self.temp_runs[-1], self.pres_runs[-1],

@@ -521,7 +521,8 @@ class DeliquoringStep:
 
 
 class Filter:
-    def __init__(self, station_diam, resist_medium=1e9):
+    def __init__(self, station_diam, alpha=None, resist_medium=1e9,
+                 log_params=False):
 
         self._Phases = None
         self.material_from_upstream = False
@@ -534,6 +535,18 @@ class Filter:
 
         self.oper_mode = 'Batch'
         self.is_continuous = False
+
+        self.alpha = alpha
+
+        self.log_params = log_params
+
+        self.elapsed_time = 0
+
+        self.name_params = ['alpha', 'Rm']
+        self.mask_params = [True, True]
+        self.states_uo = ['mass_filtrate', 'mass_retained']
+
+        self.deltaP = None
 
     @property
     def Phases(self):
@@ -554,6 +567,17 @@ class Filter:
                                'objects')
         classify_phases(self)  # Enumerate phases: Liquid_1,..., Solid_1, ...
 
+        epsilon = self.Solid_1.getPorosity(diam_filter=self.station_diam)
+        dens_sol = self.Solid_1.getDensity()
+        if self.alpha is None:
+            self.alpha = get_alpha(self.Solid_1, sphericity=1,
+                                   porosity=epsilon,
+                                   rho_sol=dens_sol)
+
+        self.params = (self.alpha, self.r_medium)
+        if self.log_params:
+            self.params = np.log(self.params)
+
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
 
     def nomenclature(self):
@@ -566,17 +590,21 @@ class Filter:
     def unit_model(self, time, states, sw):
         if self.oper_mode == 'Batch':
             mass_liquid = states
-            material_balance = self.material_balance(
-                time, mass_liquid, self.deltaP)
+            material_balance = self.material_balance(time, mass_liquid,
+                                                     self.deltaP)
+
+        # print(material_balance)
+        # print(time)
+        # print(mass_liquid)
 
         return material_balance
 
     def material_balance(self, time, masses, dP):
         mass_filtr, mass_up = masses
         rho, visc, tens, rho_s = self.physical_props
-        alpha = self.alpha
         c_solids = self.c_solids
-        resist = self.r_medium
+
+        alpha, resist = self.params
 
         cake_term = alpha * c_solids * mass_filtr / (self.area_filt * rho)**2
         filt_term = resist / (self.area_filt * rho)
@@ -601,7 +629,13 @@ class Filter:
         if state_event:
             raise TerminateSimulation
 
-    def solve_unit(self, runtime=None, deltaP=1e5, slurry_div=1, verbose=True):
+    def reset(self):
+        self.elapsed_time = 0
+        if self.log_params:
+            self.params = np.log(self.params)
+
+    def solve_unit(self, runtime=None, time_grid=None, deltaP=1e5,
+                   slurry_div=1, verbose=True, model_params=None):
 
         # Filtration parameters (constant)
         self.deltaP = deltaP
@@ -609,8 +643,14 @@ class Filter:
         epsilon = self.Solid_1.getPorosity(diam_filter=self.station_diam)
         dens_sol = self.Solid_1.getDensity()
 
-        self.alpha = get_alpha(self.Solid_1, sphericity=1, porosity=epsilon,
-                               rho_sol=dens_sol)
+        if model_params is not None:
+            self.params = model_params
+
+        if callable(self.alpha):
+            self.alpha = self.alpha(deltaP)
+
+        if self.log_params:
+            self.params = np.exp(self.params)
 
         solid_conc = self.SlurryPhase.getSolidsConcentr()
         solid_conc = max(0, solid_conc)
@@ -644,21 +684,27 @@ class Filter:
         problem = Explicit_Problem(self.unit_model, y0=mass_init, t0=0,
                                    sw0=[True])
 
-        problem.state_events = self.__state_event
-        problem.handle_event = self.__handle_event
+        # State event
+        if model_params is None:
+            problem.state_events = self.__state_event
+            problem.handle_event = self.__handle_event
 
         solver = CVode(problem)
 
         if not verbose:
             solver.verbosity = 50
 
-        if not verbose:
-            solver.verbosity = 50
+        if time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
+            time_grid += self.elapsed_time
 
-        if runtime is None:
-            runtime = 1e10
+        elif runtime is None:
+            final_time = 1e10
 
-        time, states = solver.simulate(runtime)
+        else:
+            final_time = runtime + self.elapsed_time
+
+        time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         # Additional model equations
         self.cake_dry = self.c_solids * states[:, 0] / dens_liq
@@ -697,8 +743,21 @@ class Filter:
 
         self.outputs = np.atleast_2d(self.outputs)
 
+        self.elapsed_time += time[-1]
+
     def flatten_states(self):
         pass
+
+    def paramest_wrapper(self, params, time_vals, modify_phase=None,
+                         modify_controls=None):
+
+        self.reset()
+
+        deltaP = self.deltaP
+        time, states = self.solve_unit(time_grid=time_vals, deltaP=deltaP,
+                                       model_params=params, verbose=False)
+
+        return states[:, 0]
 
     def plot_profiles(self, fig_size=None, time_div=1, black_white=False):
         mass_filtr, mass_up = self.massProf.T

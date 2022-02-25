@@ -84,7 +84,7 @@ class ParameterEstimation:
     """
 
     def __init__(self, func, param_seed, x_data, y_data=None,
-                 args_fun=None,
+                 args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
                  measured_ind=None, covar_data=None,
@@ -176,7 +176,14 @@ class ParameterEstimation:
         elif self.num_datasets == 1:
             args_fun = [args_fun]
 
+        if kwargs_fun is None:
+            kwargs_fun = [{}] * self.num_datasets
+        elif self.num_datasets == 1:
+            if not isinstance(kwargs_fun, list):
+                kwargs_fun = [kwargs_fun]
+
         self.args_fun = args_fun
+        self.kwargs_fun = kwargs_fun
 
         self.num_xs = np.array([len(xs) for xs in self.x_fit])
         self.num_data = [array.size for array in self.y_fit]
@@ -214,9 +221,13 @@ class ParameterEstimation:
                                      for ind in range(self.num_params)]
         else:
             self.name_params_total = name_params
-            self.name_params = [name_params[ind]
-                                for ind in range(len(name_params))
-                                if self.map_variable[ind]]
+            if len(name_params) > sum(self.map_variable):
+                self.name_params = [name_params[ind]
+                                    for ind in range(len(name_params))
+                                    if self.map_variable[ind]]
+            else:
+                self.name_params = name_params
+
             self.name_params_plot = [r'$' + name + '$'
                                      for name in self.name_params]
 
@@ -320,12 +331,12 @@ class ParameterEstimation:
 
         return params_reconstr
 
-    def func_aux(self, params, x_vals, args):
-        states = self.function(params, x_vals, *args)
+    def func_aux(self, params, x_vals, args, kwargs):
+        states = self.function(params, x_vals, *args, **kwargs)
 
         return states.T.ravel()
 
-    def get_objective(self, params, residual_vec=False):
+    def get_objective(self, params, residual_vec=False, set_self=True):
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
 
@@ -338,29 +349,29 @@ class ParameterEstimation:
         resid_runs = []
         sens_runs = []
 
-        num_jac = False
-
         for ind in range(self.num_datasets):
             # Solve
             result = self.function(params, self.x_fit[ind],
-                                   *self.args_fun[ind])
+                                   *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if type(result) is tuple:  # func also returns the jacobian
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
-                num_jac = True
                 y_prof = result
 
                 if self.jac_fun is None:
+                    pass_to_fun = (self.x_fit[ind], self.args_fun[ind],
+                                   self.kwargs_fun[ind])
+
                     pick_p = np.where(self.map_variable)[0]
-                    sens = numerical_jac_data(
-                        self.func_aux, params,
-                        (self.x_fit[ind], self.args_fun[ind]),
-                        dx=self.dx_fd, pick_x=pick_p)
+                    sens = numerical_jac_data(self.func_aux, params,
+                                              pass_to_fun, dx=self.dx_fd,
+                                              pick_x=pick_p)
                 else:
                     sens = self.jac_fun(params, self.x_fit[ind],
-                                        *self.args_fun[ind])
+                                        *self.args_fun[ind],
+                                        **self.kwargs_fun[ind])
 
             if y_prof.ndim == 1:
                 y_run = y_prof
@@ -390,16 +401,18 @@ class ParameterEstimation:
             resid_runs.append(resid_run)
             sens_runs.append(sens_run)
 
-        self.sens_runs = sens_runs
-        self.y_runs = y_runs
-        self.resid_runs = resid_runs
-
         if type(self.objfun_iter) is list:
-            objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            objfun_val = np.linalg.norm(np.concatenate(resid_runs))**2
             self.objfun_iter.append(objfun_val)
 
         residuals = self.optimize_flag * np.concatenate(resid_runs)
-        self.residuals = residuals
+
+        if set_self:
+            self.sens_runs = sens_runs
+            self.y_runs = y_runs
+            self.resid_runs = resid_runs
+
+            self.residuals = residuals
 
         # Return objective
         if residual_vec:
@@ -588,6 +601,13 @@ class ParameterEstimation:
 
         else:
             pass  # TODO what to do with multiple datasets, maybe a parity plot?
+
+    def get_initial_residuals(self):
+        seed_params = self.param_seed[self.map_variable]
+        residuals_seed = self.get_objective(seed_params, residual_vec=True,
+                                            set_self=False)
+
+        return residuals_seed
 
     def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None,
                         plot_initial=False, black_white=False):
@@ -839,6 +859,7 @@ class ParameterEstimation:
 
         heatmap = axis_heat.imshow(corr_masked, cmap='RdBu', aspect='equal',
                                    vmin=-1, vmax=1)
+
         divider = make_axes_locatable(axis_heat)
         cax = divider.append_axes("right", size="5%", pad=0.05)
 

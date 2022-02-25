@@ -10,6 +10,7 @@ from PharmaPy.Interpolation import NewtonInterpolation, SplineInterpolation
 from PharmaPy.Commons import trapezoidal_rule
 
 import numpy as np
+from scipy.optimize import newton
 
 eps = np.finfo(float).eps
 
@@ -30,12 +31,29 @@ def Interpolation(t_data, y_data, time):
     return y_target
 
 
+def energy_balance(inst, mass_str):
+    masses = [getattr(phase, mass_str) for phase in inst.Phases]
+    h_in = [phase.getEnthalpy() for phase in inst.Phases]
+    mass_tot = sum(masses)
+
+    def fun(temp_out):
+        h_tot = inst.getEnthalpy(temp_out, volumetric=False)
+        balance = np.dot(masses, h_in) - mass_tot * h_tot
+
+        return balance
+
+    temps = [phase.temp for phase in inst.Phases]
+    temp_phase = newton(fun, np.mean(temps))
+
+    return temp_phase
+
+
 class Slurry:
 
     def __init__(self, vol_slurry=0,
                  # mass_slurry=0,
-                 x_distrib=None, distrib=None, phases=None):
-        self._Phases = phases
+                 x_distrib=None, distrib=None):
+        self._Phases = None
 
         self.vol_slurry = vol_slurry
         # self.mass_slurry = mass_slurry
@@ -45,6 +63,8 @@ class Slurry:
 
         self.distrib = distrib
         self.x_distrib = x_distrib
+
+        self.temp = None
 
     @property
     def Phases(self):
@@ -127,6 +147,7 @@ class Slurry:
             self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
 
         self.num_species = self.Liquid_1.num_species
+        self.temp = energy_balance(self, 'mass')
 
     def __check_distrib(self):
         if self.distrib is None:
@@ -223,7 +244,7 @@ class Slurry:
 
         return vol_total
 
-    def getEnthalpy(self, temp, volfracs=None, densMass=None):
+    def getEnthalpy(self, temp, volfracs=None, densMass=None, volumetric=True):
         # Individual phases
         hLiq = self.Liquid_1.getEnthalpy(temp=temp, basis='mass')
         hSol = self.Solid_1.getEnthalpy(temp=temp, basis='mass')
@@ -234,10 +255,14 @@ class Slurry:
         if volfracs is None:
             volfracs = self.getFractions()
 
-        if densMass is None:
-            densMass = self.getDensity()
+        if volumetric:
+            if densMass is None:
+                densMass = self.getDensity()
 
-        hSlurry = sum(volfracs * densMass * hMass)  # J/m**3 susp
+            hSlurry = sum(volfracs * densMass * hMass)  # J/m**3 susp
+        else:
+            phase_massfrac = self.getFractions(vol_basis=False)
+            hSlurry = np.dot(phase_massfrac, hMass)
 
         return hSlurry
 
@@ -269,14 +294,17 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    def __init__(self, vol_flow=0, x_distrib=None, distrib=None,
-                 streams=None):
+    def __init__(self, vol_flow=0, x_distrib=None, distrib=None):
 
-        super().__init__(vol_flow, x_distrib, distrib, streams)
+        super().__init__(vol_flow, x_distrib, distrib)
 
         self.mass_flow = self.mass_slurry
         # self.mole_flow = self.moles
         self.vol_flow = self.vol_slurry
+
+        self.DynamicInlet = None
+        self.controllable = ['vol_flow', 'temp']
+        self.input_states = ['vol_flow', 'temp', 'distrib']
 
         # del self.mass
         # del self.moles
@@ -358,6 +386,7 @@ class SlurryStream(Slurry):
                                      mass=mass_sol)
 
         self.num_species = self.Liquid_1.num_species
+        self.temp = energy_balance(self, 'mass_flow')
 
     def InterpolateInputs(self, time):
         if isinstance(time, float) or isinstance(time, int):
@@ -368,6 +397,17 @@ class SlurryStream(Slurry):
             y_interpol = interpol.evalSpline(time)
 
         return y_interpol
+
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.input_states:
+                inputs[attr] = getattr(self, attr)
+
+        else:
+            inputs = self.DynamicInlet.evaluate_inputs(time)
+
+        return inputs
 
 
 class Cake:

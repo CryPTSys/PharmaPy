@@ -9,7 +9,7 @@ Created on Sun Aug  9 13:52:55 2020
 
 class CoolingWater:
     def __init__(self, vol_flow=None, mass_flow=None, temp_in=298.15,
-                 controls=None, args_control=None, h_conv=1000):
+                 h_conv=1000):
 
         self.rho = 1000  # kg/m**3
         self.cp = 4180  # J/kg/K
@@ -21,25 +21,23 @@ class CoolingWater:
 
         self.updateObject(vol_flow, mass_flow, temp_in)
 
-        # Controls
-        if controls is None:
-            controls = {}
-        else:
-            if args_control is None:
-                args_control = {key: () for key in controls.keys()}
-
-            update_dict = {}
-            for key, fun in controls.items():
-                update_dict[key] = fun(0, *args_control[key])
-
-            self.updateObject(**update_dict)
-
-        self.controls = controls
-        self.args_control = args_control
         self.controllable = ('temp_in', 'vol_flow', 'mass_flow')
 
         # Outputs
         self.temp_out = None
+
+        self._DynamicInlet = None
+
+    @property
+    def DynamicInlet(self):
+        return self._DynamicInlet
+
+    @DynamicInlet.setter
+    def DynamicInlet(self, dynamic_object):
+        dynamic_object.controllable = self.controllable
+        dynamic_object.parent_instance = self
+
+        self._DynamicInlet = dynamic_object
 
     def updateObject(self, vol_flow=None, mass_flow=None, temp_in=None):
         if vol_flow is not None:
@@ -52,16 +50,13 @@ class CoolingWater:
         if temp_in is not None:
             self.temp_in = temp_in
 
-    def evaluate_controls(self, time):
-        controls_out = {}
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.controllable:
+                inputs[attr] = getattr(self, attr)
 
-        if len(self.controls) > 0:
-            for key, fun in self.controls.items():
-                args = self.args_control[key]
-                controls_out[key] = fun(time, *args)
+        else:
+            inputs = self.DynamicInlet.evaluate_inputs(time)
 
-        for name in self.controllable:
-            if name not in controls_out.keys():
-                controls_out[name] = getattr(self, name)
-
-        return controls_out
+        return inputs

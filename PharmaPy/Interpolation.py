@@ -9,6 +9,7 @@ Created on Tue Apr 14 22:06:49 2020
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import CubicSpline
+from scipy.special import comb
 
 
 class NewtonInterpolation:
@@ -65,6 +66,18 @@ class NewtonInterpolation:
         return p
 
 
+def smoothstep(x, x_min=0, x_max=1, N=1):
+    x = np.clip((x - x_min) / (x_max - x_min), 0, 1)
+
+    result = 0
+    for n in range(0, N + 1):
+        result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x)**n
+
+    result *= x ** (N + 1)
+
+    return result
+
+
 class SplineInterpolation:
     def __init__(self, x_data, y_data):
 
@@ -109,7 +122,7 @@ class PiecewiseLagrange:
         y_vals = np.atleast_1d(y_vals)
 
         if y_vals.ndim == 1:
-            y_vals = y_vals.reshape(-1, 1)
+            y_vals = y_vals.reshape(-1, order)
 
         if time_k is None:
             num_interv = len(y_vals)
