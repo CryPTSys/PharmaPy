@@ -12,8 +12,137 @@ import numpy as np
 from scipy.integrate import simps
 from itertools import cycle
 
+from assimulo.exception import TerminateSimulation
+
 linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
+
+
+def unravel_states(states, num_states, name_states, discretized=False,
+                   state_map=None):
+    acum_len = np.cumsum(num_states)[:-1]
+
+    if discretized:
+        states_reord = states.reshape(-1, sum(num_states))
+        states_split = np.split(states_reord, acum_len, axis=1)
+    else:
+        states_split = np.split(states, acum_len)
+
+    if state_map is not None:
+        states_split = [array for ind, array in enumerate(states_split)
+                        if state_map[ind]]
+
+        name_states = [name for ind, name in enumerate(name_states)
+                       if state_map[ind]]
+
+    dict_states = dict(zip(name_states, states_split))
+
+    return dict_states
+
+
+def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
+                       threshold=1e-5, norm_type=None):
+
+    if not isinstance(threshold, (tuple, list)):
+        threshold = [threshold] * len(sdot)
+
+    sdot = sdot.values()
+    sdot_flags = []
+
+    norms = []
+    for val in sdot:
+        norms.append(np.linalg.norm(val, ord=norm_type))
+
+    if time_stop is None:
+        time_limit = num_tau * tau
+    else:
+        time_limit = time_stop
+
+    time_flag = time_limit < time
+    sdot_flags = [nor < lim for nor, lim in zip(norms, threshold)]
+
+    flags = [time_flag] + sdot_flags
+
+    flag = not all(flags)
+
+    return flag
+
+
+def eval_state_events(time, states, switches,
+                      states_dim, name_states, state_event_list,
+                      sdot=None, discretized_model=False, state_map=None):
+    events = []
+
+    dict_states = unravel_states(states, states_dim, name_states,
+                                 discretized=discretized_model)
+
+    if sdot is not None:
+        dict_sdot = unravel_states(sdot, states_dim, name_states,
+                                   discretized=discretized_model,
+                                   state_map=state_map)
+
+    if any(switches):
+
+        for di in state_event_list:
+            if 'callable' in di.keys():
+                event_flag = di['callable'](time, dict_states, dict_sdot,
+                                            **di['kwargs'])
+            else:
+                state_name = di['state_name']
+                state_idx = di['state_idx']
+                ref_value = di['value']
+
+                checked_value = dict_states[state_name][state_idx]
+
+                event_flag = ref_value - checked_value
+
+            events.append(event_flag)
+
+    events = np.hstack(events)
+
+    return events
+
+
+def handle_events(solver, event_info, state_event_list, any_event=True):
+    # if any_event:
+    event_markers = event_info[0]
+
+    flags = []
+
+    dim_events = [event.get('num_conditions', 1) for event in state_event_list]
+
+    idx_state = [[ind] * num for ind, num in enumerate(dim_events)]
+    idx_state = np.hstack(idx_state)
+
+    for ind, val in enumerate(event_markers):
+        direction = state_event_list[idx_state[ind]].get('direction')
+        terminate = False
+
+        if val:
+            if direction is None:
+                terminate = True
+            elif direction == val:
+                terminate = True
+
+        flags.append(terminate)
+
+    if any_event:
+        if any(flags):
+            idx_true = [ind for (ind, flag) in enumerate(flags) if flag]
+
+            for idx in idx_true:
+                id_event = state_event_list[idx].get('event_name')
+                if flags[idx]:
+                    if id_event is None:
+                        print('State event %i was reached' % (idx + 1))
+                    else:
+                        print("State event '%s' was reached" % id_event)
+
+                    raise TerminateSimulation
+
+    else:
+        if all(flags):
+            raise TerminateSimulation
 
 
 def high_resolution_fvm(y, boundary_cond, limiter_type='Van Leer',

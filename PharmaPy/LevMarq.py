@@ -77,8 +77,12 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         d_diag = eye(len(x))
 
     mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
+    # mu = lambd_zero
 
     num_feval = 0
+
+    print('Seed:')
+    # print(x)
 
     if verbose:
         print()
@@ -90,7 +94,6 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
-
         lm_step = solve(a_matrix + mu*d_diag, -b_vector)
 
         if norm(lm_step) < eps_2 * norm(x):
@@ -98,6 +101,9 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             break
 
         x_new = x + lm_step
+        print('iteration %i' % num_feval)
+        # print(x_new)
+
         # print(x_new)
         fun_new = func(x_new, *args)
         jac_new = deriv(x_new, *args)

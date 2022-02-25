@@ -8,7 +8,7 @@ Created on Tue May 26 16:37:29 2020
 import numpy as np
 # from autograd import numpy as np
 from autograd import jacobian as jacauto
-from PharmaPy.Commons import mid_fn, trapezoidal_rule
+from PharmaPy.Commons import mid_fn, trapezoidal_rule, eval_state_events, handle_events
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
@@ -1007,11 +1007,12 @@ class Evaporator:
 
 class ContinuousEvaporator:
     def __init__(self, vol_drum, adiabatic=True,
-                 pres=101325, diam_out=2.54e-2, frac_liq=0.5,
+                 pressure=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
                  h_conv=1000, temp_ht=298.15,
-                 activity_model='ideal', num_interp_points=3, mult_flash=1):
+                 activity_model='ideal', num_interp_points=3, mult_flash=1,
+                 state_events=None):
 
         self._Inlet = None
         self._Phases = None
@@ -1034,7 +1035,7 @@ class ContinuousEvaporator:
 
         self.adiabatic = adiabatic
 
-        self.pres = pres
+        self.pres = pressure
 
         # Jacobians
         self.jac_states = jacauto(self.unit_model, 1)
@@ -1047,12 +1048,7 @@ class ContinuousEvaporator:
 
         self.is_continuous = True
 
-        # self.timeProf = []
-        # self.tempProf = []
-        # self.presProf = []
-
-        # self.xliqProf = []
-        # self.yvapProf = []
+        self.tau = None
 
         self.time_runs = []
         self.temp_runs = []
@@ -1068,6 +1064,8 @@ class ContinuousEvaporator:
         self.mult_flash = mult_flash
 
         self.nomenclature()
+
+        self.state_event_list = state_events
 
     @property
     def Phases(self):
@@ -1113,7 +1111,11 @@ class ContinuousEvaporator:
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'mole_flow', 'temp']
         self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
-                            'pres', 'temp']
+                            'pres', 'U_internal', 'temp']
+
+        self.name_differential = ['moles_i', 'U_internal']
+        self.name_algebraic = ['x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+                               'pres', 'temp']
 
     def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
                        input_flow):
@@ -1218,7 +1220,7 @@ class ContinuousEvaporator:
 
             return out_energy
 
-    def unit_model(self, time, states, states_dot=None, params=None,
+    def unit_model(self, time, states, states_dot=None, sw=None, params=None,
                    enrgy_bce=False):
 
         n_comp = self.num_species
@@ -1337,8 +1339,21 @@ class ContinuousEvaporator:
         hvap_init = self.VapPhase.getEnthalpy(temp_bubble_init, basis='mole',
                                               mole_frac=y_init)
 
+        # Heat transfer
+        if self.adiabatic:
+            heat_transfer = 0
+        else:
+            height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
+            area_ht = np.pi * self.diam_tank * height_liq + self.area_base
+
+            ht_controls = self.Utility.evaluate_inputs(0)
+            temp_ht = ht_controls['temp_in']
+
+            heat_transfer = self.h_conv * area_ht * (temp_bubble_init -
+                                                     temp_ht)
+
         # Disregard vapor flow at the beginning (vapor phase is at P_0)
-        du_init = inlet_flow * hin_init - flow_liq * hliq_init   # bce - dU_dt
+        du_init = inlet_flow * hin_init - flow_liq * hliq_init - heat_transfer  # bce - dU_dt
 
         # Internal energy
         u_init = mol_liq * hliq_init + mol_vap * hvap_init - \
@@ -1356,8 +1371,34 @@ class ContinuousEvaporator:
 
         return states_init, sdot_init
 
+    def _get_tau(self):
+        time_upstream = getattr(self.Inlet, 'time_upstream')
+        if time_upstream is None:
+            time_upstream = [0]
+
+        inputs = get_inputs(time_upstream[-1], self, self.num_species)
+
+        dens_inlet = self.LiqPhase.getDensity(mole_frac=inputs['mole_frac'],
+                                              temp=inputs['temp'],
+                                              basis='mole') * 1000  # mol/m**3
+
+        volflow_in = inputs['mole_flow'] / dens_inlet
+        tau = self.vol_liq_set / volflow_in
+
+        self.tau = tau
+        return tau
+
+    def _eval_state_events(self, time, states, sdot, sw):
+
+        events = eval_state_events(
+            time, states, sw, self.len_states,
+            self.name_states, self.state_event_list, sdot=sdot,
+            discretized_model=False, state_map=self.state_map)
+
+        return events
+
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
-                   sundials_opts=None, timesim_limit=0):
+                   sundials_opts=None, timesim_limit=0, any_event=True):
         self.args_inputs = (self, self.num_species)
 
         states_initial, sdev_initial = self.init_unit()
@@ -1368,6 +1409,9 @@ class ContinuousEvaporator:
                                   np.zeros(2*n_comp + 3),
                                   [1, 0])
                                  )
+        # dM_i/dt, (x_i, y_i), (P, M_L, M_V), (dU/dt, T)
+        state_map = [1] + [0] * 2 + [0] * 3 + [1, 0]
+        self.state_map = state_map
 
         # ---------- Solve problem
         if steady_state:
@@ -1376,13 +1420,31 @@ class ContinuousEvaporator:
 
             return steady_solution
         elif solve:
-            # Create problem
-            problem = Implicit_Problem(self.unit_model,
-                                       states_initial, sdev_initial,
-                                       t0=0)
+            if self.state_event_list is None:
+                problem = Implicit_Problem(self.unit_model,
+                                           states_initial, sdev_initial,
+                                           t0=0)
+            else:
+                switches = [True] * len(self.state_event_list)
+
+                problem = Implicit_Problem(self.unit_model,
+                                           states_initial, sdev_initial,
+                                           t0=0, sw0=switches)
+
+                def new_handle(solver, info):
+                    return handle_events(
+                        solver, info, self.state_event_list,
+                        any_event=any_event)
+
+                problem.state_events = self._eval_state_events
+                problem.handle_event = new_handle
 
             problem.algvar = alg_map
+            self.alg_map = alg_map
             # problem.jac = self.unit_jacobian
+
+            # See self.name_states
+            self.len_states = [self.num_species] * 3 + [1] * 5
 
             # Set solver
             solver = IDA(problem)

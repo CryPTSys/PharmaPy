@@ -206,6 +206,12 @@ class PCR_calibration:
         p_matrix = self.svd_dict['V'][:, :num_comp]
         new_projections = np.dot(inputs_centered, p_matrix)
 
+        resid_x = inputs_centered[0] - np.dot(new_projections[0],
+                                              p_matrix.T)
+
+        SPE_x = np.dot(resid_x, resid_x)
+        print(SPE_x)
+
         # new_projections, _, di = self.__get_projections(inputs_centered,
         #                                                 num_comp)
 

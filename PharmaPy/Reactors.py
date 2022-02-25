@@ -7,9 +7,11 @@ Created on Mon Apr 27 14:23:01 2020
 
 from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
+from assimulo.exception import TerminateSimulation
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule
+from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
+                              eval_state_events, handle_events)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs
 
@@ -43,7 +45,7 @@ class _BaseReactor:
     def __init__(self, partic_species, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
-                 h_conv, ht_mode, return_sens):
+                 h_conv, ht_mode, return_sens, state_events):
         """
 
         Parameters
@@ -111,6 +113,8 @@ class _BaseReactor:
         else:
             self.controls = controls
 
+        self.state_event_list = state_events
+
         # Outputs
         self.time_runs = []
         self.temp_runs = []
@@ -134,6 +138,7 @@ class _BaseReactor:
         classify_phases(self)
 
         self.name_species = self.Liquid_1.name_species
+        self.num_species = len(self.name_species)
 
         self.vol_phase = copy.copy(self.Liquid_1.vol)
         self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
@@ -180,6 +185,16 @@ class _BaseReactor:
         self.Liquid_1.__dict__.update(self.__original_phase_dict__)
         self.__dict__.update(copy_dict)
 
+    def _eval_state_events(self, time, states, sw):
+        is_PFR = self.__class__.__name__ == 'PlugFlowReactor'
+
+        events = eval_state_events(
+            time, states, sw, self.len_states,
+            self.states_uo, self.state_event_list, sdot=self.derivatives,
+            discretized_model=is_PFR)
+
+        return events
+
     def heat_transfer(self, temp, temp_ht, vol):
         # Heat transfer area
         if self.ht_mode == 'coil':  # Half pipe heat transfer
@@ -197,19 +212,23 @@ class _BaseReactor:
 
             self.mask_species = np.asarray(mask_species)
 
-            name_concentr = [r'mole_conc_{}'.format(sp)
-                             for sp in self.name_species]
+        self.name_states = ['mole_conc']
+        if not self.isothermal:
+            self.name_states.append('temp')
 
-            self.name_states = name_concentr + self.states_uo[1:]
+        #     name_concentr = [r'mole_conc_{}'.format(sp)
+        #                      for sp in self.name_species]
 
-        # Inputs
-        self.input_names = name_concentr
-        self.input_names.append('temp')
+        #     self.name_states = name_concentr + self.states_uo[1:]
 
-        states_map = dict(zip(self.states_uo, range(len(self.states_uo))))
+        # # Inputs
+        # self.input_names = name_concentr
+        # self.input_names.append('temp')
 
-        idx_inputs = [states_map.get(key) for key in self.input_names]
-        self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
+        # states_map = dict(zip(self.states_uo, range(len(self.states_uo))))
+
+        # idx_inputs = [states_map.get(key) for key in self.input_names]
+        # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
 
     def unit_model(self, time, states, params):
 
@@ -250,6 +269,8 @@ class _BaseReactor:
             balances = np.append(material_bces, energy_bce)
         else:
             balances = material_bces
+
+        self.derivatives = balances
 
         return balances
 
@@ -1154,12 +1175,13 @@ class PlugFlowReactor(_BaseReactor):
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, adiabatic=False,
                  reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='bath', return_sens=True):
+                 h_conv=1000, ht_mode='bath', return_sens=True,
+                 state_events=None):
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         h_conv, ht_mode, return_sens)
+                         h_conv, ht_mode, return_sens, state_events)
 
         self.is_continuous = True
         self.oper_mode = 'Continuous'
@@ -1175,6 +1197,7 @@ class PlugFlowReactor(_BaseReactor):
         self.nomenclature()
 
         self._Inlet = None
+        self.tau = None
 
     @property
     def Inlet(self):
@@ -1359,22 +1382,12 @@ class PlugFlowReactor(_BaseReactor):
 
             return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant
 
-    def unravel_states(self, states):
-        if 'temp' in self.states_uo:
-            temp = states[self.num_species::self.num_species + 1]
-            conc = np.delete(
-                states,
-                range(self.num_species, len(states), self.num_species + 1))
-            conc = conc.reshape(-1, self.num_species)
-        else:
-            temp = self.Liquid_1.temp * np.ones(self.num_discr)  # Isothermal
-            conc = states.reshape(-1, self.num_species)
+    def unit_model(self, time, states, sw=None, enrgy_bce=False):
 
-        return conc, temp
-
-    def unit_model(self, time, states, enrgy_bce=False):
-
-        conc, temp = self.unravel_states(states)
+        # conc, temp = self.unravel_states(states)
+        reordered = states.reshape(-1, self.num_states)
+        conc = reordered[:, :self.num_species]
+        temp = reordered[:, -1]
 
         inputs = get_inputs(time, *self.args_inputs)
 
@@ -1429,21 +1442,38 @@ class PlugFlowReactor(_BaseReactor):
         else:
             balances = material_bces.ravel()
 
+        self.derivatives = balances
+
         return balances
 
-    def solve_unit(self, runtime, num_discr, verbose=True):
+    def _get_tau(self):
+        vol_rxn = self.Liquid_1.vol
+
+        time_upstream = getattr(self.Inlet, 'time_upstream')
+        if time_upstream is None:
+            time_upstream = [0]
+
+        inputs = get_inputs(time_upstream[-1], self, self.num_species)
+        tau = vol_rxn / inputs['vol_flow']
+
+        self.tau = tau
+
+        return tau
+
+    def solve_unit(self, runtime, num_discr, verbose=True, any_event=True):
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
-        self.num_species = len(c_inlet)
+        # self.num_species = len(c_inlet)
         self.num_discr = num_discr
 
         vol_rxn = self.Liquid_1.vol
-
         self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
 
         c_init = np.ones((num_discr,
                           self.num_species)) * self.Liquid_1.mole_conc
+
+        self.num_states = self.num_species
 
         # c_init = c_init.astype(np.float64)
         # c_init[c_init == 0] = eps
@@ -1451,13 +1481,37 @@ class PlugFlowReactor(_BaseReactor):
         self.num_concentr = self.num_species  # TODO: make consistent with Batch
         self.args_inputs = (self, self.num_concentr, 0)
 
+        len_states = [self.num_species]
+
         if 'temp' in self.states_uo:
             temp_init = np.ones(len(c_init)) * self.Liquid_1.temp
             states_init = np.column_stack((c_init, temp_init)).ravel()
+            self.num_states += 1
+            len_states.append(1)
         else:
             states_init = c_init.ravel()
 
-        problem = Explicit_Problem(self.unit_model, states_init, t0=0)
+        self.trim_idx = np.cumsum(len_states)[:-1]
+        self.len_states = len_states
+
+        model = self.unit_model
+        if self.state_event_list is None:
+            def model(t, y): return self.unit_model(t, y, None)
+            problem = Explicit_Problem(model, states_init, t0=0)
+        else:
+            switches = [True] * len(self.state_event_list)
+            problem = Explicit_Problem(self.unit_model, states_init, t0=0,
+                                       sw0=switches)
+
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+
+        self.derivatives = model(0, states_init)
+
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
 

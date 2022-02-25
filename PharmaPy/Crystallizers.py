@@ -13,12 +13,14 @@ from assimulo.problem import Explicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.MixedPhases import Slurry, SlurryStream
-from PharmaPy.Commons import reorder_sens, plot_sens, trapezoidal_rule, upwind_fvm, high_resolution_fvm
+from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
+                              upwind_fvm, high_resolution_fvm,
+                              eval_state_events)
+
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib.colors import LightSource
@@ -55,7 +57,8 @@ class _BaseCryst:
                  isothermal, controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
                  reset_states,
-                 h_conv, vol_ht, basis, jac_type):
+                 h_conv, vol_ht, basis, jac_type,
+                 state_events):
 
         """ Construct a Crystallizer object
         Parameters
@@ -114,6 +117,12 @@ class _BaseCryst:
                 self.args_control = {key: list(val)
                                      for key, val in args_control.items()}
 
+            for key, control in self.controls.items():
+                if not callable(control):
+                    raise RuntimeError(
+                        "'%s' control is not a callable. Provide a function "
+                        "to be evaluated" % key)
+
         self.isothermal = isothermal
         if 'temp' in self.controls.keys():
             self.isothermal = False
@@ -169,6 +178,8 @@ class _BaseCryst:
         # Parameters for optimization
         self.params_iter = None
         self.vol_mult = 1
+
+        self.state_event_list = state_events
 
     @property
     def Phases(self):
@@ -372,7 +383,8 @@ class _BaseCryst:
 
             return dcsd_dt, np.array(mass_transfer)
 
-    def unit_model(self, time, states, params, mat_bce=False, enrgy_bce=False):
+    def unit_model(self, time, states, params, sw=None,
+                   mat_bce=False, enrgy_bce=False):
 
         # ---------- Prepare inputs
         if len(self.params_fixed) > 1:
@@ -494,6 +506,8 @@ class _BaseCryst:
             else:
                 balances = material_bces
 
+            self.derivatives = balances
+
             return balances
 
     def unit_jacobians(self, time, states, sens, params, fy, v_vector):
@@ -605,11 +619,12 @@ class _BaseCryst:
                 raise NameError("Bad string value for the 'jac_type' argument")
 
         else:
-            def unit_model(time, states): return self.unit_model(
+            def model(time, states): return self.unit_model(
                 time, states, params_mergd)
 
-            problem = Explicit_Problem(unit_model, states_init,
+            problem = Explicit_Problem(model, states_init,
                                        t0=self.elapsed_time)
+
             # ----- Jacobian callables
             if self.method == 'moments':
                 # w.r.t. states
@@ -627,6 +642,12 @@ class _BaseCryst:
                                             fy, v)
 
         return problem
+
+    def _eval_state_events(self, time, states, sw):
+        events = eval_state_events(
+            time, states, sw, self.len_states,
+            self.states_uo, self.state_event_list, sdot=self.derivatives,
+            discretized_model=False)
 
     def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
@@ -684,11 +705,15 @@ class _BaseCryst:
 
         self.num_species = len(init_liquid)
 
+        self.len_states = [self.num_distr, self.num_species]
+
         self.args_inputs = (self, self.num_species, self.num_distr)
 
         if 'vol' in self.states_uo:  # Batch or semibatch
             vol_init = self.Slurry.getTotalVol()
             init_susp = np.append(init_liquid, vol_init)
+
+            self.len_states.append(1)
         else:
             init_susp = init_liquid
 
@@ -732,8 +757,11 @@ class _BaseCryst:
         if 'temp_ht' in self.states_uo:
             states_init = np.concatenate(
                 (states_init, [self.Liquid_1.temp, self.Liquid_1.temp]))
+
+            self.len_states += [1, 1]
         elif 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Liquid_1.temp)
+            self.len_states += [1]
 
         # if self.params_iter is None:
         merged_params = self.Kinetics.concat_params()[self.mask_params]
@@ -1302,13 +1330,13 @@ class BatchCryst(_BaseCryst):
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None):
+                 jac_type=None, state_events=None):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          isothermal, controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero, reset_states, h_conv, vol_ht,
-                         basis, jac_type)
+                         basis, jac_type, state_events)
         """ Construct a Batch Crystallizer object
         Parameters
         ----------
@@ -1752,13 +1780,13 @@ class MSMPR(_BaseCryst):
                  cfun_solub=None, adiabatic=False, rad_zero=0,
                  reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None, num_interp_points=3):
+                 jac_type=None, num_interp_points=3, state_events=None):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          isothermal, controls, params_control,
                          cfun_solub, adiabatic, rad_zero,
                          reset_states, h_conv, vol_ht,
-                         basis, jac_type)
+                         basis, jac_type, state_events)
 
         """ Construct a MSMPR object
         Parameters
@@ -2117,7 +2145,8 @@ class SemibatchCryst(MSMPR):
                  method='1D-FVM', scale=1, isothermal=False, controls=None,
                  params_control=None, cfun_solub=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
-                 basis='mass_conc', jac_type=None, num_interp_points=3):
+                 basis='mass_conc', jac_type=None, num_interp_points=3,
+                 state_events=None):
 
         super().__init__(target_comp, mask_params,
                          method, scale, vol_tank,
@@ -2125,7 +2154,7 @@ class SemibatchCryst(MSMPR):
                          cfun_solub, adiabatic, rad_zero,
                          reset_states,
                          h_conv, vol_ht, basis,
-                         jac_type, num_interp_points)
+                         jac_type, num_interp_points, state_events)
 
     def nomenclature(self):
         self.states_uo.append('vol')

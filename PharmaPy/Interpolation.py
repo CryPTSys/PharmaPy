@@ -122,7 +122,7 @@ class PiecewiseLagrange:
         y_vals = np.atleast_1d(y_vals)
 
         if y_vals.ndim == 1:
-            y_vals = y_vals.reshape(-1, 1)
+            y_vals = y_vals.reshape(-1, order)
 
         if time_k is None:
             num_interv = len(y_vals)

@@ -12,9 +12,9 @@ from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
 from collections import OrderedDict
 import time
-from PharmaPy.Connections import Graph
+from PharmaPy.Connections import Graph, get_inputs
 
-from PharmaPy.Commons import trapezoidal_rule
+from PharmaPy.Commons import trapezoidal_rule, check_steady_state
 
 
 class SimulationExec:
@@ -63,7 +63,8 @@ class SimulationExec:
 
                 value.name = key
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True):
+    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
+                       run_steady_state=False, tolerances_ss=None):
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
@@ -90,7 +91,8 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
-        execution_names = self.uos_instances.keys()
+        execution_names = list(self.uos_instances.keys())
+
         if pick_units is not None:
             uo_vals = list(uos.values())
             uo_names = list(uos.keys())
@@ -101,8 +103,11 @@ class SimulationExec:
             execution_order = [execution_order[execution_names.index(name)]
                                for name in pick_units]
 
+        if tolerances_ss is None:
+            tolerances_ss = {}
+
         # Run loop
-        for instance in execution_order:
+        for ind, instance in enumerate(execution_order):
             uo_id = list(uos.keys())[list(uos.values()).index(instance)]
 
             if verbose:
@@ -117,7 +122,28 @@ class SimulationExec:
                     conn.ReceiveData()  # receive phases from upstream uo
                     conn.TransferData()
 
-            instance.solve_unit(**kwargs_run.get(uo_id, {}))
+            kwargs_uo = kwargs_run.get(uo_id, {})
+
+            if run_steady_state:
+                if instance.__class__.__name__ == 'Mixer':
+                    pass
+                else:
+                    tau = instance._get_tau()
+
+                    tolerances = tolerances_ss.get(execution_names[ind],
+                                                   1e-6)
+
+                    kw_ss = {'tau': tau, 'threshold': tolerances}
+                    ss_event = {'callable': check_steady_state,
+                                'num_conditions': 1,
+                                'event_name': 'steady state',
+                                'kwargs': kw_ss
+                                }
+
+                    instance.state_event_list = [ss_event]
+                    kwargs_uo['any_event'] = False
+
+            instance.solve_unit(**kwargs_uo)
 
             uo_type = instance.__module__
             if uo_type != 'PharmaPy.Containers':
@@ -141,6 +167,7 @@ class SimulationExec:
                 time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
 
         self.time_processing = time_processing
+
 
     def GetStreamTable(self, basis='mass'):
 
