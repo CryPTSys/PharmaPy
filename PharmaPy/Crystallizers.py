@@ -67,6 +67,9 @@ class _BaseCryst:
             Operation mode of the reactor. It takes one of the following
             values: 'Batch', 'MSMPR', 'Semibatch'. If 'Semibatch', it is
             assumed that an antisolvent stream is entering the tank.
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
+            
         """
 
         if jac_type == 'AD':

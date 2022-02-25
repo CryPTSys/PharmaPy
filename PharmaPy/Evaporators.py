@@ -314,6 +314,18 @@ class Evaporator:
                  activity_model='ideal', state_events=None,
                  stop_at_maxvol=True, flash_kwds=None):
 
+        """
+        Parameters
+        ----------
+        vol_drum : float
+            Total drum volume (m**3)
+        pres : float
+            pressure set (Pa)
+
+        """
+
+
+
         self._Inlet = None
         self._Phases = None
         self._Utility = None
