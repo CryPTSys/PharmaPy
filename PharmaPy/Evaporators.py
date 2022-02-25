@@ -319,8 +319,10 @@ class Evaporator:
         ----------
         vol_drum : float
             Total drum volume (m**3)
-        pres : float
+        pres : float (optional)
             pressure set (Pa)
+        diam_out : float (optional) - Default: 2.54e-2
+            diameter of the vapor outlet pipe (m)
 
         """
 
