@@ -28,7 +28,7 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9, eta_fun=None, mass_eta=False):
+                 resist_medium=2.22e9, mass_coeff=1e-2, heat_coeff=10, eta_fun=None, mass_eta=False):
         """
 
 
@@ -42,6 +42,10 @@ class Drying:
             DESCRIPTION. The default is 0.01.
         resist_medium : TYPE, optional
             DESCRIPTION. The default is 2.22e9.
+        mass_coeff: 
+            DESCRIPTION : Mass transfer coefficient
+        heat_coeff:
+            DESCRIPTION : Heat transfer coefficient
         eta_fun : TYPE, optional
             DESCRIPTION. The default is None.
         mass_eta : bool, optional
@@ -65,9 +69,9 @@ class Drying:
         self.T_ambient = 298
 
         # Transfer coefficients
-        self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
+        self.k_y = mass_coeff  # mol/s/m**2 (Seader, Separation process)
         self.h_T_j = 30  # W/m**2/K
-        self.h_T_j = 10  # W/m**2/K
+        self.h_T_j = heat_coeff  # W/m**2/K
 
         self.nomenclature()
 

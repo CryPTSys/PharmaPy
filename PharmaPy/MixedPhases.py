@@ -410,6 +410,7 @@ class Cake:
         alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
 
         numerator = trapezoidal_rule(x_grid, csd * alpha_x)
+        # numerator = np.sum(csd * alpha_x)
         alpha = numerator / (self.Solid_1.moments[0] + eps)
 
         return alpha
