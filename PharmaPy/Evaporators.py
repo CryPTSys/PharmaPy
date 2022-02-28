@@ -7,7 +7,7 @@ Created on Tue May 26 16:37:29 2020
 
 import numpy as np
 # from autograd import numpy as np
-from autograd import jacobian as jacauto
+# from autograd import jacobian as jacauto
 from PharmaPy.Commons import mid_fn, trapezoidal_rule, eval_state_events, handle_events
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
@@ -308,7 +308,7 @@ class AdiabaticFlash:
 
 class Evaporator:
     def __init__(self, vol_drum,
-                 pres=101325, diam_out=2.54e-2,
+                 pressure=101325, diam_out=2.54e-2,
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
                  activity_model='ideal', state_events=None,
@@ -354,11 +354,11 @@ class Evaporator:
         self.area_base = np.pi / 4 * self.diam_tank**2
         self.area_out = np.pi / 4 * diam_out**2
 
-        self.pres = pres
+        self.pres = pressure
 
-        # Jacobians
-        self.jac_states = jacauto(self.unit_model, 1)
-        self.jac_sdot = jacauto(self.unit_model, 2)
+        # # Jacobians
+        # self.jac_states = jacauto(self.unit_model, 1)
+        # self.jac_sdot = jacauto(self.unit_model, 2)
 
         # Heat transfer
         self.h_conv = h_conv
@@ -624,6 +624,8 @@ class Evaporator:
 
             self.LiqEvap.mole_frac = x_liq
             self.VapEvap.mole_flow = y_vap
+
+            # print(abs(balances).max())
 
             return balances
 
@@ -1050,8 +1052,8 @@ class ContinuousEvaporator:
         self.pres = pressure
 
         # Jacobians
-        self.jac_states = jacauto(self.unit_model, 1)
-        self.jac_sdot = jacauto(self.unit_model, 2)
+        # self.jac_states = jacauto(self.unit_model, 1)
+        # self.jac_sdot = jacauto(self.unit_model, 2)
 
         # Heat transfer
         self.h_conv = h_conv
@@ -1232,7 +1234,7 @@ class ContinuousEvaporator:
 
             return out_energy
 
-    def unit_model(self, time, states, states_dot=None, sw=None, params=None,
+    def unit_model(self, time, states, states_dot, sw, params=None,
                    enrgy_bce=False):
 
         n_comp = self.num_species
@@ -1407,6 +1409,8 @@ class ContinuousEvaporator:
             self.name_states, self.state_event_list, sdot=sdot,
             discretized_model=False, state_map=self.state_map)
 
+        print(events)
+
         return events
 
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
@@ -1433,13 +1437,18 @@ class ContinuousEvaporator:
             return steady_solution
         elif solve:
             if self.state_event_list is None:
-                problem = Implicit_Problem(self.unit_model,
+                def model(t, y, ydot, params=None, energy=False):
+                    return self.unit_model(t, y, ydot, None, params, energy)
+                problem = Implicit_Problem(model,
                                            states_initial, sdev_initial,
                                            t0=0)
             else:
                 switches = [True] * len(self.state_event_list)
 
-                problem = Implicit_Problem(self.unit_model,
+                def model(t, y, ydot, sw):
+                    return self.unit_model(t, y, ydot, sw, None, False)
+
+                problem = Implicit_Problem(model,
                                            states_initial, sdev_initial,
                                            t0=0, sw0=switches)
 
@@ -1462,6 +1471,7 @@ class ContinuousEvaporator:
             solver = IDA(problem)
             solver.make_consistent('IDA_YA_YDP_INIT')
             solver.suppress_alg = True
+            solver.report_continuously = True
 
             if timesim_limit:
                 solver.report_continuously = True
@@ -1543,7 +1553,9 @@ class ContinuousEvaporator:
         flow_vap = np.zeros_like(heat_bce)
 
         for ind, row in enumerate(states):
-            mat, energy = self.unit_model(time[ind], row, enrgy_bce=True)
+            mat, energy = self.unit_model(time[ind], row,
+                                          states_dot=None, sw=None,
+                                          enrgy_bce=True)
             heat_bce[ind] = energy[1]
 
             temp_bubble = self.LiqPhase.getBubblePoint(
