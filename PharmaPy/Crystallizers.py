@@ -75,16 +75,28 @@ class _BaseCryst:
         isothermal : bool
             Whether the energy balace is considered (i.e dT/dt = 0)
         controls : dict of dicts
-            
+            TODO 'temp'
+        args_control : dict
+            TODO
+        cfun_solub: func(conc)?
+            TODO
+        adiabatic : bool
+            TODO
+        rad_zero : float
+            TODO size of the first bin of the CSD discretization?
+        reset_states :
+            TODO
+        h_conv : float
+            TODO
+        vol_ht : float
+            TODO
+        basis : str
+            TODO 'massfrac', ....
+        jac_type : str
+            TODO
+        state_events :
+            TODO
         
-        
-        
-        oper_mode : str
-            Operation mode of the reactor. It takes one of the following
-            values: 'Batch', 'MSMPR', 'Semibatch'. If 'Semibatch', it is
-            assumed that an antisolvent stream is entering the tank.
-        
-          
         """
 
         if jac_type == 'AD':
@@ -1358,6 +1370,40 @@ class BatchCryst(_BaseCryst):
         """ Construct a Batch Crystallizer object
         Parameters
         ----------
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
+        mask_params : TODO
+            TODO
+        method : str
+            Choice of the numerical method. Options are: 'moments', '1D-FVM'
+        scale : float
+            Scaling factor by which crystal size distribution will be 
+            multiplied.
+        vol_tank : TODO - Remove, it comes from Phases module.
+        isothermal : bool
+            Whether the energy balace is considered (i.e dT/dt = 0)
+        controls : dict of dicts
+            TODO 'temp'
+        params_control : 
+            TODO
+        cfun_solub: func(conc)?
+            TODO
+        adiabatic : bool
+            TODO
+        rad_zero : float
+            TODO size of the first bin of the CSD discretization?
+        reset_states :
+            TODO
+        h_conv : float
+            TODO
+        vol_ht : float
+            TODO
+        basis :
+            TODO
+        jac_type : str
+            TODO
+        state_events :
+            TODO
         """
 
         self.is_continuous = False
@@ -1809,10 +1855,8 @@ class MSMPR(_BaseCryst):
         """ Construct a MSMPR object
         Parameters
         ----------
-        oper_mode : str
-            Operation mode of the reactor. It takes one of the following
-            values: 'Batch', 'MSMPR', 'Semibatch'. If 'Semibatch', it is
-            assumed that an antisolvent stream is entering the tank.
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
         """
 
         self.states_uo.append('conc_j')
