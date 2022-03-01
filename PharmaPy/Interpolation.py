@@ -168,6 +168,8 @@ class PiecewiseLagrange:
             k = np.searchsorted(self.time_k, time_eval, side='right')
             k = np.minimum(self.num_interv, k)
 
+        k = np.clip(k, 1, self.num_interv)
+
         # ---------- Time normalization
         tau_k = (time_eval - time_k[k - 1]) / (time_k[k] - time_k[k - 1])
         tau_k = tau_k[..., np.newaxis]
