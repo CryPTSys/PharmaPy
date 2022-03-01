@@ -484,10 +484,10 @@ class Mixer:
 
 
 class DynamicCollector:
-    def __init__(self, Inlet=None, timeshift_factor=1.5, temp_refer=298.15,
-                 tau=None, name_species=None, num_interp_points=3):
+    def __init__(self, timeshift_factor=1.5, temp_refer=298.15,
+                 tau=None, num_interp_points=3):
 
-        self.Inlet = Inlet
+        self._Inlet = None
         self.num_interp_points = num_interp_points
         # if self.inlet is not None:
         #     classify_phases(self.inlet)
@@ -502,8 +502,6 @@ class DynamicCollector:
 
         self.is_continuous = False
 
-        self.name_species = name_species
-        self.num_species = len(name_species)
         self.names_upstream = None
         self.bipartite = None
 
@@ -517,6 +515,20 @@ class DynamicCollector:
         self.kwargs_cryst = None
 
         self.elapsed_time = 0
+
+    @property
+    def Inlet(self):
+        return self._Inlet
+
+    @Inlet.setter
+    def Inlet(self, inlet_object):
+        if inlet_object.__module__ == 'PharmaPy.Phases':
+            self.name_species = inlet_object.name_species
+        elif inlet_object.__module__ == 'PharmaPy.MixedPhases':
+            self.name_species = inlet_object.Phases[0].name_species
+
+        self.num_species = len(self.name_species)
+        self._Inlet = inlet_object
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
@@ -586,9 +598,6 @@ class DynamicCollector:
         # Initial values
         init_dict = self.get_inputs(self.elapsed_time)
         temp_init = init_dict['temp']
-
-        # self.name_species = self.Liquid_1.name_species
-        # self.num_species = len(self.name_species)
 
         self.is_cryst = any('distr' in word for word in init_dict.keys())
 

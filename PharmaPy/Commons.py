@@ -65,7 +65,7 @@ def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
 
     flag = not all(flags)
 
-    return flag
+    return int(flag)
 
 
 def eval_state_events(time, states, switches,
@@ -113,6 +113,8 @@ def handle_events(solver, event_info, state_event_list, any_event=True):
 
     idx_state = [[ind] * num for ind, num in enumerate(dim_events)]
     idx_state = np.hstack(idx_state)
+
+    print(idx_state)
 
     for ind, val in enumerate(event_markers):
         direction = state_event_list[idx_state[ind]].get('direction')
