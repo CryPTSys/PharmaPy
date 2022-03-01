@@ -114,8 +114,6 @@ def handle_events(solver, event_info, state_event_list, any_event=True):
     idx_state = [[ind] * num for ind, num in enumerate(dim_events)]
     idx_state = np.hstack(idx_state)
 
-    print(idx_state)
-
     for ind, val in enumerate(event_markers):
         direction = state_event_list[idx_state[ind]].get('direction')
         terminate = False
