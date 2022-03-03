@@ -775,7 +775,7 @@ class Evaporator:
 
             vol_liq = dict_states['mol_liq'][0] / rho_liq / 1000  # m**3
 
-            events.append(self.vol_tot - vol_liq)
+            events.append(0.95 * self.vol_tot - vol_liq)
 
         return np.array(events)
 
@@ -802,8 +802,8 @@ class Evaporator:
                     raise TerminateSimulation
 
         if state_event[-1]:
-            print('Liquid volume reached maximum tank volume at t = %.2f'
-                  % solver.t)
+            print('95%% of the available tank volume reached by the liquid '
+                  'phase')
 
             if self.stop_at_maxvol:
                 raise TerminateSimulation

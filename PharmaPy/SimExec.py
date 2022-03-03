@@ -386,6 +386,7 @@ class SimulationExec:
             return size_equipment, cost_equip
 
     def GetLabor(self, wage=35, full_output=False, pick_equip=None):
+        # TODO: per/hour (per/shift) cost?
         has_solids = []
         is_batch = []
 
