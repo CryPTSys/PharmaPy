@@ -216,6 +216,10 @@ class AdiabaticFlash:
         args_mid = np.array([vap, diff_frac, vap - 1])
         vap_flow = mid_fn(args_mid) * self.mult_midfun
 
+        if self.supercritic_flag:
+            comp_bces = comp_bces[~self.is_supercritic]
+            equilibria = equilibria[~self.is_supercritic]
+
         material = np.concatenate((
             np.array([global_bce]),
             comp_bces, equilibria,
@@ -247,6 +251,19 @@ class AdiabaticFlash:
         y_i = fracs[self.num_comp:]
         z_i = self.Inlet.mole_frac
 
+        if self.supercritic_flag:
+            x = np.zeros(len(x_i) + sum(self.is_supercritic))
+            y = np.zeros_like(x)
+
+            x[~self.is_supercritic] = x_i
+
+            y[self.is_supercritic] = (1 - y_i.sum()) * self.z_super / \
+                self.z_super.sum()
+            y[~self.is_supercritic] = y_i
+
+            x_i = x
+            y_i = y
+
         temp = states[-1]
 
         material_bces = self.material_balances(liq, vap, x_i, y_i, z_i, temp)
@@ -265,6 +282,19 @@ class AdiabaticFlash:
         else:
             x_seed = np.ones(self.num_comp) * 1 / self.num_comp
             y_seed = x_seed
+
+        self.is_supercritic = self.Inlet.temp > self.Inlet.t_crit
+        self.supercritic_flag = False
+
+        if any(self.is_supercritic):
+            x_seed = x_seed[~self.is_supercritic]
+            y_seed = y_seed[~self.is_supercritic]
+
+            self.supercritic_flag = True
+
+            self.z_super = self.Inlet.mole_frac[self.is_supercritic]
+
+            self.num_comp -= sum(self.is_supercritic)
 
         l_seed = 1 - v_seed
 
@@ -312,7 +342,7 @@ class Evaporator:
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
                  activity_model='ideal', state_events=None,
-                 stop_at_maxvol=True, flash_kwds=None):
+                 stop_at_maxvol=True, flash_kwargs=None):
 
         """
         Parameters
@@ -343,10 +373,10 @@ class Evaporator:
 
         self.stop_at_maxvol = stop_at_maxvol
 
-        if flash_kwds is None:
-            self.flash_kwds = {}
+        if flash_kwargs is None:
+            self.flash_kwargs = {}
         else:
-            self.flash_kwds = flash_kwds
+            self.flash_kwargs = flash_kwargs
 
         # Geometry
         self.vol_tot = vol_drum
@@ -671,7 +701,7 @@ class Evaporator:
 
         FlashInit = AdiabaticFlash(pres_drum=pres_init,
                                    gamma_method=self.activity_model,
-                                   **self.flash_kwds)
+                                   **self.flash_kwargs)
 
         FlashInit.Inlet = self.LiqEvap
         FlashInit.solve_unit()
