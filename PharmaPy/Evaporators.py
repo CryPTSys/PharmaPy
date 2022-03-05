@@ -8,7 +8,8 @@ Created on Tue May 26 16:37:29 2020
 import numpy as np
 # from autograd import numpy as np
 # from autograd import jacobian as jacauto
-from PharmaPy.Commons import mid_fn, trapezoidal_rule, eval_state_events, handle_events
+from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
+                              handle_events, unravel_states)
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase
@@ -26,6 +27,18 @@ import copy
 
 gas_ct = 8.314
 eps = np.finfo(float).eps
+
+
+def merge_supercritical(flags, x_liq, y_vap, z_super):
+    x = np.zeros(len(x_liq) + sum(flags))
+    y = np.zeros_like(x)
+
+    x[~flags] = x_liq
+
+    y[flags] = (1 - y_vap.sum()) * z_super / z_super.sum()
+    y[~flags] = y_vap
+
+    return x, y
 
 
 class IsothermalFlash:
@@ -251,18 +264,9 @@ class AdiabaticFlash:
         y_i = fracs[self.num_comp:]
         z_i = self.Inlet.mole_frac
 
-        if self.supercritic_flag:
-            x = np.zeros(len(x_i) + sum(self.is_supercritic))
-            y = np.zeros_like(x)
-
-            x[~self.is_supercritic] = x_i
-
-            y[self.is_supercritic] = (1 - y_i.sum()) * self.z_super / \
-                self.z_super.sum()
-            y[~self.is_supercritic] = y_i
-
-            x_i = x
-            y_i = y
+        if any(self.is_supercritic):
+            x_i, y_i = merge_supercritical(self.is_supercritic, x_i, y_i,
+                                           self.z_super)
 
         temp = states[-1]
 
@@ -283,18 +287,17 @@ class AdiabaticFlash:
             x_seed = np.ones(self.num_comp) * 1 / self.num_comp
             y_seed = x_seed
 
-        self.is_supercritic = self.Inlet.temp > self.Inlet.t_crit
-        self.supercritic_flag = False
+        is_supercritic = self.Inlet.temp > self.Inlet.t_crit
 
-        if any(self.is_supercritic):
-            x_seed = x_seed[~self.is_supercritic]
-            y_seed = y_seed[~self.is_supercritic]
+        if any(is_supercritic):
+            x_seed = x_seed[~is_supercritic]
+            y_seed = y_seed[~is_supercritic]
 
             self.supercritic_flag = True
+            self.num_comp -= sum(is_supercritic)
+            self.z_super = self.Inlet.mole_frac[is_supercritic]
 
-            self.z_super = self.Inlet.mole_frac[self.is_supercritic]
-
-            self.num_comp -= sum(self.is_supercritic)
+        self.is_supercritic = is_supercritic
 
         l_seed = 1 - v_seed
 
@@ -314,6 +317,10 @@ class AdiabaticFlash:
         fracs = solution[1:2*self.num_comp + 1]
         x_flash = fracs[:self.num_comp]
         y_flash = fracs[self.num_comp:]
+
+        x_flash, y_flash = merge_supercritical(self.is_supercritic,
+                                               x_flash, y_flash,
+                                               self.z_super)
 
         path = self.Inlet.path_data
 
@@ -485,7 +492,7 @@ class Evaporator:
         self.names_upstream = None
         self.bipartite = None
 
-    def material_balances(self, time, moles_i, x_i, y_i,
+    def material_balances(self, time, mol_i, x_i, y_i,
                           mol_liq, mol_vap, pres, temp, u_inputs,
                           dmoli_dt=None):
 
@@ -513,16 +520,20 @@ class Evaporator:
             diff_i = input_flow * input_fracs - flow_vap * y_i - dmoli_dt  # bce - dMi_dt
 
             # Algebraic eqns
-            component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
-            global_bce = mol_liq + mol_vap - sum(moles_i)
+            not_super = 1 - self.is_supercritic
+            component_bce = mol_liq * x_i * not_super + mol_vap * y_i - mol_i
+            global_bce = mol_liq + mol_vap - sum(mol_i)
 
             vol_eqn = vol_liq + vol_vap - self.vol_tot
 
             k_i = self.LiqEvap.getKeqVLE(temp, pres, x_i, self.activity_model)
-            equilibria = y_i - k_i * x_i
 
-            p_sat = self.LiqEvap.AntoineEquation(temp=temp)
-            pres_eqn = np.dot(x_i, p_sat) - pres
+            equilibria = y_i * not_super - k_i * x_i
+
+            p_sat = self.LiqEvap.AntoineEquation(temp=temp) * not_super
+            p_super = y_i[self.is_supercritic] * pres
+
+            pres_eqn = np.dot(p_sat, x_i) + sum(p_super) - pres
 
             alg_balances = np.concatenate((component_bce,  # x_i
                                            equilibria,  # y_i
@@ -845,7 +856,7 @@ class Evaporator:
 
         self.args_inputs = (self, self.num_species)
 
-        states_initial, sdev_initial = self.init_unit()
+        states_init, sdot_init = self.init_unit()
 
         # ---------- Solve
         n_comp = self.num_species + 1
@@ -858,11 +869,36 @@ class Evaporator:
         len_states = [n_comp] * 3 + [1] * 5
         self.trim_idx = np.cumsum(len_states)[:-1]
 
+        # ---------- Check supercritical components
+        temp_init = states_init[-1]
+
+        is_supercritic = temp_init > self.LiqEvap.t_crit
+
+        # if any(is_supercritic):
+        #     sdict = unravel_states(states_init, self.len_states,
+        #                            self.name_states)
+
+        #     sdot_dict = unravel_states(sdot_init, self.len_states,
+        #                                self.name_states)
+
+        #     change_labels = ('mol_i', 'x_liq', 'y_vap')
+
+        #     for lab in change_labels:
+        #         sdict[lab] = sdict[lab][~is_supercritic]
+        #         sdot_dict[lab] = sdot_dict[lab][~is_supercritic]
+
+        #     self.num_species -= sum(is_supercritic)
+
+        #     states_init = [val for val in sdict.values()]
+        #     states_init = np.hstack(states_init)
+
+        self.is_supercritic = is_supercritic
+
         # ---------- Solve problem
         # Create problem
         switches = [True] * len(self.state_events) + [True]
         problem = Implicit_Problem(self.unit_model,
-                                   states_initial, sdev_initial,
+                                   states_init, sdot_init,
                                    t0=self.elapsed_time, sw0=switches)
 
         problem.state_events = self.__state_event
