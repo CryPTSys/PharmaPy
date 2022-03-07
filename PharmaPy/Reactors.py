@@ -603,7 +603,7 @@ class BatchReactor(_BaseReactor):
         return dtemp_dt
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
-                   params_control=None, verbose=True, timesim_limit=0):
+                   params_control=None, verbose=True, sundials_opts=None):
 
         self.set_names()
 
@@ -663,9 +663,12 @@ class BatchReactor(_BaseReactor):
         # Set solver
         solver = CVode(problem)
 
-        if timesim_limit:
-            solver.report_continuously = True
-            solver.time_limit = timesim_limit
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         if eval_sens:
             solver.sensmethod = 'SIMULTANEOUS'
@@ -1059,7 +1062,7 @@ class SemibatchReactor(CSTR):
         return np.append(dc_dt, dvol_dt)
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
-                   params_control=None, verbose=True):
+                   params_control=None, verbose=True, sundials_opts=None):
 
         self.params_control = params_control
         self.set_names()
@@ -1103,6 +1106,14 @@ class SemibatchReactor(CSTR):
 
         # Set solver
         solver = CVode(problem)
+
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
+
         solver.sensmethod = 'SIMULTANEOUS'
         solver.report_continuously = True
 
@@ -1461,7 +1472,9 @@ class PlugFlowReactor(_BaseReactor):
 
         return tau
 
-    def solve_unit(self, runtime, num_discr, verbose=True, any_event=True):
+    def solve_unit(self, runtime, num_discr, verbose=True, any_event=True,
+                   sundials_opts=None):
+
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
@@ -1515,6 +1528,13 @@ class PlugFlowReactor(_BaseReactor):
 
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
+
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         if not verbose:
             solver.verbosity = 50

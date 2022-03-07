@@ -69,7 +69,7 @@ class _BaseCryst:
             assumed that an antisolvent stream is entering the tank.
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
-            
+
         """
 
         if jac_type == 'AD':
@@ -655,7 +655,7 @@ class _BaseCryst:
     def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
-                   sundials_opts=None, timesim_limit=0):
+                   sundials_opts=None):
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -781,13 +781,16 @@ class _BaseCryst:
         solver.iter = 'Newton'
         solver.discr = 'BDF'
 
-        if timesim_limit:
-            solver.report_continuously = True
-            solver.time_limit = timesim_limit
+        # if timesim_limit:
+        #     solver.report_continuously = True
+        #     solver.time_limit = timesim_limit
 
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
                 setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         self.sundials_opt = solver.get_options()
 

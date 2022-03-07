@@ -527,6 +527,7 @@ class Evaporator:
             p_super = y_i[self.is_supercritic] * pres
 
             pres_eqn = np.dot(p_sat, x_i) + sum(p_super) - pres
+            # pres_eqn = sum(y_i - x_i)
 
             alg_balances = np.concatenate((component_bce,  # x_i
                                            equilibria,  # y_i
@@ -855,8 +856,7 @@ class Evaporator:
             else:
                 self.allow_flow = False
 
-    def solve_unit(self, runtime, verbose=True, sundials_opts=None,
-                   timesim_limit=0):
+    def solve_unit(self, runtime, verbose=True, sundials_opts=None):
 
         self.args_inputs = (self, self.num_species)
 
@@ -889,9 +889,6 @@ class Evaporator:
         problem.state_events = self.__state_event
         problem.handle_event = self.__handle_event
 
-        # if len(self.state_events) >= 1:
-        #     runtime = 1e15
-
         problem.algvar = alg_map
         # problem.jac = self.unit_jacobian
 
@@ -900,9 +897,9 @@ class Evaporator:
         solver.make_consistent('IDA_YA_YDP_INIT')
         solver.suppress_alg = True
 
-        if timesim_limit:
-            solver.report_continuously = True
-            solver.time_limit = timesim_limit
+        # if timesim_limit:
+        #     solver.report_continuously = True
+        #     solver.time_limit = timesim_limit
 
         if not verbose:
             solver.verbosity = 50
@@ -910,6 +907,9 @@ class Evaporator:
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
                 setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         runtime += self.elapsed_time
 
@@ -1490,7 +1490,7 @@ class ContinuousEvaporator:
         return events
 
     def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
-                   sundials_opts=None, timesim_limit=0, any_event=True):
+                   sundials_opts=None, any_event=True):
         self.args_inputs = (self, self.num_species)
 
         states_initial, sdev_initial = self.init_unit()
@@ -1549,9 +1549,12 @@ class ContinuousEvaporator:
             solver.suppress_alg = True
             solver.report_continuously = True
 
-            if timesim_limit:
-                solver.report_continuously = True
-                solver.time_limit = timesim_limit
+            if sundials_opts is not None:
+                for name, val in sundials_opts.items():
+                    setattr(solver, name, val)
+
+                    if name == 'time_limit':
+                        solver.report_continuously = True
 
             if not verbose:
                 solver.verbosity = 50
