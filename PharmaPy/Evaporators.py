@@ -8,10 +8,11 @@ Created on Tue May 26 16:37:29 2020
 import numpy as np
 # from autograd import numpy as np
 # from autograd import jacobian as jacauto
-from PharmaPy.Commons import mid_fn, trapezoidal_rule, eval_state_events, handle_events
+from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
+                              handle_events, unravel_states)
 from PharmaPy.Connections import get_inputs
 from PharmaPy.Streams import LiquidStream, VaporStream
-from PharmaPy.Phases import LiquidPhase, VaporPhase
+from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
 
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -26,6 +27,18 @@ import copy
 
 gas_ct = 8.314
 eps = np.finfo(float).eps
+
+
+def merge_supercritical(flags, x_liq, y_vap, z_super):
+    x = np.zeros(len(x_liq) + sum(flags))
+    y = np.zeros_like(x)
+
+    x[~flags] = x_liq
+
+    y[flags] = (1 - y_vap.sum()) * z_super / z_super.sum()
+    y[~flags] = y_vap
+
+    return x, y
 
 
 class IsothermalFlash:
@@ -251,18 +264,9 @@ class AdiabaticFlash:
         y_i = fracs[self.num_comp:]
         z_i = self.Inlet.mole_frac
 
-        if self.supercritic_flag:
-            x = np.zeros(len(x_i) + sum(self.is_supercritic))
-            y = np.zeros_like(x)
-
-            x[~self.is_supercritic] = x_i
-
-            y[self.is_supercritic] = (1 - y_i.sum()) * self.z_super / \
-                self.z_super.sum()
-            y[~self.is_supercritic] = y_i
-
-            x_i = x
-            y_i = y
+        if any(self.is_supercritic):
+            x_i, y_i = merge_supercritical(self.is_supercritic, x_i, y_i,
+                                           self.z_super)
 
         temp = states[-1]
 
@@ -283,18 +287,17 @@ class AdiabaticFlash:
             x_seed = np.ones(self.num_comp) * 1 / self.num_comp
             y_seed = x_seed
 
-        self.is_supercritic = self.Inlet.temp > self.Inlet.t_crit
-        self.supercritic_flag = False
+        is_supercritic = self.Inlet.temp > self.Inlet.t_crit
 
-        if any(self.is_supercritic):
-            x_seed = x_seed[~self.is_supercritic]
-            y_seed = y_seed[~self.is_supercritic]
+        if any(is_supercritic):
+            x_seed = x_seed[~is_supercritic]
+            y_seed = y_seed[~is_supercritic]
 
             self.supercritic_flag = True
+            self.num_comp -= sum(is_supercritic)
+            self.z_super = self.Inlet.mole_frac[is_supercritic]
 
-            self.z_super = self.Inlet.mole_frac[self.is_supercritic]
-
-            self.num_comp -= sum(self.is_supercritic)
+        self.is_supercritic = is_supercritic
 
         l_seed = 1 - v_seed
 
@@ -314,6 +317,10 @@ class AdiabaticFlash:
         fracs = solution[1:2*self.num_comp + 1]
         x_flash = fracs[:self.num_comp]
         y_flash = fracs[self.num_comp:]
+
+        x_flash, y_flash = merge_supercritical(self.is_supercritic,
+                                               x_flash, y_flash,
+                                               self.z_super)
 
         path = self.Inlet.path_data
 
@@ -342,7 +349,8 @@ class Evaporator:
                  k_vap=1, cv_gas=0.8,
                  h_conv=1000,
                  activity_model='ideal', state_events=None,
-                 stop_at_maxvol=True, flash_kwargs=None):
+                 stop_at_maxvol=True, flash_kwargs=None,
+                 include_nitrogen=False):
 
         """
         Parameters
@@ -358,6 +366,8 @@ class Evaporator:
 
         self._Inlet = None
         self._Phases = None
+        self.include_nitrogen = include_nitrogen
+
         self._Utility = None
         self.material_from_upstream = False
 
@@ -429,15 +439,15 @@ class Evaporator:
         self.paths = paths
 
         self.__original_phase__ = copy.deepcopy(phase)
-        self.LiqPhase = phase
 
-        self.num_species = len(self.LiqPhase.mole_frac)
-        # self.name_species = self.Inlet.name_species
+        liquid = phase
+        vapor = VaporStream(path_comp, pres=self.pres)
+
+        self._Phases = [liquid, vapor]
+        classify_phases(self)
+
+        self.num_species = len(self.Liquid_1.mole_frac)
         self.name_species = phase.name_species
-
-        self.VaporOut = VaporStream(path_comp, pres=self.pres)
-
-        self._Phases = phase
 
     @property
     def Inlet(self):
@@ -446,26 +456,16 @@ class Evaporator:
     @Inlet.setter
     def Inlet(self, inlet):  # Create an inlet with additional species (N2)
 
-        self.Inlet_orig = inlet
-        path_comp = inlet.path_data
-        path_inert = '/data/evaporator/props_nitrogen.json'
-        path_inert = str(Path(__file__).parents[1]) + path_inert
-
-        paths = [path_comp, path_inert]
-
         fields = ['temp', 'pres', 'mole_flow', 'mole_frac',
                   'controls', 'args_control']
         inlet_dict = {key: inlet.__dict__.get(key) for key in fields}
         inlet_dict['mole_frac'] = np.append(inlet_dict['mole_frac'], 0)
 
-        inlet_inert = LiquidStream(paths, **inlet_dict)
-        self._Inlet = inlet_inert
+        self.inlet_inert_dict = inlet_dict
 
-        if self.Inlet_orig.DynamicInlet is not None:
-            self._Inlet.DynamicInlet = self.Inlet_orig.DynamicInlet
+        self._Inlet = inlet
 
         self.oper_mode = 'Semibatch'
-        # self.paths = paths
 
     @property
     def Utility(self):
@@ -485,14 +485,14 @@ class Evaporator:
         self.names_upstream = None
         self.bipartite = None
 
-    def material_balances(self, time, moles_i, x_i, y_i,
+    def material_balances(self, time, mol_i, x_i, y_i,
                           mol_liq, mol_vap, pres, temp, u_inputs,
                           dmoli_dt=None):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
 
-        mw_vap = self.VapEvap.mw_av
+        mw_vap = np.dot(self.Vapor_1.mw, y_i)
 
         rho_mol = pres / gas_ct / temp  # mol/m**3
         rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
@@ -500,8 +500,8 @@ class Evaporator:
 
         flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
-        rho_liq = self.LiqEvap.getDensity(mole_frac=x_i, temp=temp,
-                                          basis='mole')
+        rho_liq = self.Liquid_1.getDensity(mole_frac=x_i, temp=temp,
+                                           basis='mole')
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
         vol_vap = mol_vap * gas_ct * temp / pres
@@ -513,16 +513,20 @@ class Evaporator:
             diff_i = input_flow * input_fracs - flow_vap * y_i - dmoli_dt  # bce - dMi_dt
 
             # Algebraic eqns
-            component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
-            global_bce = mol_liq + mol_vap - sum(moles_i)
+            not_super = 1 - self.is_supercritic
+            component_bce = mol_liq * x_i * not_super + mol_vap * y_i - mol_i
+            global_bce = mol_liq + mol_vap - sum(mol_i)
 
             vol_eqn = vol_liq + vol_vap - self.vol_tot
 
-            k_i = self.LiqEvap.getKeqVLE(temp, pres, x_i, self.activity_model)
-            equilibria = y_i - k_i * x_i
+            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_i, self.activity_model)
 
-            p_sat = self.LiqEvap.AntoineEquation(temp=temp)
-            pres_eqn = np.dot(x_i, p_sat) - pres
+            equilibria = y_i * not_super - k_i * x_i
+
+            p_sat = self.Liquid_1.AntoineEquation(temp=temp) * not_super
+            p_super = y_i[self.is_supercritic] * pres
+
+            pres_eqn = np.dot(p_sat, x_i) + sum(p_super) - pres
 
             alg_balances = np.concatenate((component_bce,  # x_i
                                            equilibria,  # y_i
@@ -554,8 +558,8 @@ class Evaporator:
             else:
                 h_in = 0
 
-        h_liq = self.LiqEvap.getEnthalpy(temp, mole_frac=x_i, basis='mole')
-        h_vap = self.VapEvap.getEnthalpy(temp, mole_frac=y_i, basis='mole')
+        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
+        h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
 
         # Heat transfer
         area_ht = 4 / self.diam_tank * vol_liq + self.area_base  # m**2
@@ -577,7 +581,7 @@ class Evaporator:
 
     def unit_model(self, time, states, states_dot, sw, params=None):
 
-        n_comp = self.num_species + 1
+        n_comp = self.num_species + self.include_nitrogen
 
         # Decompose states
         moles_i = states[:n_comp]
@@ -605,7 +609,8 @@ class Evaporator:
         # Inputs
         if self.Inlet is None:
             u_inputs = {'mole_flow': 0,
-                        'mole_frac': np.zeros(self.num_species + 1),
+                        'mole_frac': np.zeros(
+                            self.num_species + self.include_nitrogen),
                         'temp': 298.15}
         else:
             u_inputs = get_inputs(time, *self.args_inputs)
@@ -648,12 +653,12 @@ class Evaporator:
             # Concatenate balances
             balances = np.concatenate((material_bce, energy_bce))
 
-            # Update output objects
-            self.LiqEvap.temp = temp
-            self.VapEvap.temp = temp
+            # Update output objects (TODO: is this really necessary?)
+            self.Liquid_1.temp = temp
+            self.Vapor_1.temp = temp
 
-            self.LiqEvap.mole_frac = x_liq
-            self.VapEvap.mole_flow = y_vap
+            self.Liquid_1.mole_frac = x_liq
+            self.Vapor_1.mole_flow = y_vap
 
             # print(abs(balances).max())
 
@@ -668,67 +673,77 @@ class Evaporator:
         return jac_system
 
     def init_unit(self):
-        temp_init = self.LiqPhase.temp
+        temp_init = self.Liquid_1.temp
         pres_init = self.pres
 
-        # Mole fractions
-        x_seed = self.LiqPhase.mole_frac
-        x_seed = np.append(x_seed, 0)
-
-        y_seed = np.zeros(self.num_species + 1)
-        y_seed[-1] = 1
+        x_init = self.Liquid_1.mole_frac
+        y_init = np.zeros_like(x_init)
 
         # Moles of phases
-        mol_liq = self.LiqPhase.moles
-        vol_liq = self.LiqPhase.vol
+        mol_liq = self.Liquid_1.moles
+        vol_liq = self.Liquid_1.vol
 
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
             raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
                              r"volume ({:.2f} m3)".format(self.vol_tot, vol_liq))
+
         mol_vap = self.pres * vol_vap / gas_ct / temp_init
         mol_tot = mol_liq + mol_vap
 
+        if self.include_nitrogen:
+            x_init = np.append(x_init, 0)
+
+            y_init = np.append(y_init, 1)
+
+            # Moles of i
+            mol_i = mol_liq * x_init + mol_vap * y_init
+
+            z_flash = mol_i / mol_i.sum()
+            pres_in = self.Liquid_1.pres
+
+            LiqEvap = LiquidPhase(self.paths, temp_init, pres=pres_in,
+                                  moles=mol_tot, mole_frac=z_flash)
+
+            FlashInit = AdiabaticFlash(pres_drum=pres_init,
+                                       gamma_method=self.activity_model,
+                                       **self.flash_kwargs)
+
+            FlashInit.Inlet = LiqEvap
+            FlashInit.solve_unit()
+
+            # Update phases and initial states with flash results
+            self.Liquid_1 = FlashInit.LiquidOut
+            self.Vapor_1 = FlashInit.VaporOut
+
+            x_init = FlashInit.LiquidOut.mole_frac
+            y_init = FlashInit.VaporOut.mole_frac
+
+            temp_init = FlashInit.LiquidOut.temp
+
+            mol_liq = FlashInit.LiquidOut.moles
+            dens_liq = self.Liquid_1.getDensity(basis='mole')
+            vol_liq = mol_liq / dens_liq / 1000
+            vol_vap = self.vol_tot - vol_liq
+
+            mol_vap = pres_init * vol_vap / gas_ct / temp_init
+
+            mol_vent = self.Vapor_1.moles - mol_vap
+
+            mol_i = mol_liq * x_init + mol_vap * y_init
+            mol_tot = mol_liq + mol_vap
+
+            Inlet = LiquidStream(self.paths, **self.inlet_inert_dict)
+            Inlet.DynamicInlet = self.Inlet.DynamicInlet
+
+            self.Inlet = Inlet
+
+        else:
+            temp_init, y_init = self.Liquid_1.getBubblePoint(pres=self.pres,
+                                                             y_vap=True)
+
         # Moles of i
-        moli_seed = mol_liq * x_seed + mol_vap * y_seed
-
-        # ---------- Create new phase with inert gas and run adiabatic flash
-        z_flash = moli_seed / moli_seed.sum()
-        pres_in = self.LiqPhase.pres
-
-        self.LiqEvap = LiquidPhase(self.paths, temp_init, pres=pres_in,
-                                   moles=mol_tot, mole_frac=z_flash)
-
-        FlashInit = AdiabaticFlash(pres_drum=pres_init,
-                                   gamma_method=self.activity_model,
-                                   **self.flash_kwargs)
-
-        FlashInit.Inlet = self.LiqEvap
-        FlashInit.solve_unit()
-
-        # Update phases and initial states with flash results
-        self.LiqEvap = FlashInit.LiquidOut
-        self.VapEvap = FlashInit.VaporOut
-
-        x_init = FlashInit.LiquidOut.mole_frac
-        y_init = FlashInit.VaporOut.mole_frac
-
-        if not np.isclose(y_init.sum(), 1, atol=1e-4):  # TODO: does this make sense?
-            y_init = y_seed
-
-        temp_init = FlashInit.LiquidOut.temp
-
-        mol_liq = FlashInit.LiquidOut.moles
-        dens_liq = self.LiqEvap.getDensity(basis='mole')
-        vol_liq = mol_liq / dens_liq / 1000
-        vol_vap = self.vol_tot - vol_liq
-
-        mol_vap = pres_init * vol_vap / gas_ct / temp_init
-
-        mol_vent = self.VapEvap.moles - mol_vap
-
         mol_i = mol_liq * x_init + mol_vap * y_init
-        mol_tot = mol_liq + mol_vap
 
         if self.Inlet is None:
             dm_init = np.zeros_like(x_init)
@@ -742,8 +757,8 @@ class Evaporator:
         # ---------- Energy balance states
         # Enthalpies
 
-        hliq_init = self.LiqEvap.getEnthalpy(temp_init, basis='mole')
-        hvap_init = self.VapEvap.getEnthalpy(temp_init, basis='mole')
+        hliq_init = self.Liquid_1.getEnthalpy(temp_init, basis='mole')
+        hvap_init = self.Vapor_1.getEnthalpy(temp_init, basis='mole')
 
         diam = 0.438
         height_liq = vol_liq / (np.pi/4 * diam**2)
@@ -766,7 +781,7 @@ class Evaporator:
         )
 
         sdot_init = np.zeros_like(states_init)
-        sdot_init[:self.num_species + 1] = dm_init
+        sdot_init[:self.num_species + self.include_nitrogen] = dm_init
         sdot_init[-2] = du_init
 
         return states_init, sdot_init
@@ -798,7 +813,7 @@ class Evaporator:
                 events.append(event_flag)
 
             # Maximum liquid constraint
-            rho_liq = self.LiqEvap.getDensity(
+            rho_liq = self.Liquid_1.getDensity(
                 mole_frac=dict_states['x_liq'],
                 temp=dict_states['temp'][0],
                 basis='mole')
@@ -845,10 +860,10 @@ class Evaporator:
 
         self.args_inputs = (self, self.num_species)
 
-        states_initial, sdev_initial = self.init_unit()
+        states_init, sdot_init = self.init_unit()
 
         # ---------- Solve
-        n_comp = self.num_species + 1
+        n_comp = self.num_species + self.include_nitrogen
         alg_map = np.concatenate((np.ones(n_comp),
                                   np.zeros(2*n_comp + 3),
                                   [1, 0])
@@ -858,11 +873,17 @@ class Evaporator:
         len_states = [n_comp] * 3 + [1] * 5
         self.trim_idx = np.cumsum(len_states)[:-1]
 
+        # ---------- Check supercritical components
+        temp_init = states_init[-1]
+
+        is_supercritic = temp_init > self.Liquid_1.t_crit
+        self.is_supercritic = is_supercritic
+
         # ---------- Solve problem
         # Create problem
         switches = [True] * len(self.state_events) + [True]
         problem = Implicit_Problem(self.unit_model,
-                                   states_initial, sdev_initial,
+                                   states_init, sdot_init,
                                    t0=self.elapsed_time, sw0=switches)
 
         problem.state_events = self.__state_event
@@ -904,7 +925,7 @@ class Evaporator:
         return time, states
 
     def retrieve_results(self, time, states):
-        n_comp = self.num_species + 1
+        n_comp = self.num_species + self.include_nitrogen
 
         self.time_runs.append(np.asarray(time))
         self.elapsed_time += time[-1]
@@ -922,16 +943,34 @@ class Evaporator:
         self.temp_runs.append(states[:, -1])
 
         # Update phases
-        self.LiqPhase.temp = self.temp_runs[-1][-1]
-        self.LiqPhase.pres = self.pres_runs[-1][-1]
-        self.LiqPhase.updatePhase(mole_frac=self.xliq_runs[-1][-1, :-1],
-                                  moles=self.molLiq_runs[-1][-1])
+        self.Liquid_1.temp = self.temp_runs[-1][-1]
+        self.Liquid_1.pres = self.pres_runs[-1][-1]
 
-        self.Phases = self.LiqPhase
+        xliq_update = self.xliq_runs[-1]
+        if self.include_nitrogen:
+            xliq_update = xliq_update[:, :-1]
+            Liquid_1 = LiquidPhase(self.paths[0],
+                                   temp=self.temp_runs[-1][-1],
+                                   pres=self.pres_runs[-1][-1],
+                                   moles=self.molLiq_runs[-1][-1],
+                                   mole_frac=xliq_update[-1])
 
-        # Output info
-        self.Outlet = self.LiqPhase
-        self.outputs = np.column_stack((self.xliq_runs[-1][:, :-1],
+            # Output info
+            # self.Phases = Liquid_1
+            self.Outlet = Liquid_1
+
+        else:
+            self.Liquid_1.updatePhase(mole_frac=xliq_update[-1],
+                                      moles=self.molLiq_runs[-1][-1],
+                                      temp=self.temp_runs[-1][-1],
+                                      pres=self.pres_runs[-1][-1])
+
+            self.Phases = self.Liquid_1
+
+            # Output info
+            self.Outlet = self.Liquid_1
+
+        self.outputs = np.column_stack((xliq_update,
                                         self.molLiq_runs[-1],
                                         self.temp_runs[-1]))
 
@@ -962,15 +1001,22 @@ class Evaporator:
             heat_bce[ind] = q_ht
             flow_vap[ind] = mass_bce[0]
 
-            temp_bubble = self.LiqPhase.getBubblePoint(
-                pres=self.presProf[ind], mole_frac=self.xliqProf[ind, :-1])
+            x_liq = self.xliqProf[ind]
+            y_vap = self.yvapProf[ind]
 
-            h_liq[ind] = self.LiqPhase.getEnthalpy(
-                temp=temp_bubble, mole_frac=self.xliqProf[ind, :-1],
+            # if self.include_nitrogen:
+            #     x_liq = x_liq[:-1]
+            #     y_vap = y_vap[:-1]
+
+            temp_bubble = self.Liquid_1.getBubblePoint(
+                pres=self.presProf[ind], mole_frac=x_liq)
+
+            h_liq[ind] = self.Liquid_1.getEnthalpy(
+                temp=temp_bubble, mole_frac=x_liq,
                 basis='mole')
 
-            h_vap[ind] = self.VaporOut.getEnthalpy(
-                temp=self.tempProf[ind], mole_frac=self.yvapProf[ind, :-1],
+            h_vap[ind] = self.Vapor_1.getEnthalpy(
+                temp=self.tempProf[ind], mole_frac=y_vap,
                 basis='mole')
 
         # Condensation duty
@@ -998,7 +1044,7 @@ class Evaporator:
         ax[0, 0].set_ylabel('$x_i$')
         ax[0, 1].set_ylabel('$y_i$')
 
-        leg = [self.LiqEvap.name_species[ind] for ind in pick_comp]
+        leg = [self.Liquid_1.name_species[ind] for ind in pick_comp]
         ax[0, 0].legend(leg)
 
         # T and P
