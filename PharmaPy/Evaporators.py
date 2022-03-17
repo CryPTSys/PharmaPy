@@ -229,7 +229,7 @@ class AdiabaticFlash:
         args_mid = np.array([vap, diff_frac, vap - 1])
         vap_flow = mid_fn(args_mid) * self.mult_midfun
 
-        if self.supercritic_flag:
+        if any(self.is_supercritic):
             comp_bces = comp_bces[~self.is_supercritic]
             equilibria = equilibria[~self.is_supercritic]
 
@@ -293,7 +293,6 @@ class AdiabaticFlash:
             x_seed = x_seed[~is_supercritic]
             y_seed = y_seed[~is_supercritic]
 
-            self.supercritic_flag = True
             self.num_comp -= sum(is_supercritic)
             self.z_super = self.Inlet.mole_frac[is_supercritic]
 
@@ -318,9 +317,10 @@ class AdiabaticFlash:
         x_flash = fracs[:self.num_comp]
         y_flash = fracs[self.num_comp:]
 
-        x_flash, y_flash = merge_supercritical(self.is_supercritic,
-                                               x_flash, y_flash,
-                                               self.z_super)
+        if any(is_supercritic):
+            x_flash, y_flash = merge_supercritical(self.is_supercritic,
+                                                   x_flash, y_flash,
+                                                   self.z_super)
 
         path = self.Inlet.path_data
 
@@ -522,6 +522,8 @@ class Evaporator:
             k_i = self.Liquid_1.getKeqVLE(temp, pres, x_i, self.activity_model)
 
             equilibria = y_i * not_super - k_i * x_i
+            equilibria = (y_i - k_i * x_i)[not_super.astype(bool)]
+            # equilibria = y_i - k_i * x_i
 
             p_sat = self.Liquid_1.AntoineEquation(temp=temp) * not_super
             p_super = y_i[self.is_supercritic] * pres
@@ -654,6 +656,10 @@ class Evaporator:
             # Concatenate balances
             balances = np.concatenate((material_bce, energy_bce))
 
+            # nspecies = self.num_species
+            # multipliers = [1/100] * (nspecies * 2) + [1] * nspecies + [1/100, 1, 1/100]+ [1/1000] * 2
+            # balances *= np.array(multipliers)
+
             # Update output objects (TODO: is this really necessary?)
             self.Liquid_1.temp = temp
             self.Vapor_1.temp = temp
@@ -686,8 +692,8 @@ class Evaporator:
 
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
-            raise ValueError(r"Drum volume ({:.2f} m3) lower than the liquid "
-                             r"volume ({:.2f} m3)".format(self.vol_tot, vol_liq))
+            raise ValueError(r"Drum volume ({:.2e} m3) lower than the liquid "
+                             r"volume ({:.2e} m3)".format(self.vol_tot, vol_liq))
 
         mol_vap = self.pres * vol_vap / gas_ct / temp_init
         mol_tot = mol_liq + mol_vap
@@ -734,10 +740,11 @@ class Evaporator:
             mol_i = mol_liq * x_init + mol_vap * y_init
             mol_tot = mol_liq + mol_vap
 
-            Inlet = LiquidStream(self.paths, **self.inlet_inert_dict)
-            Inlet.DynamicInlet = self.Inlet.DynamicInlet
+            if self.oper_mode == 'Semibatch':
+                Inlet = LiquidStream(self.paths, **self.inlet_inert_dict)
+                Inlet.DynamicInlet = self.Inlet.DynamicInlet
 
-            self.Inlet = Inlet
+                self.Inlet = Inlet
 
         else:
             temp_init, y_init = self.Liquid_1.getBubblePoint(pres=self.pres,
@@ -868,6 +875,8 @@ class Evaporator:
                                   np.zeros(2*n_comp + 3),
                                   [1, 0])
                                  )
+
+        self.alg_map = (1 - alg_map).astype(bool)
 
         # ---------- Count states
         len_states = [n_comp] * 3 + [1] * 5
@@ -1574,6 +1583,7 @@ class ContinuousEvaporator:
             return fun_eval
 
     def retrieve_results(self, time, states):
+        time = np.asarray(time)
         n_comp = self.num_species
 
         self.time_runs.append(time)

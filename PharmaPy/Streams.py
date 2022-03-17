@@ -85,13 +85,29 @@ class LiquidStream(LiquidPhase):
         self._DynamicInlet = dynamic_object
 
     def InterpolateInputs(self, time):
-        if isinstance(time, float) or isinstance(time, int):
+        if isinstance(time, (float, int)):
             y_interpol = Interpolation(self.time_upstream, self.y_inlet,
                                        time,
                                        num_points=self.num_interpolation_points)
         else:
             interpol = CubicSpline(self.time_upstream, self.y_inlet)
-            y_interpol = interpol(time)
+            flags_interpol = time > self.time_upstream[-1]
+
+            if any(flags_interpol):
+                time_interpol = time[~flags_interpol]
+                y_interp = interpol(time_interpol)
+
+                y_extrapol = []
+                for t in time[flags_interpol]:
+                    y_extra = Interpolation(self.time_upstream, self.y_inlet,
+                                            t, num_points=2)
+
+                    y_extrapol.append(y_extra)
+
+                y_extrapol = np.vstack(y_extrapol)
+                y_interpol = np.vstack((y_interp, y_extrapol))
+            else:
+                y_interpol = interpol(time)
 
         return y_interpol
 

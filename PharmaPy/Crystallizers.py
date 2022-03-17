@@ -15,7 +15,7 @@ from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               upwind_fvm, high_resolution_fvm,
-                              eval_state_events)
+                              eval_state_events, handle_events)
 
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs
@@ -511,6 +511,8 @@ class _BaseCryst:
 
             self.derivatives = balances
 
+            # print(max(balances))
+
             return balances
 
     def unit_jacobians(self, time, states, sens, params, fy, v_vector):
@@ -609,6 +611,7 @@ class _BaseCryst:
 
                 problem.jac = self.jac_states_fn
                 problem.rhs_sens = self.rhs_sensitivity
+
             elif self.jac_type == 'analytical':
                 self.jac_states_fn = self.jac_states
                 self.jac_params_fn = self.jac_params
@@ -622,11 +625,19 @@ class _BaseCryst:
                 raise NameError("Bad string value for the 'jac_type' argument")
 
         else:
-            def model(time, states): return self.unit_model(
-                time, states, params_mergd)
+            if self.state_event_list is None:
+                def model(time, states):
+                    return self.unit_model(time, states, params_mergd)
 
-            problem = Explicit_Problem(model, states_init,
-                                       t0=self.elapsed_time)
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time)
+            else:
+                sw0 = [True] * len(self.state_event_list)
+                def model(time, states, sw=None):
+                    return self.unit_model(time, states, params_mergd, sw)
+
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time, sw0=sw0)
 
             # ----- Jacobian callables
             if self.method == 'moments':
@@ -652,10 +663,12 @@ class _BaseCryst:
             self.states_uo, self.state_event_list, sdot=self.derivatives,
             discretized_model=False)
 
+        return events
+
     def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
-                   sundials_opts=None):
+                   sundials_opts=None, any_event=True):
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -775,15 +788,21 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
+        self.derivatives = problem.rhs(0, states_init)
+
         # ---------- Set solver
         # General
         solver = CVode(problem)
         solver.iter = 'Newton'
         solver.discr = 'BDF'
 
-        # if timesim_limit:
-        #     solver.report_continuously = True
-        #     solver.time_limit = timesim_limit
+        if self.state_event_list is not None:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
 
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
@@ -1821,6 +1840,20 @@ class MSMPR(_BaseCryst):
     def Inlet(self, inlet_object):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
+
+    def _get_tau(self):
+        time_upstream = getattr(self.Inlet, 'time_upstream')
+        if time_upstream is None:
+            time_upstream = [0]
+
+        num_species = len(self.Liquid_1.name_species)
+        inputs = get_inputs(time_upstream[-1], self, num_species)
+
+        volflow_in = inputs['vol_flow']
+        tau = self.Liquid_1.vol / volflow_in
+
+        self.tau = tau
+        return tau
 
     def solve_steady_state(self, frac_seed, temp):
 

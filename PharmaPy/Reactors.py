@@ -1562,7 +1562,7 @@ class PlugFlowReactor(_BaseReactor):
                                ) * self.Liquid_1.temp
 
         # Inputs
-        inputs = get_inputs(time, *self.args_inputs)
+        inputs = get_inputs(self.timeProf, *self.args_inputs)
 
         conc_inlet = np.ones((len(states), self.num_species)
                              ) * inputs['mole_conc']

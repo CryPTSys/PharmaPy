@@ -64,7 +64,7 @@ class SimulationExec:
                 value.name = key
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       run_steady_state=False, tolerances_ss=None):
+                       uos_steady_state=None, tolerances_ss=None):
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
@@ -124,24 +124,25 @@ class SimulationExec:
 
             kwargs_uo = kwargs_run.get(uo_id, {})
 
-            if run_steady_state:
-                if instance.__class__.__name__ == 'Mixer':
-                    pass
-                else:
-                    tau = instance._get_tau()
+            if uos_steady_state is not None:
+                if execution_names[ind] in uos_steady_state:
+                    if instance.__class__.__name__ == 'Mixer':
+                        pass
+                    else:
+                        tau = instance._get_tau()
 
-                    tolerances = tolerances_ss.get(execution_names[ind],
-                                                   1e-6)
+                        tolerances = tolerances_ss.get(execution_names[ind],
+                                                       1e-6)
 
-                    kw_ss = {'tau': tau, 'threshold': tolerances}
-                    ss_event = {'callable': check_steady_state,
-                                'num_conditions': 1,
-                                'event_name': 'steady state',
-                                'kwargs': kw_ss
-                                }
+                        kw_ss = {'tau': tau, 'threshold': tolerances}
+                        ss_event = {'callable': check_steady_state,
+                                    'num_conditions': 1,
+                                    'event_name': 'steady state',
+                                    'kwargs': kw_ss
+                                    }
 
-                    instance.state_event_list = [ss_event]
-                    kwargs_uo['any_event'] = False
+                        instance.state_event_list = [ss_event]
+                        kwargs_uo['any_event'] = False
 
             instance.solve_unit(**kwargs_uo)
 
@@ -158,6 +159,7 @@ class SimulationExec:
             # for conn in self.connection_instances:
             #     if conn.source_uo is instance:
             #         conn.ReceiveData()  # receive phases from upstream uo
+            #         conn.TransferData()
 
         self.execution_order = execution_order
 
@@ -191,25 +193,34 @@ class SimulationExec:
         for ind, stream in enumerate(self.connection_instances):
             matter_obj = stream.Matter
 
-            if matter_obj.__module__ == 'PharmaPy.MixedPhases':
-                phase_list = matter_obj.Phases  # TODO: change this
-            else:
-                phase_list = [matter_obj]
-
-            for phase in phase_list:
+            if matter_obj is None:
                 index_stream.append(self.connection_names[ind])
-                index_phase.append(phase.__class__.__name__)
-                stream_info = []
-                for field in fields_phase:
-                    value_phase = getattr(phase, field, None)
-                    stream_info.append(np.atleast_1d(value_phase))
+                index_phase.append(None)
+                stream_info = [np.nan] * (len(fields_phase) +
+                                          len(fields_stream))
 
-                for field in fields_stream:
-                    value_stream = getattr(phase, field, None)
-                    stream_info.append(np.atleast_1d(value_stream))
-
-                stream_info = np.concatenate(stream_info)
                 stream_cont.append(stream_info)
+            else:
+
+                if matter_obj.__module__ == 'PharmaPy.MixedPhases':
+                    phase_list = matter_obj.Phases  # TODO: change this
+                else:
+                    phase_list = [matter_obj]
+
+                for phase in phase_list:
+                    index_stream.append(self.connection_names[ind])
+                    index_phase.append(phase.__class__.__name__)
+                    stream_info = []
+                    for field in fields_phase:
+                        value_phase = getattr(phase, field, None)
+                        stream_info.append(np.atleast_1d(value_phase))
+
+                    for field in fields_stream:
+                        value_stream = getattr(phase, field, None)
+                        stream_info.append(np.atleast_1d(value_stream))
+
+                    stream_info = np.concatenate(stream_info)
+                    stream_cont.append(stream_info)
 
         cols = fields_phase[:-1] + \
             [frac_preffix.format(ind) for ind in self.NamesSpecies] + \
@@ -448,7 +459,8 @@ class SimulationExec:
                         elif uo.Inlet.DynamicInlet is not None:
                             time_inlets.append(uo.timeProf)
                         else:
-                            time_inlets.append(uo.timeProf[-1])
+                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
+                            time_inlets.append(elapsed)
 
                         inlets_ids.append(uo.id_uo)
 
@@ -462,7 +474,8 @@ class SimulationExec:
                         elif inlet.DynamicInlet is not None:
                             time_inlets.append(uo.timeProf)
                         else:
-                            time_inlets.append(uo.timeProf[-1])
+                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
+                            time_inlets.append(elapsed)
 
                         inlets_ids.append(uo.id_uo)
 
