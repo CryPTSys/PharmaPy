@@ -635,7 +635,8 @@ class Filter:
             self.params = np.log(self.params)
 
     def solve_unit(self, runtime=None, time_grid=None, deltaP=1e5,
-                   slurry_div=1, verbose=True, model_params=None):
+                   slurry_div=1, verbose=True, model_params=None,
+                   sundials_opts=None):
 
         # Filtration parameters (constant)
         self.deltaP = deltaP
@@ -693,6 +694,13 @@ class Filter:
 
         if not verbose:
             solver.verbosity = 50
+
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         if time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time

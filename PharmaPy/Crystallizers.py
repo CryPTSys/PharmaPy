@@ -15,7 +15,7 @@ from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               upwind_fvm, high_resolution_fvm,
-                              eval_state_events)
+                              eval_state_events, handle_events)
 
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs
@@ -69,7 +69,7 @@ class _BaseCryst:
             assumed that an antisolvent stream is entering the tank.
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
-            
+
         """
 
         if jac_type == 'AD':
@@ -166,8 +166,8 @@ class _BaseCryst:
         self.states_uo = ['mass_conc']
         self.names_states_in = ['mass_conc']
 
-        if not self.isothermal and 'temp' not in self.controls.keys():
-            self.states_uo.append('temp')
+        # if not self.isothermal and 'temp' not in self.controls.keys():
+        #     self.states_uo.append('temp')
 
         self.names_upstream = None
         self.bipartite = None
@@ -511,6 +511,8 @@ class _BaseCryst:
 
             self.derivatives = balances
 
+            # print(max(balances))
+
             return balances
 
     def unit_jacobians(self, time, states, sens, params, fy, v_vector):
@@ -609,6 +611,7 @@ class _BaseCryst:
 
                 problem.jac = self.jac_states_fn
                 problem.rhs_sens = self.rhs_sensitivity
+
             elif self.jac_type == 'analytical':
                 self.jac_states_fn = self.jac_states
                 self.jac_params_fn = self.jac_params
@@ -622,11 +625,19 @@ class _BaseCryst:
                 raise NameError("Bad string value for the 'jac_type' argument")
 
         else:
-            def model(time, states): return self.unit_model(
-                time, states, params_mergd)
+            if self.state_event_list is None:
+                def model(time, states):
+                    return self.unit_model(time, states, params_mergd)
 
-            problem = Explicit_Problem(model, states_init,
-                                       t0=self.elapsed_time)
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time)
+            else:
+                sw0 = [True] * len(self.state_event_list)
+                def model(time, states, sw=None):
+                    return self.unit_model(time, states, params_mergd, sw)
+
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time, sw0=sw0)
 
             # ----- Jacobian callables
             if self.method == 'moments':
@@ -652,10 +663,12 @@ class _BaseCryst:
             self.states_uo, self.state_event_list, sdot=self.derivatives,
             discretized_model=False)
 
+        return events
+
     def solve_unit(self, runtime=None, time_grid=None,
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
-                   sundials_opts=None, timesim_limit=0):
+                   sundials_opts=None, any_event=True):
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -775,19 +788,28 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
+        self.derivatives = problem.rhs(0, states_init)
+
+        if self.state_event_list is not None:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+
         # ---------- Set solver
         # General
         solver = CVode(problem)
         solver.iter = 'Newton'
         solver.discr = 'BDF'
 
-        if timesim_limit:
-            solver.report_continuously = True
-            solver.time_limit = timesim_limit
-
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
                 setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         self.sundials_opt = solver.get_options()
 
@@ -1800,7 +1822,7 @@ class MSMPR(_BaseCryst):
             assumed that an antisolvent stream is entering the tank.
         """
 
-        self.states_uo.append('conc_j')
+        # self.states_uo.append('conc_j')
         self.is_continuous = True
         self.oper_mode = 'Continuous'
         self._Inlet = None
@@ -1818,6 +1840,21 @@ class MSMPR(_BaseCryst):
     def Inlet(self, inlet_object):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
+
+    def _get_tau(self):
+        time_upstream = getattr(self.Inlet, 'time_upstream')
+        if time_upstream is None:
+            time_upstream = [0]
+
+        num_species = len(self.Liquid_1.name_species)
+        num_distrib = len(self.Solid_1.x_distrib)
+        inputs = get_inputs(time_upstream[-1], self, num_species, num_distrib)
+
+        volflow_in = inputs['vol_flow']
+        tau = self.Liquid_1.vol / volflow_in
+
+        self.tau = tau
+        return tau
 
     def solve_steady_state(self, frac_seed, temp):
 
@@ -1866,10 +1903,7 @@ class MSMPR(_BaseCryst):
     def nomenclature(self):
         self.names_states_in += ['vol_flow', 'temp']
 
-        if not self.isothermal:
-            self.states_uo += ['temp', 'temp_ht']
-        elif self.adiabatic:
-            self.states_uo.append('temp')
+        name_class = self.__class__.__name__
 
         if self.method == 'moments':
             # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
@@ -1877,12 +1911,28 @@ class MSMPR(_BaseCryst):
             # for mom in mom_names[::-1]:
             self.names_states_in.insert(0, 'moments')
 
-            self.states_uo.append('moments')
+            if name_class == 'SemibatchCryst':
+                self.states_uo.append('total_moments')
+            else:
+                self.states_uo.append('moments')
 
         elif self.method == '1D-FVM':
             self.names_states_in.insert(0, 'distrib')
 
-            self.states_uo.append('distrib')
+            if name_class == 'SemibatchCryst':
+                self.states_uo.insert(0, 'total_distrib')
+            else:
+                self.states_uo.insert(0, 'distrib')
+
+        if name_class == 'SemibatchCryst':
+            self.states_uo.append('vol')
+
+        if self.adiabatic:
+            self.states_uo.append('temp')
+        elif not self.isothermal:
+            self.states_uo += ['temp', 'temp_ht']
+        # elif self.adiabatic:
+        #     self.states_uo.append('temp')
 
         self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in
@@ -2159,29 +2209,32 @@ class SemibatchCryst(MSMPR):
                          h_conv, vol_ht, basis,
                          jac_type, num_interp_points, state_events)
 
-    def nomenclature(self):
-        self.states_uo.append('vol')
+    # def nomenclature(self):
+    #     if 'temp' in self.states_uo:
+    #         self.states_uo.insert(-2, 'vol')
+    #     else:
+    #         self.states_uo.append('vol')
 
-        self.names_states_out = ['mass_conc']
+    #     self.names_states_out = ['mass_conc']
 
-        if self.method == 'moments':
-            mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
+    #     if self.method == 'moments':
+    #         mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
 
-            for mom in mom_names[::-1]:
-                self.names_states_in.insert(0, mom)
-                self.names_states_out.insert(0, 'total_%s' % mom)
+    #         for mom in mom_names[::-1]:
+    #             self.names_states_in.insert(0, mom)
+    #             self.names_states_out.insert(0, 'total_%s' % mom)
 
-            self.states_uo += mom_names
+    #         self.states_uo += mom_names
 
-        elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-            self.names_states_out.insert(0, 'total_distrib')
+    #     elif self.method == '1D-FVM':
+    #         self.names_states_in.insert(0, 'distrib')
+    #         self.names_states_out.insert(0, 'total_distrib')
 
-            self.states_uo.append('total_distrib')
+    #         self.states_uo.append('total_distrib')
 
-        self.names_states_out = self.names_states_out + ['vol', 'temp']
-        self.names_states_in += ['vol_flow', 'temp']
-        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
+    #     self.names_states_out = self.names_states_out + ['vol', 'temp']
+    #     self.names_states_in += ['vol_flow', 'temp']
+    #     self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
 
     def material_balances(self, time, distrib, w_conc, temp, vol_liq, params,
                           u_inputs, rhos, moms, phi_in):

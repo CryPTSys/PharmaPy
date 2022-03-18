@@ -63,8 +63,18 @@ class SimulationExec:
 
                 value.name = key
 
+    def _get_ordered_uos_names(self, execution_order, uos_dict):
+        names = []
+        for obj in execution_order:
+            for key, uo in uos_dict.items():
+                if uo is obj:
+                    names.append(key)
+
+        return names
+
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       run_steady_state=False, tolerances_ss=None):
+                       uos_steady_state=None, tolerances_ss=None, ss_time=0,
+                       kwargs_ss=None):
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
@@ -91,17 +101,20 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
-        execution_names = list(self.uos_instances.keys())
+        execution_names = self._get_ordered_uos_names(execution_order,
+                                                      self.uos_instances)
 
         if pick_units is not None:
-            uo_vals = list(uos.values())
-            uo_names = list(uos.keys())
-            execution_names = []
-            for obj in execution_order:
-                execution_names.append(uo_names[uo_vals.index(obj)])
+            ordered_names = []
+            ordered_uos = []
+            for name in pick_units:
+                if name in execution_names:
+                    ordered_names.append(name)
+                    ind = execution_names.index(name)
+                    ordered_uos.append(execution_order[ind])
 
-            execution_order = [execution_order[execution_names.index(name)]
-                               for name in pick_units]
+            execution_order = ordered_uos
+            execution_names = ordered_names
 
         if tolerances_ss is None:
             tolerances_ss = {}
@@ -124,24 +137,40 @@ class SimulationExec:
 
             kwargs_uo = kwargs_run.get(uo_id, {})
 
-            if run_steady_state:
-                if instance.__class__.__name__ == 'Mixer':
-                    pass
-                else:
-                    tau = instance._get_tau()
+            tau = 0
+            if hasattr(instance, '_get_tau'):
+                tau = instance._get_tau()
 
-                    tolerances = tolerances_ss.get(execution_names[ind],
-                                                   1e-6)
+            ss_time += tau
 
-                    kw_ss = {'tau': tau, 'threshold': tolerances}
-                    ss_event = {'callable': check_steady_state,
-                                'num_conditions': 1,
-                                'event_name': 'steady state',
-                                'kwargs': kw_ss
-                                }
+            if uos_steady_state is not None:
+                if execution_names[ind] in uos_steady_state:
+                    if instance.__class__.__name__ == 'Mixer':
+                        pass
+                    else:
+                        tolerances = tolerances_ss.get(execution_names[ind],
+                                                       1e-6)
 
-                    instance.state_event_list = [ss_event]
-                    kwargs_uo['any_event'] = False
+                        if kwargs_ss is None:
+                            kw_ss = {'tau': tau, 'time_stop': ss_time,
+                                     'threshold': tolerances}
+
+                        else:
+                            # TODO: should we keep this?
+                            kw_ss = kwargs_ss[execution_names[ind]]
+                            kw_ss['threshold'] = tolerances
+
+                            if 'tau' not in kw_ss.keys():
+                                kw_ss['tau'] = tau
+
+                        ss_event = {'callable': check_steady_state,
+                                    'num_conditions': 1,
+                                    'event_name': 'steady state',
+                                    'kwargs': kw_ss
+                                    }
+
+                        instance.state_event_list = [ss_event]
+                        kwargs_uo['any_event'] = False
 
             instance.solve_unit(**kwargs_uo)
 
@@ -158,6 +187,7 @@ class SimulationExec:
             # for conn in self.connection_instances:
             #     if conn.source_uo is instance:
             #         conn.ReceiveData()  # receive phases from upstream uo
+            #         conn.TransferData()
 
         self.execution_order = execution_order
 
@@ -191,25 +221,34 @@ class SimulationExec:
         for ind, stream in enumerate(self.connection_instances):
             matter_obj = stream.Matter
 
-            if matter_obj.__module__ == 'PharmaPy.MixedPhases':
-                phase_list = matter_obj.Phases  # TODO: change this
-            else:
-                phase_list = [matter_obj]
-
-            for phase in phase_list:
+            if matter_obj is None:
                 index_stream.append(self.connection_names[ind])
-                index_phase.append(phase.__class__.__name__)
-                stream_info = []
-                for field in fields_phase:
-                    value_phase = getattr(phase, field, None)
-                    stream_info.append(np.atleast_1d(value_phase))
+                index_phase.append(None)
+                stream_info = [np.nan] * (len(fields_phase) +
+                                          len(fields_stream))
 
-                for field in fields_stream:
-                    value_stream = getattr(phase, field, None)
-                    stream_info.append(np.atleast_1d(value_stream))
-
-                stream_info = np.concatenate(stream_info)
                 stream_cont.append(stream_info)
+            else:
+
+                if matter_obj.__module__ == 'PharmaPy.MixedPhases':
+                    phase_list = matter_obj.Phases  # TODO: change this
+                else:
+                    phase_list = [matter_obj]
+
+                for phase in phase_list:
+                    index_stream.append(self.connection_names[ind])
+                    index_phase.append(phase.__class__.__name__)
+                    stream_info = []
+                    for field in fields_phase:
+                        value_phase = getattr(phase, field, None)
+                        stream_info.append(np.atleast_1d(value_phase))
+
+                    for field in fields_stream:
+                        value_stream = getattr(phase, field, None)
+                        stream_info.append(np.atleast_1d(value_stream))
+
+                    stream_info = np.concatenate(stream_info)
+                    stream_cont.append(stream_info)
 
         cols = fields_phase[:-1] + \
             [frac_preffix.format(ind) for ind in self.NamesSpecies] + \
@@ -448,7 +487,8 @@ class SimulationExec:
                         elif uo.Inlet.DynamicInlet is not None:
                             time_inlets.append(uo.timeProf)
                         else:
-                            time_inlets.append(uo.timeProf[-1])
+                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
+                            time_inlets.append(elapsed)
 
                         inlets_ids.append(uo.id_uo)
 
@@ -462,7 +502,8 @@ class SimulationExec:
                         elif inlet.DynamicInlet is not None:
                             time_inlets.append(uo.timeProf)
                         else:
-                            time_inlets.append(uo.timeProf[-1])
+                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
+                            time_inlets.append(elapsed)
 
                         inlets_ids.append(uo.id_uo)
 
