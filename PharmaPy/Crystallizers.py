@@ -166,8 +166,8 @@ class _BaseCryst:
         self.states_uo = ['mass_conc']
         self.names_states_in = ['mass_conc']
 
-        if not self.isothermal and 'temp' not in self.controls.keys():
-            self.states_uo.append('temp')
+        # if not self.isothermal and 'temp' not in self.controls.keys():
+        #     self.states_uo.append('temp')
 
         self.names_upstream = None
         self.bipartite = None
@@ -790,12 +790,6 @@ class _BaseCryst:
 
         self.derivatives = problem.rhs(0, states_init)
 
-        # ---------- Set solver
-        # General
-        solver = CVode(problem)
-        solver.iter = 'Newton'
-        solver.discr = 'BDF'
-
         if self.state_event_list is not None:
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list,
@@ -803,6 +797,12 @@ class _BaseCryst:
 
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
+
+        # ---------- Set solver
+        # General
+        solver = CVode(problem)
+        solver.iter = 'Newton'
+        solver.discr = 'BDF'
 
         if sundials_opts is not None:
             for name, val in sundials_opts.items():
@@ -1822,7 +1822,7 @@ class MSMPR(_BaseCryst):
             assumed that an antisolvent stream is entering the tank.
         """
 
-        self.states_uo.append('conc_j')
+        # self.states_uo.append('conc_j')
         self.is_continuous = True
         self.oper_mode = 'Continuous'
         self._Inlet = None
@@ -1847,7 +1847,8 @@ class MSMPR(_BaseCryst):
             time_upstream = [0]
 
         num_species = len(self.Liquid_1.name_species)
-        inputs = get_inputs(time_upstream[-1], self, num_species)
+        num_distrib = len(self.Solid_1.x_distrib)
+        inputs = get_inputs(time_upstream[-1], self, num_species, num_distrib)
 
         volflow_in = inputs['vol_flow']
         tau = self.Liquid_1.vol / volflow_in
@@ -1902,10 +1903,7 @@ class MSMPR(_BaseCryst):
     def nomenclature(self):
         self.names_states_in += ['vol_flow', 'temp']
 
-        if not self.isothermal:
-            self.states_uo += ['temp', 'temp_ht']
-        elif self.adiabatic:
-            self.states_uo.append('temp')
+        name_class = self.__class__.__name__
 
         if self.method == 'moments':
             # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
@@ -1913,12 +1911,28 @@ class MSMPR(_BaseCryst):
             # for mom in mom_names[::-1]:
             self.names_states_in.insert(0, 'moments')
 
-            self.states_uo.append('moments')
+            if name_class == 'SemibatchCryst':
+                self.states_uo.append('total_moments')
+            else:
+                self.states_uo.append('moments')
 
         elif self.method == '1D-FVM':
             self.names_states_in.insert(0, 'distrib')
 
-            self.states_uo.append('distrib')
+            if name_class == 'SemibatchCryst':
+                self.states_uo.insert(0, 'total_distrib')
+            else:
+                self.states_uo.insert(0, 'distrib')
+
+        if name_class == 'SemibatchCryst':
+            self.states_uo.append('vol')
+
+        if self.adiabatic:
+            self.states_uo.append('temp')
+        elif not self.isothermal:
+            self.states_uo += ['temp', 'temp_ht']
+        # elif self.adiabatic:
+        #     self.states_uo.append('temp')
 
         self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in
@@ -2195,29 +2209,32 @@ class SemibatchCryst(MSMPR):
                          h_conv, vol_ht, basis,
                          jac_type, num_interp_points, state_events)
 
-    def nomenclature(self):
-        self.states_uo.append('vol')
+    # def nomenclature(self):
+    #     if 'temp' in self.states_uo:
+    #         self.states_uo.insert(-2, 'vol')
+    #     else:
+    #         self.states_uo.append('vol')
 
-        self.names_states_out = ['mass_conc']
+    #     self.names_states_out = ['mass_conc']
 
-        if self.method == 'moments':
-            mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
+    #     if self.method == 'moments':
+    #         mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
 
-            for mom in mom_names[::-1]:
-                self.names_states_in.insert(0, mom)
-                self.names_states_out.insert(0, 'total_%s' % mom)
+    #         for mom in mom_names[::-1]:
+    #             self.names_states_in.insert(0, mom)
+    #             self.names_states_out.insert(0, 'total_%s' % mom)
 
-            self.states_uo += mom_names
+    #         self.states_uo += mom_names
 
-        elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-            self.names_states_out.insert(0, 'total_distrib')
+    #     elif self.method == '1D-FVM':
+    #         self.names_states_in.insert(0, 'distrib')
+    #         self.names_states_out.insert(0, 'total_distrib')
 
-            self.states_uo.append('total_distrib')
+    #         self.states_uo.append('total_distrib')
 
-        self.names_states_out = self.names_states_out + ['vol', 'temp']
-        self.names_states_in += ['vol_flow', 'temp']
-        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
+    #     self.names_states_out = self.names_states_out + ['vol', 'temp']
+    #     self.names_states_in += ['vol_flow', 'temp']
+    #     self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
 
     def material_balances(self, time, distrib, w_conc, temp, vol_liq, params,
                           u_inputs, rhos, moms, phi_in):

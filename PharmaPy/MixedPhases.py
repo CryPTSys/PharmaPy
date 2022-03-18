@@ -6,11 +6,12 @@ Created on Tue Jun 16 15:43:14 2020
 """
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.Interpolation import NewtonInterpolation, SplineInterpolation
+from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
 
 import numpy as np
 from scipy.optimize import newton
+from scipy.interpolate import CubicSpline
 
 eps = np.finfo(float).eps
 
@@ -389,12 +390,24 @@ class SlurryStream(Slurry):
         self.temp = energy_balance(self, 'mass_flow')
 
     def InterpolateInputs(self, time):
-        if isinstance(time, float) or isinstance(time, int):
+        if isinstance(time, (float, int)):
+            time = min(time, self.time_upstream[-1])
+
             y_interpol = Interpolation(self.time_upstream, self.y_inlet,
                                        time)
         else:
-            interpol = SplineInterpolation(self.time_upstream, self.y_inlet)
-            y_interpol = interpol.evalSpline(time)
+            interpol = CubicSpline(self.time_upstream, self.y_inlet)
+            flags_interpol = time > self.time_upstream[-1]
+
+            if any(flags_interpol):
+                time_interpol = time[~flags_interpol]
+                y_interp = interpol(time_interpol)
+
+                y_extrapol = np.tile(y_interp[-1],
+                                     (sum(flags_interpol), 1))
+                y_interpol = np.vstack((y_interp, y_extrapol))
+            else:
+                y_interpol = interpol(time)
 
         return y_interpol
 

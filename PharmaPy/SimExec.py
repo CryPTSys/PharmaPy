@@ -63,8 +63,18 @@ class SimulationExec:
 
                 value.name = key
 
+    def _get_ordered_uos_names(self, execution_order, uos_dict):
+        names = []
+        for obj in execution_order:
+            for key, uo in uos_dict.items():
+                if uo is obj:
+                    names.append(key)
+
+        return names
+
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       uos_steady_state=None, tolerances_ss=None):
+                       uos_steady_state=None, tolerances_ss=None, ss_time=0,
+                       kwargs_ss=None):
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
@@ -91,17 +101,20 @@ class SimulationExec:
         uos = self.uos_instances
 
         execution_order = [x for x in execution_order if x is not None]
-        execution_names = list(self.uos_instances.keys())
+        execution_names = self._get_ordered_uos_names(execution_order,
+                                                      self.uos_instances)
 
         if pick_units is not None:
-            uo_vals = list(uos.values())
-            uo_names = list(uos.keys())
-            execution_names = []
-            for obj in execution_order:
-                execution_names.append(uo_names[uo_vals.index(obj)])
+            ordered_names = []
+            ordered_uos = []
+            for name in pick_units:
+                if name in execution_names:
+                    ordered_names.append(name)
+                    ind = execution_names.index(name)
+                    ordered_uos.append(execution_order[ind])
 
-            execution_order = [execution_order[execution_names.index(name)]
-                               for name in pick_units]
+            execution_order = ordered_uos
+            execution_names = ordered_names
 
         if tolerances_ss is None:
             tolerances_ss = {}
@@ -124,17 +137,32 @@ class SimulationExec:
 
             kwargs_uo = kwargs_run.get(uo_id, {})
 
+            tau = 0
+            if hasattr(instance, '_get_tau'):
+                tau = instance._get_tau()
+
+            ss_time += tau
+
             if uos_steady_state is not None:
                 if execution_names[ind] in uos_steady_state:
                     if instance.__class__.__name__ == 'Mixer':
                         pass
                     else:
-                        tau = instance._get_tau()
-
                         tolerances = tolerances_ss.get(execution_names[ind],
                                                        1e-6)
 
-                        kw_ss = {'tau': tau, 'threshold': tolerances}
+                        if kwargs_ss is None:
+                            kw_ss = {'tau': tau, 'time_stop': ss_time,
+                                     'threshold': tolerances}
+
+                        else:
+                            # TODO: should we keep this?
+                            kw_ss = kwargs_ss[execution_names[ind]]
+                            kw_ss['threshold'] = tolerances
+
+                            if 'tau' not in kw_ss.keys():
+                                kw_ss['tau'] = tau
+
                         ss_event = {'callable': check_steady_state,
                                     'num_conditions': 1,
                                     'event_name': 'steady state',
