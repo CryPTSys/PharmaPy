@@ -1206,9 +1206,13 @@ class _BaseCryst:
         return fig, ax
 
     def plot_csd_2d(self, fig_size=(5, 4), times=None, pallette='BuGn',
-                    logy=False):
+                    logy=False, vol_based=False):
 
-        distrib = self.distribProf
+        if vol_based:
+            distrib = self.distribVolPercProf
+        else:
+            distrib = self.distribProf
+
         if times is not None:
             time_idx = [np.argmin(abs(self.timeProf - time)) for time in times]
             distrib = distrib[time_idx]

@@ -517,6 +517,22 @@ class DynamicCollector:
         self.elapsed_time = 0
 
     @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, phases):
+        if isinstance(phases, (list, tuple)):
+            self._Phases = phases
+        elif phases.__module__ == 'PharmaPy.Phases':
+            if self._Phases is None:
+                self._Phases = [phases]
+            else:
+                self._Phases.append(phases)
+
+        classify_phases(self)
+
+    @property
     def Inlet(self):
         return self._Inlet
 
@@ -617,6 +633,7 @@ class DynamicCollector:
             solid = SolidPhase(path, temp=temp_init, distrib=distr_init,
                                x_distrib=self.Inlet.Solid_1.x_distrib,
                                mass_frac=frac_solid)
+
             phases = (liquid, solid)
 
             self.kwargs_cryst.pop('target_ind')
@@ -650,6 +667,8 @@ class DynamicCollector:
                 vol_phase = vol_phase[0]
 
             self.vol_phase = vol_phase
+
+            self.Phases = phases
         else:
             path = self.Inlet.path_data
             mass_init = init_dict['mass_flow'] / 10
@@ -658,8 +677,9 @@ class DynamicCollector:
             liquid = LiquidPhase(path, temp=temp_init, mass_frac=frac_init)
 
             states_init = np.concatenate((frac_init, [mass_init, temp_init]))
+
             self.Phases = (liquid,)
-            classify_phases(self)
+            # classify_phases(self)
 
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time)
