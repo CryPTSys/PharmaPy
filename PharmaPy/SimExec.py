@@ -368,9 +368,7 @@ class SimulationExec:
 
         return results
 
-    def GetCAPEX(self, k_vals=None, b_vals=None, cepci_vals=None,
-                 f_pres=None, f_mat=None, min_capacity=None):
-
+    def get_equipment_size(self):
         size_equipment = {}
 
         for key, instance in self.uos_instances.items():
@@ -382,6 +380,14 @@ class SimulationExec:
 
             elif hasattr(instance, 'area_filt'):
                 size_equipment[key] = instance.area_filt
+
+        return size_equipment
+
+    def GetCAPEX(self, size_equipment=None, k_vals=None, b_vals=None,
+                 cepci_vals=None, f_pres=None, f_mat=None, min_capacity=None):
+
+        if size_equipment is None:
+            size_equipment = self.get_equipment_size()
 
         num_equip = len(size_equipment)
         name_equip = size_equipment.keys()
@@ -422,18 +428,19 @@ class SimulationExec:
 
             cost_equip = dict(zip(name_equip, cost_equip))
 
-            return size_equipment, cost_equip
+            return cost_equip
 
-    def GetLabor(self, wage=35, full_output=False, pick_equip=None):
+    def GetLabor(self, wage=35, num_weeks=48):
         # TODO: per/hour (per/shift) cost?
         has_solids = []
         is_batch = []
+        uo_names = []
 
-        for uo in self.uos_instances.values():
+        for key, uo in self.uos_instances.items():
             if uo.__class__.__name__ != 'Mixer':
 
                 if hasattr(uo, 'Phases'):
-                    if isinstance(uo.Phases, list):
+                    if isinstance(uo.Phases, (list, tuple)):
                         is_solid = [phase.__class__.__name__ == 'SolidPhase'
                                     for phase in uo.Phases]
                     else:
@@ -446,24 +453,24 @@ class SimulationExec:
 
                 oper = uo.oper_mode == 'Batch' or uo.oper_mode == 'Semibatch'
                 is_batch.append(oper)
+                uo_names.append(key)
 
         has_solids = np.array(has_solids, dtype=bool)
         is_batch = np.array(is_batch, dtype=bool)
 
-        num_shift = has_solids * (2 + is_batch) + ~has_solids * (1 + is_batch)
-        if pick_equip is not None:
-            num_shift = num_shift[pick_equip]
-
-        num_shift = sum(num_shift)
+        # Number of operators per shift
+        num_workers = has_solids * (2 + is_batch) + ~has_solids * (1 + is_batch)
 
         hr_week = 40
-        num_week = 48
-        labor_cost = 1.20 * num_shift * 5 * (hr_week * num_week) * wage  # USD/yr
+        labor_cost = 1.20 * num_workers * 5 * (hr_week * num_weeks) * wage  # USD/yr
 
-        if full_output:
-            return {'num_workers': num_shift, 'labor_cost': labor_cost}
-        else:
-            return labor_cost
+        labor_array = np.column_stack(
+            (has_solids, is_batch, num_workers, labor_cost))
+
+        labor_df = pd.DataFrame(labor_array, index=uo_names,
+                                columns=('has_solids', 'is_batch',
+                                         'num_workers', 'labor_cost'))
+        return labor_df
 
     def get_raw_objects(self):
         raw_inlets = []
@@ -474,7 +481,7 @@ class SimulationExec:
 
         time_inlets = []
 
-        for ind, uo in enumerate(self.execution_order):
+        for uo in self.uos_instances.values():
             # Inlets (flows)
             if hasattr(uo, 'Inlet'):
                 if uo.Inlet is not None:
@@ -492,7 +499,8 @@ class SimulationExec:
 
                         inlets_ids.append(uo.id_uo)
 
-            elif hasattr(uo, 'Inlets'):
+            elif uo.__class__.__name__ == 'Mixer':
+            # hasattr(uo, 'Inlets'):
                 for inlet in uo.Inlets:
                     if inlet.y_upstream is None:
                         raw_inlets.append(inlet)
@@ -613,9 +621,7 @@ class SimulationExec:
 
         raw_df = pd.concat((flow_df, holdup_df), axis=0,
                            keys=('inlets', 'holdups'))
-        raw_total = raw_df.sum(axis=0)
-
-        return raw_df, raw_total
+        return raw_df
 
     def GetDuties(self, full_output=False):
         """
@@ -662,8 +668,13 @@ class SimulationExec:
         else:
             return heat_duties
 
-    def GetOPEX(self, cost_raw, full_output=False, include_holdups=True,
-                picks_labor=None, steady_raw=False):
+    def GetOPEX(self, cost_raw, include_holdups=True, steady_raw=False,
+                lumped=False, kwargs_items=None):
+
+        opex_items = ('duties', 'raw_materials', 'labor')
+        if kwargs_items is None:
+            kwargs_items = {key: {} for key in opex_items}
+
         cost_raw = np.asarray(cost_raw)
 
         # ---------- Heat duties
@@ -674,7 +685,8 @@ class SimulationExec:
 
         heat_exchange_cost = np.array(heat_exchange_cost)
 
-        duties, map_duties = self.GetDuties(full_output=True)
+        duties, map_duties = self.GetDuties(full_output=True,
+                                            **kwargs_items.get('duties', {}))
         map_duties += 3
 
         duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)
@@ -684,22 +696,18 @@ class SimulationExec:
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
 
         # ---------- Raw materials
-        _, raw_materials = self.GetRawMaterials(include_holdups, steady_raw)
+        raw_materials = self.GetRawMaterials(
+            include_holdups, steady_raw, **kwargs_items.get('raw_materials',
+                                                            {}))
         raw_cost = cost_raw * raw_materials
 
         # ---------- Labor
-        labor = self.GetLabor(full_output=True, pick_equip=picks_labor)
+        labor_cost = self.GetLabor(**kwargs_items.get('labor', {}))
 
-        opex = {'raw_materials': raw_cost.sum(),
-                'heat_duties': sum(duty_cost.sum()),
-                'labor': labor['labor_cost']}
-
-        consumption = {'raw_materials': raw_materials, 'duties': duties}
-
-        if full_output:
-            return opex, duty_cost, raw_cost, labor, consumption
+        if lumped:
+            pass
         else:
-            return opex
+            return duty_cost, raw_cost, labor_cost
 
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)

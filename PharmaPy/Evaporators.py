@@ -1174,16 +1174,17 @@ class ContinuousEvaporator:
     def Phases(self, phase):
         path_comp = phase.path_data
 
-        self.LiqPhase = phase
+        vapor = VaporStream(path_comp, pres=self.pres)
 
-        self.num_species = len(self.LiqPhase.mole_frac)
-        self.name_species = self.LiqPhase.name_species
+        self._Phases = [phase, vapor]
+        classify_phases(self)
 
-        self.VapPhase = VaporStream(path_comp, pres=self.pres)
+        self.Liquid_1 = phase
 
-        self._Phases = phase
+        self.num_species = len(self.Liquid_1.mole_frac)
+        self.name_species = self.Liquid_1.name_species
 
-        self.__original_phase__ = copy.deepcopy(self.LiqPhase)
+        self.__original_phase__ = copy.deepcopy(self.Liquid_1)
 
     @property
     def Inlet(self):
@@ -1195,7 +1196,7 @@ class ContinuousEvaporator:
         self._Inlet = inlet
         self._Inlet.num_interpolation_points = self.num_interp_points
 
-        self.oper_mode = 'Semibatch'
+        # self.oper_mode = 'Semibatch'
 
     @property
     def Utility(self):
@@ -1219,13 +1220,13 @@ class ContinuousEvaporator:
     def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
                        input_flow):
         # Volumes
-        rho_liq = self.LiqPhase.getDensity(mole_frac=x_i, temp=temp,
+        rho_liq = self.Liquid_1.getDensity(mole_frac=x_i, temp=temp,
                                            basis='mole')  # mol/L
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
         vol_vap = mol_vap * gas_ct * temp / pres
 
-        mw_vap = np.dot(self.VapPhase.mw, y_i.T)
+        mw_vap = np.dot(self.Vapor_1.mw, y_i.T)
 
         # Gas density
         rho_mol = pres / gas_ct / temp  # mol/m**3
@@ -1262,10 +1263,10 @@ class ContinuousEvaporator:
             component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
             global_bce = mol_liq + mol_vap - sum(moles_i)
 
-            k_i = self.LiqPhase.getKeqVLE(temp, pres, x_i, self.activity_model)
+            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_i, self.activity_model)
             equilibria = y_i - k_i * x_i
 
-            p_sat = self.LiqPhase.AntoineEquation(temp=temp)
+            p_sat = self.Liquid_1.AntoineEquation(temp=temp)
             pres_eqn = np.dot(x_i, p_sat) - pres
 
             alg_balances = np.concatenate((component_bce,  # x_i
@@ -1290,8 +1291,8 @@ class ContinuousEvaporator:
         h_in = self.Inlet.getEnthalpy(temp=input_temp, mole_frac=input_fracs,
                                       basis='mole')
 
-        h_liq = self.LiqPhase.getEnthalpy(temp, mole_frac=x_i, basis='mole')
-        h_vap = self.VapPhase.getEnthalpy(temp, mole_frac=y_i, basis='mole')
+        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
+        h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
 
         # Heat transfer
         if self.adiabatic:
@@ -1377,11 +1378,11 @@ class ContinuousEvaporator:
                 balances[-2] = balances[-2] - duint_dt
 
             # Update output objects
-            self.LiqPhase.temp = temp
-            self.VapPhase.temp = temp
+            self.Liquid_1.temp = temp
+            self.Vapor_1.temp = temp
 
-            self.LiqPhase.mole_frac = x_liq
-            self.VapPhase.mole_flow = y_vap
+            self.Liquid_1.mole_frac = x_liq
+            self.Vapor_1.mole_flow = y_vap
 
             return balances
 
@@ -1394,20 +1395,20 @@ class ContinuousEvaporator:
         return jac_system
 
     def init_unit(self):
-        temp_bubble_init, y_init = self.LiqPhase.getBubblePoint(pres=self.pres,
+        temp_bubble_init, y_init = self.Liquid_1.getBubblePoint(pres=self.pres,
                                                                 y_vap=True)
         pres_init = self.pres
 
         # Mole fractions  # TODO: equilibrium compositions?
-        x_init = self.LiqPhase.mole_frac
+        x_init = self.Liquid_1.mole_frac
         # x_seed = np.append(x_seed, 0)
 
         # y_ = np.zeros(self.num_species + 1)
         # y_seed[-1] = 1
 
         # Moles of phases
-        mol_liq = self.LiqPhase.moles
-        vol_liq = self.LiqPhase.vol
+        mol_liq = self.Liquid_1.moles
+        vol_liq = self.Liquid_1.vol
 
         vol_vap = self.vol_tot - vol_liq
         if vol_vap < 0:
@@ -1417,7 +1418,7 @@ class ContinuousEvaporator:
 
         mol_vap = self.pres * vol_vap / gas_ct / temp_bubble_init
 
-        self.VapPhase.updatePhase(moles=mol_vap, mole_frac=y_init)
+        self.Vapor_1.updatePhase(moles=mol_vap, mole_frac=y_init)
 
         # Moles of i
         mol_i = mol_liq * x_init + mol_vap * y_init
@@ -1434,8 +1435,8 @@ class ContinuousEvaporator:
         # ---------- Energy balance states
         # Enthalpies
         hin_init = self.Inlet.getEnthalpy(basis='mole', temp=u_inlet['temp'])
-        hliq_init = self.LiqPhase.getEnthalpy(temp_bubble_init, basis='mole')
-        hvap_init = self.VapPhase.getEnthalpy(temp_bubble_init, basis='mole',
+        hliq_init = self.Liquid_1.getEnthalpy(temp_bubble_init, basis='mole')
+        hvap_init = self.Vapor_1.getEnthalpy(temp_bubble_init, basis='mole',
                                               mole_frac=y_init)
 
         # Heat transfer
@@ -1477,7 +1478,7 @@ class ContinuousEvaporator:
 
         inputs = get_inputs(time_upstream[-1], self, self.num_species)
 
-        dens_inlet = self.LiqPhase.getDensity(mole_frac=inputs['mole_frac'],
+        dens_inlet = self.Liquid_1.getDensity(mole_frac=inputs['mole_frac'],
                                               temp=inputs['temp'],
                                               basis='mole') * 1000  # mol/m**3
 
@@ -1601,12 +1602,14 @@ class ContinuousEvaporator:
         self.temp_runs.append(states[:, -1])
 
         # Update phases
-        self.LiqPhase.temp = self.temp_runs[-1][-1]
-        self.LiqPhase.pres = self.pres_runs[-1][-1]
-        self.LiqPhase.updatePhase(mole_frac=self.xliq_runs[-1][-1],
+        self.Liquid_1.temp = self.temp_runs[-1][-1]
+        self.Liquid_1.pres = self.pres_runs[-1][-1]
+        self.Liquid_1.updatePhase(mole_frac=self.xliq_runs[-1][-1],
                                   moles=self.molLiq_runs[-1][-1])
 
-        self.Phases = self.LiqPhase
+        holder = copy.deepcopy(self.__original_phase__)
+        self.Phases = self.Liquid_1
+        self.__original_phase__ = holder
 
         inputs_all = get_inputs(time, *self.args_inputs)
 
@@ -1621,7 +1624,7 @@ class ContinuousEvaporator:
         self.volLiqProf = vol_liq
 
         # Output info
-        self.Outlet = LiquidStream(self.LiqPhase.path_data,
+        self.Outlet = LiquidStream(self.Liquid_1.path_data,
                                    temp=self.temp_runs[-1][-1],
                                    pres=self.pres_runs[-1][-1],
                                    mole_frac=self.xliq_runs[-1][-1],
@@ -1647,15 +1650,15 @@ class ContinuousEvaporator:
                                           enrgy_bce=True)
             heat_bce[ind] = energy[1]
 
-            temp_bubble = self.LiqPhase.getBubblePoint(
+            temp_bubble = self.Liquid_1.getBubblePoint(
                 pres=self.pres_runs[-1][ind],
                 mole_frac=self.xliq_runs[-1][ind])
 
-            h_liq[ind] = self.LiqPhase.getEnthalpy(
+            h_liq[ind] = self.Liquid_1.getEnthalpy(
                 temp=temp_bubble,
                 mole_frac=self.xliq_runs[-1][ind], basis='mole')
 
-            h_vap[ind] = self.VapPhase.getEnthalpy(
+            h_vap[ind] = self.Vapor_1.getEnthalpy(
                 temp=self.temp_runs[-1][ind],
                 mole_frac=self.yvap_runs[-1][ind], basis='mole')
 
@@ -1666,7 +1669,7 @@ class ContinuousEvaporator:
         heat_cond_prof = flow_vap * (h_liq - h_vap)
 
         self.heat_profile = np.column_stack((heat_bce, heat_cond_prof))
-        self.heat_duty = trapezoidal_rule(time, self.heat_profile)
+        self.heat_duty = np.abs(trapezoidal_rule(time, self.heat_profile))
         self.duty_type = [0, 0]  # both are cooling water
 
         self.liqFlowProf = flow_liq
