@@ -60,10 +60,12 @@ class _BaseCryst:
                  h_conv, vol_ht, basis, jac_type,
                  state_events):
 
-        """ Construct a Crystallizer object
+        """ Construct a Crystallizer Object
         Parameters
         ----------
-        mask_params : TODO
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics
+            computations
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
         target_comp : str, list of strings
@@ -72,29 +74,34 @@ class _BaseCryst:
             Scaling factor by which crystal size distribution will be 
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool
-            Whether the energy balace is considered (i.e dT/dt = 0)
-        controls : dict of dicts
-            TODO 'temp'
-        args_control : dict
+        isothermal : bool (optional, default = True)
+            Boolean value indicating whether the energy balace is considered 
+            (i.e dT/dt = 0)
+        controls : dict of dicts(funcs) (optional, default = None)
+            Dictionary with keys representing the state(e.g.'Temp') which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
+        args_control : TODO (Maybe no longer used?)
+        cfun_solub: callable
+            User defined function for the solubility fucntion : func(conc)
+        adiabatic : bool (optional, default=True)
+            Boolean value indicating whether the heat transfer of 
+            the crystallization is considered.
+        rad_zero : float (optional, default=TODO)
+            TODO Size of the first bin of the CSD discretization [m]
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be reset 
+            before simulation
+        h_conv : float (optional, default = TODO) (maybe remove?)
             TODO
-        cfun_solub: func(conc)?
-            TODO
-        adiabatic : bool
-            TODO
-        rad_zero : float
-            TODO size of the first bin of the CSD discretization?
-        reset_states :
-            TODO
-        h_conv : float
-            TODO
-        vol_ht : float
-            TODO
-        basis : str
-            TODO 'massfrac', ....
+        vol_ht : float (optional, default = TODO)
+            TODO Volume of the cooling jacket [m^3]
+        basis : str (optional, default = T0DO)
+            TODO Options :'massfrac', 'massconc'
         jac_type : str
-            TODO
-        state_events :
+            TODO Options: 'AD'
+        state_events : dict of dicts
             TODO
         
         """
@@ -409,8 +416,10 @@ class _BaseCryst:
 
             # Material bce in kg_API/s --> G in um, mu_2 in m**2 (or m**2/m**3)
             mass_transfer = rho_cry * kv_cry * (
-                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
-
+                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6) \
+               
+            impurity_transfer = 4150 * np.exp(- 6.66*10**4/ 8.413 / temp) \
+                * conc[2]*vol
             return dcsd_dt, np.array(mass_transfer)
 
     def unit_model(self, time, states, params, sw=None,
@@ -683,7 +692,32 @@ class _BaseCryst:
                    eval_sens=False,
                    jac_v_prod=False, verbose=True, test=False,
                    sundials_opts=None, timesim_limit=0):
-
+        """
+        runtime : float (default=None)
+        time_grid : list of float (optional, dafault = None)
+            Optional list of time values for the integrator to use 
+            during simulation
+        eval_sens : bool (optional, default = False)
+            Boolean value indicating whether the parametric 
+            sensitivity system will be included during simulation.
+            Must be True to access sensitivity information.
+        jac_v_prod : 
+            TODO
+        verbose : bool (optional, default = True)
+            Boolean value indicating whether the simulator will 
+            output run statistics after simulation is complete.
+            Use True if you want to see the number of function 
+            evaluations and wall-clock runtime for the unit.
+        test :
+            TODO
+        sundials_opts : 
+            TODO
+        timesim_limit : float (optional, default = 0)
+            Float value of the maximum wall-clock time for the 
+            simulator to use before aborting the simulation.
+        
+        """
+        
         self.Kinetics.target_idx = self.target_ind
 
         # ---------- Solid phase states
