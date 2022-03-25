@@ -2,12 +2,12 @@ from setuptools import setup, find_packages
 
 setuptools_kwargs = {
     'zip_safe': False,
-    'install_requires': ['pyomo',
-                         'coverage',
+    'install_requires': ['coverage',
                          'numpy',
                          'scipy',
                          'pandas',
-                         'assimulo'],
+                         'assimulo',
+                         'cyipopt'],
     'scripts': [],
     'include_package_data': True
 }

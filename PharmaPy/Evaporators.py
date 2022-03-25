@@ -314,13 +314,36 @@ class Evaporator:
                  activity_model='ideal', state_events=None,
                  stop_at_maxvol=True, flash_kwds=None):
 
-        """
+        """ Create a batch/semibatch evaporator object
+
         Parameters
         ----------
         vol_drum : float
-            Total drum volume (m**3)
-        pres : float
-            pressure set (Pa)
+            total drum volume (m**3).
+        pres : float, optional
+            pressure set [Pa] (actual pressure is computed by the evaporator
+            model). The default is 101325.
+        diam_out : float, optional
+            diameter of the vapor outlet pipe [m]. The default is 2.54e-2.
+        k_vap : float, optional
+            constant for vapor flow proportional control. Vapor flow is
+            calculated as F_v = k_vap * (P_model - P) + F_in. The default is 1.
+        cv_gas : TYPE, optional
+            DESCRIPTION. The default is 0.8.
+        h_conv : TYPE, optional
+            DESCRIPTION. The default is 1000.
+        activity_model : TYPE, optional
+            DESCRIPTION. The default is 'ideal'.
+        state_events : TYPE, optional
+            DESCRIPTION. The default is None.
+        stop_at_maxvol : TYPE, optional
+            DESCRIPTION. The default is True.
+        flash_kwds : TYPE, optional
+            DESCRIPTION. The default is None.
+
+        Returns
+        -------
+        None.
 
         """
 
