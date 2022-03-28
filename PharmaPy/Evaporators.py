@@ -1111,7 +1111,7 @@ class ContinuousEvaporator:
                  cv_gas=0.8,
                  h_conv=1000, temp_ht=298.15,
                  activity_model='ideal', num_interp_points=3, mult_flash=1,
-                 state_events=None, recycle=0):
+                 state_events=None, reflux_ratio=0):
 
         self._Inlet = None
         self._Phases = None
@@ -1166,7 +1166,7 @@ class ContinuousEvaporator:
 
         self.state_event_list = state_events
 
-        self.recycle = recycle
+        self.reflux_ratio = reflux_ratio
 
     @property
     def Phases(self):
@@ -1219,6 +1219,15 @@ class ContinuousEvaporator:
         self.name_algebraic = ['x_liq', 'y_vap', 'mol_liq', 'mol_vap',
                                'pres', 'temp']
 
+    def get_volumes(self, temp, pres, x_i, mol_liq, mol_vap):
+        rho_liq = self.Liquid_1.getDensity(mole_frac=x_i, temp=temp,
+                                           basis='mole')  # mol/L
+
+        vol_liq = mol_liq / rho_liq / 1000  # m**3
+        vol_vap = mol_vap * gas_ct * temp / pres
+
+        return vol_liq, vol_vap
+
     def get_mole_flows(self, temp, pres, x_i, y_i, mol_liq, mol_vap,
                        input_flow):
         # Volumes
@@ -1260,7 +1269,7 @@ class ContinuousEvaporator:
         else:
             # Differential eqns
             dmoli_dt = input_flow * input_fracs - flow_liq * x_i - \
-                (1 - self.recycle) * flow_vap * y_i
+                (1 - self.reflux_ratio) * flow_vap * y_i
 
             # Algebraic eqns
             component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
@@ -1296,10 +1305,10 @@ class ContinuousEvaporator:
 
         h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
 
-        if self.recycle == 0:
+        if self.reflux_ratio == 0:
             h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
         else:
-            temp_bubble = self.Liquid_1.getBubblePoint(pres)
+            temp_bubble = self.Liquid_1.getBubblePoint(pres, mole_frac=y_i)
             h_vap = self.Liquid_1.getEnthalpy(temp=temp_bubble, mole_frac=y_i,
                                               basis='mole')
 
@@ -1316,7 +1325,7 @@ class ContinuousEvaporator:
             heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
 
         flow_term = input_flow * h_in - flow_liq * h_liq - \
-            (1 - self.recycle) * flow_vap * h_vap
+            (1 - self.reflux_ratio) * flow_vap * h_vap
         if heat_prof:
             return flow_term, heat_transfer
         else:
@@ -1447,7 +1456,7 @@ class ContinuousEvaporator:
         hin_init = self.Inlet.getEnthalpy(basis='mole', temp=u_inlet['temp'])
         hliq_init = self.Liquid_1.getEnthalpy(temp_bubble_init, basis='mole')
         hvap_init = self.Vapor_1.getEnthalpy(temp_bubble_init, basis='mole',
-                                              mole_frac=y_init)
+                                             mole_frac=y_init)
 
         # Heat transfer
         if self.adiabatic:
@@ -1630,7 +1639,7 @@ class ContinuousEvaporator:
             inputs_all['mole_flow'])
 
         self.flowLiqProf = flow_liq
-        self.flowVapProf = flow_vap
+        self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
         self.volLiqProf = vol_liq
 
         # Output info
