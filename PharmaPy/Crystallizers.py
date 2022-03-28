@@ -626,8 +626,8 @@ class _BaseCryst:
 
         else:
             if self.state_event_list is None:
-                def model(time, states):
-                    return self.unit_model(time, states, params_mergd)
+                def model(time, states, params=params_mergd):
+                    return self.unit_model(time, states, params)
 
                 problem = Explicit_Problem(model, states_init,
                                            t0=self.elapsed_time)
@@ -788,7 +788,7 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
-        self.derivatives = problem.rhs(0, states_init, merged_params)
+        self.derivatives = problem.rhs(0, states_init)
 
         if self.state_event_list is not None:
             def new_handle(solver, info):
