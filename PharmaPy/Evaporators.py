@@ -1295,12 +1295,13 @@ class ContinuousEvaporator:
                                       basis='mole')
 
         h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
+
         if self.recycle == 0:
             h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
         else:
             temp_bubble = self.Liquid_1.getBubblePoint(pres)
             h_vap = self.Liquid_1.getEnthalpy(temp=temp_bubble, mole_frac=y_i,
-                                             basis='mole')
+                                              basis='mole')
 
         # Heat transfer
         if self.adiabatic:
