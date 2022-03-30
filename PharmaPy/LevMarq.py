@@ -101,7 +101,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             break
 
         x_new = x + lm_step
-        print('iteration %i' % num_feval)
+        # print('iteration %i' % num_feval)
         # print(x_new)
 
         # print(x_new)

@@ -660,8 +660,8 @@ class _BaseCryst:
 
         else:
             if self.state_event_list is None:
-                def model(time, states):
-                    return self.unit_model(time, states, params_mergd)
+                def model(time, states, params=params_mergd):
+                    return self.unit_model(time, states, params)
 
                 problem = Explicit_Problem(model, states_init,
                                            t0=self.elapsed_time)

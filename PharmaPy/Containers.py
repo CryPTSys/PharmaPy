@@ -473,6 +473,10 @@ class Mixer:
             if self.is_continuous:
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
                                           mass_flow=last_mass)
+
+                self.massFracProf = massfrac
+                self.massFlowProf = mass
+                self.tempProf = temp
             else:
                 self.Liquid_1.temp = temp
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
