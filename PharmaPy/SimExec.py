@@ -89,6 +89,9 @@ class SimulationExec:
 
             kwargs_run = {key: {} for key in keys}
 
+        if kwargs_ss is None:
+            kwargs_ss = {}
+
         # isbatch = [elem == 'Batch' for elem in self.oper_mode]
 
         # Create graph and define execution order
@@ -151,13 +154,14 @@ class SimulationExec:
                         tolerances = tolerances_ss.get(execution_names[ind],
                                                        1e-6)
 
-                        if kwargs_ss is None:
+                        kw_ss = kwargs_ss.get(execution_names[ind], None)
+
+                        if kw_ss is None:
                             kw_ss = {'tau': tau, 'time_stop': ss_time,
                                      'threshold': tolerances}
 
                         else:
                             # TODO: should we keep this?
-                            kw_ss = kwargs_ss[execution_names[ind]]
                             kw_ss['threshold'] = tolerances
 
                             if 'tau' not in kw_ss.keys():
