@@ -18,7 +18,7 @@ from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
-from PharmaPy.Commons import reorder_pde_outputs
+from PharmaPy.Commons import reorder_pde_outputs, eval_state_events, handle_events
 # from pathlib import Path
 
 eps = np.finfo(float).eps
@@ -28,9 +28,9 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9, eta_fun=None, mass_eta=False):
+                 resist_medium=2.22e9, eta_fun=None, mass_eta=False, 
+                 state_events=None):
         """
-
 
         Parameters
         ----------
@@ -47,6 +47,8 @@ class Drying:
         mass_eta : bool, optional
             If true, drying rate limiting factor is a function of mass fractional saturation value.
             The default is False.
+        state_events : list of dicts?
+        TODO
 
         Returns
         -------
@@ -82,7 +84,8 @@ class Drying:
         self.mass_eta = mass_eta
         self.oper_mode = 'Batch'
         self.is_continuous = False
-
+        self.state_event_list = state_events
+        
     @property
     def Phases(self):
         return self._Phases
@@ -138,7 +141,17 @@ class Drying:
                 input_dict[name] = inputs[self.bipartite[name]]
 
         return input_dict
-
+    
+    def _eval_state_events(self, time, states, sw):
+        is_dryer = self.__class__.__name__ == 'Drying'
+        
+        events = eval_state_events(
+            time, states, sw, self.len_states, 
+            self.states_uo, self.state_event_list, sdot=self.derivatives, 
+            discretized_model=is_dryer)
+        
+        return events
+    
     def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
         p_sat = self.Liquid_1.AntoineEquation(temp=temp_cond)
 
@@ -210,6 +223,8 @@ class Drying:
         # print(satur.min())
 
         model_eqns = np.column_stack(material_eqns + energy_eqns)
+        
+        self.derivatives = model_eqns.ravel()
 
         return model_eqns.ravel()
 
@@ -309,9 +324,9 @@ class Drying:
 
             return [dTg_dt, dTcond_dt]
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325,
+    def solve_unit(self, deltaP, runtime, p_atm=101325, any_event=True,
                    verbose=True):
-
+      
         # ---------- Discretization
         self.z_grid = np.linspace(0, self.cake_height, self.num_nodes + 1)
         self.z_centers = (self.z_grid[1:] + self.z_grid[:-1]) / 2
@@ -429,11 +444,28 @@ class Drying:
                                  (np.mean(surf_tens), rholiq_mass))
 
         # ---------- Solve model
-        model = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
-                                 t0=0)
+        model = self.unit_model
+        if self.state_event_list is None:
+            def model(t, y): return self.unit_model(t, y, None)
+            problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
+                                       t0=0)
+        else:
+            switches = [True] * len(self.state_even_list)
+            problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
+                                 t0=0, sw0=switches)
+            
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list, 
+                                     any_Event = any_event)
+            
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+            
+        self.derivatives = model(0, states_prev.ravel())
 
-        model.name = 'Drying Model'
-        sim = CVode(model)
+        problem.name = 'Drying Model'
+        
+        sim = CVode(problem)
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
 

@@ -61,6 +61,7 @@ class _BaseCryst:
                  state_events):
 
         """ Construct a Crystallizer Object
+        
         Parameters
         ----------
         mask_params : list of bool (optional, default = None)
