@@ -1180,22 +1180,27 @@ class ContinuousEvaporator:
         h_conv : float, optional
             convective heat transfer coefficient for the liquid phase
             [W/m**2/K]. The default is 1000.
-        temp_ht : TYPE, optional
-            DESCRIPTION. The default is 298.15.
-        activity_model : TYPE, optional
-            DESCRIPTION. The default is 'ideal'.
-        num_interp_points : TYPE, optional
-            DESCRIPTION. The default is 3.
-        mult_flash : TYPE, optional
-            DESCRIPTION. The default is 1.
-        state_events : TYPE, optional
-            DESCRIPTION. The default is None.
-        reflux_ratio : TYPE, optional
-            DESCRIPTION. The default is 0.
+        activity_model : str, optional
+            model to be used for calculation activity coefficient in
+            vapor-liquid equilibria. Choose one of 'ideal', 'UNIFAC' and
+            'UNIQUAC' The default is 'ideal'.
+        num_interp_points : int, optional
+            Number of interpolation points to be used by the Interpolation
+            module of PharmaPy to calculate inputs if the evaporator receives
+            material from a dynamic upstream unit operation. The default is 3.
+        state_events : list of dicts, optional
+            list of dictionaries containing the specification of a state event.
+            To learn about the structure of a state event, see the
+            PharmaPy.Commons.eval_state_events documentation.
+            The default is None.
+        reflux_ratio : float, optional
+            reflux ratio ranging from (0 - 1), which dictates the fraction
+            of the vapor flow which is sent back to the unit, assuming total
+            condensation. The default is 0.
 
         Returns
         -------
-        None.
+        A continuous vaporizer object.
 
         """
 
@@ -1246,7 +1251,6 @@ class ContinuousEvaporator:
 
         self.activity_model = activity_model
         self.num_interp_points = num_interp_points
-        self.mult_flash = mult_flash
 
         self.nomenclature()
 
