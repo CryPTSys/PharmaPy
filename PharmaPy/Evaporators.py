@@ -364,21 +364,38 @@ class Evaporator:
         k_vap : float, optional
             constant for vapor flow proportional control. Vapor flow is
             calculated as F_v = k_vap * (P_model - P) + F_in. The default is 1.
-        cv_gas : TYPE, optional
-            DESCRIPTION. The default is 0.8.
-        h_conv : TYPE, optional
-            DESCRIPTION. The default is 1000.
-        activity_model : TYPE, optional
-            DESCRIPTION. The default is 'ideal'.
-        state_events : TYPE, optional
-            DESCRIPTION. The default is None.
-        stop_at_maxvol : TYPE, optional
-            DESCRIPTION. The default is True.
-        flash_kwds : TYPE, optional
-            DESCRIPTION. The default is None.
+        cv_gas : float, optional TODO: It think this should be removed
+            Yet another vapor controller constant. The default is 0.8.
+        h_conv : float, optional
+            convective heat transfer coefficient for the liquid phase
+            [W/m**2/K]. The default is 1000.
+        activity_model : str, optional
+            model to be used for calculation activity coefficient in
+            vapor-liquid equilibria. Choose one of 'ideal', 'UNIFAC' and
+            'UNIQUAC' The default is 'ideal'.
+        state_events : list of dicts, optional
+            list of dictionaries containing the specification of a state event.
+            To learn about the structure of a state event, see the
+            PharmaPy.Commons.eval_state_events documentation.
+            The default is None.
+        stop_at_maxvol : bool, optional
+            whether or not to automatically stop integration when liquid volume
+            reaches tank volume. This can be important for semi-batch
+            vaporization. is important for
+            The default is True.
+        flash_kwargs : dict, optional
+            dictionary to be passed to the solve_unit method of the
+            PharmaPy.AdiabaticFlash instance run to initialize the vaporizer.
+            The default is None.
+
         Returns
         -------
-        None.
+        A vaporizer object (VO). If a PharmaPy.Stream object is aggregated to the
+        resulting instance (instance.Inlet = PharmaPy.Stream(...)),
+        PharmaPy will internally interpret the VO will be interpreted as a
+        Semi-batch evaporator object for modelling purposes. Otherwise, a Batch
+        evaporator will be run.
+
         """
 
 
