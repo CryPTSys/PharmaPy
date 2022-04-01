@@ -357,8 +357,8 @@ class Evaporator:
         vol_drum : float
             total drum volume [m**3].
         pressure : float, optional
-            pressure set [Pa] (actual pressure is computed by the evaporator
-            model). The default is 101325.
+            pressure setpoint [Pa] (actual pressure is computed by the
+            evaporator model). The default is 101325.
         diam_out : float, optional
             diameter of the vapor outlet pipe [m]. The default is 2.54e-2.
         k_vap : float, optional
@@ -1145,7 +1145,7 @@ class ContinuousEvaporator:
                  pressure=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
-                 h_conv=1000, temp_ht=298.15,
+                 h_conv=1000,
                  activity_model='ideal', num_interp_points=3, mult_flash=1,
                  state_events=None, reflux_ratio=0):
         """
@@ -1159,19 +1159,27 @@ class ContinuousEvaporator:
             if True, heat transfer will be disregarded from the energy balance.
             The default is False.
         pressure : TYPE, optional
-            DESCRIPTION. The default is 101325.
-        diam_out : TYPE, optional
-            DESCRIPTION. The default is 2.54e-2.
-        frac_liq : TYPE, optional
-            DESCRIPTION. The default is 0.5.
-        k_liq : TYPE, optional
-            DESCRIPTION. The default is 100.
-        k_vap : TYPE, optional
-            DESCRIPTION. The default is 1.
-        cv_gas : TYPE, optional
+            pressure setpoint [Pa] (actual pressure is computed by the
+            evaporator model). The default is 101325.
+        diam_out : float, optional
+            diameter of the vapor outlet pipe [m]. The default is 2.54e-2.
+        frac_liq : float, optional
+            setpoint for the fraction of the total tank volume occupied by the
+            liquid phase. The default is 0.5.
+        k_liq : float, optional
+            proportional control constant for liquid level control, which
+            dictates output liquid mole flow (F_L), with
+            F_L = k_liq * (v_drum * frac_liq - V_L(t)), being V_L(t) the liquid
+            volume computed by the DAE system. The default is 100.
+        k_vap : float, optional
+            proportional control constant for pressure, which
+            actual pressure (P) by changing output vapor molar flow (F_V), with
+            F_V = k_vap * f(pressure - P). The default is 1.
+        cv_gas : TYPE, optional  TODO: we should probably remove this
             DESCRIPTION. The default is 0.8.
-        h_conv : TYPE, optional
-            DESCRIPTION. The default is 1000.
+        h_conv : float, optional
+            convective heat transfer coefficient for the liquid phase
+            [W/m**2/K]. The default is 1000.
         temp_ht : TYPE, optional
             DESCRIPTION. The default is 298.15.
         activity_model : TYPE, optional
