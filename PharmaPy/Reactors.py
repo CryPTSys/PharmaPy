@@ -48,19 +48,36 @@ class _BaseReactor:
                  reset_states, controls,
                  h_conv, ht_mode, return_sens, state_events):
         """
-
+        Base constructor for the reactor class.
         Parameters
         ----------
-        oper_mode : str
-            Operation mode of the reactor. It takes one of the following
-            values: 'Batch', 'Semibatch', 'CSTR'
-
+        partic_species : list of str
+            Names of the species participating in the reaction. Names
+            correspond to species names in the physical properties
+            .json file.
+        mask_params : list of bool (optional)
+            Binary list of which parameters to exclude from the kinetics
+            computations.
+        base_units : TODO: [deprecated? or unused?]
+        temp_ref : float (optional) TODO: [only active on CSTRs?]
+            Reference temperature for enthalpy calculations.
+        isothermal : bool
+            Boolean value indicating whether the energy balance is
+            considered. (i.e. dT/dt = 0 when isothermal is True)
+        reset_states : bool (optional)
+            Boolean value indicating whether the states should be
+            reset before simulation.
+        controls : dict of functions (optional)
+            Dictionary with keys representing the state which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
         return_sens : bool (optional, default = True)
             whether or not the paramest_wrapper method should return
             the sensitivity system along with the concentratio profiles.
             Use False if you want the parameter estimation platform to
             estimate the sensitivity system using finite differences
-
+        state_events : dict of ? TODO: [not sure about this one]
         """
         self.distributed_uo = False
         self.is_continuous = False
@@ -489,6 +506,43 @@ class BatchReactor(_BaseReactor):
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
                  state_events=None):
+        """
+        Inherited constructor for the Batch reactor class.
+        Parameters
+        ----------
+        partic_species : list of str
+            Names of the species participating in the reaction. Names
+            correspond to species names in the physical properties
+            .json file.
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics
+            computations.
+        base_units : str (optional, default = 'concentration')
+            Basis used for material units in the reactor.
+        temp_ref : float (optional, default = 298.15)
+            Reference temperature for enthalpy calculations.
+        isothermal : bool (optional, default = True)
+            Boolean value indicating whether the energy balance is
+            considered. (i.e. dT/dt = 0 when isothermal is True)
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation.
+        controls : dict of functions (optional, default = None)
+            Dictionary with keys representing the state which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
+        h_conv : float (optional, default = 1000)
+            Heat transfer coefficient TODO: [<-- ??]
+        ht_mode : str (optional, default = 'jacket')
+            What method is used for heat transfer. Options: ['jacket',
+            'coil', 'bath']
+        return_sens : bool (optional, default = True)
+            whether or not the paramest_wrapper method should return
+            the sensitivity system along with the concentratio profiles.
+            Use False if you want the parameter estimation platform to
+            estimate the sensitivity system using finite differences
+        """
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
@@ -605,6 +659,33 @@ class BatchReactor(_BaseReactor):
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
+        """
+        Batch reactor method for solving the individual unit directly.
+        runtime : float (default = None)
+            Value for total unit runtime.
+        time_grid : list of float (optional, default = None)
+            Optional list of time values for the integrator to use
+            during simulation.
+        eval_sens : bool (optional, default = False)
+            Boolean value indicating whether the parametric
+            sensitivity system will be included during simulation.
+            Must be true to access sensitivity information.
+        params_control : TODO: [unsure about this one]
+        verbose : bool (optional, default = True)
+            Boolean value indicating whether the simulator will
+            output run statistics after simulation is complete.
+            Use true if you want to see the number of function
+            evaluations and wall-clock runtime for the unit.
+        timesim_limit : float (optional, default = 0)
+            Float value of the maximum wall-clock time for the
+            simulator to use before aborting the simulation.
+        return : default 2 arrays (3 if eval_sens is True)
+            Returns 2 or 3 indexed data structures. First, the
+            integrator time points. Second, the state values
+            corresponding to those integrator time points. And
+            if eval_sens is True, third is the parametric
+            sensitivity information of the simulation.
+        """
 
         self.set_names()
 
@@ -766,6 +847,44 @@ class CSTR(_BaseReactor):
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True):
+        """
+        Inherited constructor for the continuous stirred-tank
+        reactor (CSTR) class.
+        Parameters
+        ----------
+        partic_species : list of str
+            Names of the species participating in the reaction. Names
+            correspond to species names in the physical properties
+            .json file.
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics
+            computations.
+        base_units : str (optional, default = 'concentration')
+            Basis used for material units in the reactor.
+        temp_ref : float (optional, default = 298.15)
+            Reference temperature for enthalpy calculations.
+        isothermal : bool (optional, default = True)
+            Boolean value indicating whether the energy balance is
+            considered. (i.e. dT/dt = 0 when isothermal is True)
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation.
+        controls : dict of functions (optional, default = None)
+            Dictionary with keys representing the state which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
+        h_conv : float (optional, default = 1000)
+            Heat transfer coefficient TODO: [<-- ??]
+        ht_mode : str (optional, default = 'jacket')
+            What method is used for heat transfer. Options: ['jacket',
+            'coil', 'bath']
+        return_sens : bool (optional, default = True)
+            whether or not the paramest_wrapper method should return
+            the sensitivity system along with the concentratio profiles.
+            Use False if you want the parameter estimation platform to
+            estimate the sensitivity system using finite differences
+        """
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
@@ -1029,6 +1148,47 @@ class SemibatchReactor(CSTR):
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True):
+        """
+        Inherited constructor for the semibatch stirred-tank
+        reactor class. This method inherits from the CSTR constructor.
+        Parameters
+        ----------
+        partic_species : list of str
+            Names of the species participating in the reaction. Names
+            correspond to species names in the physical properties
+            .json file.
+        vol_tank : float
+            Volume of the vessel in m**3. Required to ensure that the
+            vessel does not overflow
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics
+            computations.
+        base_units : str (optional, default = 'concentration')
+            Basis used for material units in the reactor.
+        temp_ref : float (optional, default = 298.15)
+            Reference temperature for enthalpy calculations.
+        isothermal : bool (optional, default = True)
+            Boolean value indicating whether the energy balance is
+            considered. (i.e. dT/dt = 0 when isothermal is True)
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation.
+        controls : dict of functions (optional, default = None)
+            Dictionary with keys representing the state which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
+        h_conv : float (optional, default = 1000)
+            Heat transfer coefficient TODO: [<-- ??]
+        ht_mode : str (optional, default = 'jacket')
+            What method is used for heat transfer. Options: ['jacket',
+            'coil', 'bath']
+        return_sens : bool (optional, default = True)
+            whether or not the paramest_wrapper method should return
+            the sensitivity system along with the concentratio profiles.
+            Use False if you want the parameter estimation platform to
+            estimate the sensitivity system using finite differences
+        """
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref,
@@ -1064,6 +1224,16 @@ class SemibatchReactor(CSTR):
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
+        """
+        ToDo: Populate this methods comments
+        :param runtime:
+        :param time_grid:
+        :param eval_sens:
+        :param params_control:
+        :param verbose:
+        :param sundials_opts:
+        :return:
+        """
 
         self.params_control = params_control
         self.set_names()
@@ -1190,6 +1360,50 @@ class PlugFlowReactor(_BaseReactor):
                  reset_states=False, controls=None,
                  h_conv=1000, ht_mode='bath', return_sens=True,
                  state_events=None):
+        """
+        Inherited constructor for the plug-flow (PFR) reactor
+        class.
+        Parameters
+        ----------
+        partic_species : list of str
+            Names of the species participating in the reaction. Names
+            correspond to species names in the physical properties
+            .json file.
+        diam_in : float
+            Diameter of the tubular reactor in meters.
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics
+            computations.
+        base_units : str (optional, default = 'concentration')
+            Basis used for material units in the reactor.
+        temp_ref : float (optional, default = 298.15)
+            Reference temperature for enthalpy calculations.
+        isothermal : bool (optional, default = True)
+            Boolean value indicating whether the energy balance is
+            considered. (i.e. dT/dt = 0 when isothermal is True)
+        adiabatic : bool (optional, default = False)
+            Boolean value indication whether the reactor is considered
+            to be adiabatic. Temperature change will not be zero but
+            heat transfer will be zero in this case.
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation.
+        controls : dict of functions (optional, default = None)
+            Dictionary with keys representing the state which is
+            controlled and the value indicating the function to use
+            while computing the variable. Functions are of the form
+            f(time) = state_value
+        h_conv : float (optional, default = 1000)
+            Heat transfer coefficient TODO: [<-- ??]
+        ht_mode : str (optional, default = 'bath')
+            What method is used for heat transfer. Options: ['jacket',
+            'coil', 'bath']
+        return_sens : bool (optional, default = True)
+            whether or not the paramest_wrapper method should return
+            the sensitivity system along with the concentratio profiles.
+            Use False if you want the parameter estimation platform to
+            estimate the sensitivity system using finite differences
+        """
 
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
@@ -1475,6 +1689,15 @@ class PlugFlowReactor(_BaseReactor):
 
     def solve_unit(self, runtime, num_discr, verbose=True, any_event=True,
                    sundials_opts=None):
+        """
+        ToDo: Fill out this method's docstring comments
+        :param runtime:
+        :param num_discr:
+        :param verbose:
+        :param any_event:
+        :param sundials_opts:
+        :return:
+        """
 
         self.set_names()
 
