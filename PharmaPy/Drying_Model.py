@@ -280,7 +280,7 @@ class Drying:
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = (dry_rate.T * cpg_mix * temp_gas).sum(axis=0)
         heat_loss = 14626.86 * (temp_gas - 295)
-        heat_loss = 0  # This line is for assumption of no heat loss
+        # heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
@@ -446,7 +446,7 @@ class Drying:
         # ---------- Solve model
         model = self.unit_model
         if self.state_event_list is None:
-            def model(t, y): return self.unit_model(t, y, None)
+            def model(t, y): return self.unit_model(t, y)#, None)
             problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                        t0=0)
         else:

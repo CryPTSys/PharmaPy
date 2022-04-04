@@ -102,7 +102,7 @@ class _BaseCryst:
             TODO Options :'massfrac', 'massconc'
         jac_type : str
             TODO Options: 'AD'
-        state_events : dict of dicts
+        state_events : list of dicts
             TODO
 
         """
@@ -705,7 +705,8 @@ class _BaseCryst:
                    jac_v_prod=False, verbose=True, test=False,
                    sundials_opts=None, any_event=True):
         """
-        runtime : float (default=None)
+        runtime : float (default = None)
+            Value for the total unit runtime
         time_grid : list of float (optional, dafault = None)
             Optional list of time values for the integrator to use
             during simulation
@@ -724,10 +725,8 @@ class _BaseCryst:
             TODO
         sundials_opts :
             TODO
-        timesim_limit : float (optional, default = 0)
-            Float value of the maximum wall-clock time for the
-            simulator to use before aborting the simulation.
-
+        any_event : 
+            TODO
         """
 
         self.Kinetics.target_idx = self.target_ind
@@ -1032,7 +1031,32 @@ class _BaseCryst:
 
     def plot_profiles(self, fig_size=None, relative_mu0=False,
                       title=None, time_div=1, plot_solub=True):
+        """
 
+        Parameters
+        ----------
+        fig_size : tuple (optional, default = None)
+            Size of the figure to be populated. The default is None.
+        relative_mu0 : bool (optional, default = None)
+            TODO. The default is False.
+        title : string (optional, default = None)
+            DESCRIPTION. The default is None.
+        time_div : int (optional, default = 1)
+            TODO. The default is 1.
+        plot_solub : bool (optional, default = True)
+            Boolean value indicating whether the solubility is ploted.
+            The default is True.
+
+        Returns
+        -------
+        fig : TYPE
+            DESCRIPTION.
+        axes : TYPE
+            DESCRIPTION.
+        ax_supsat : TYPE
+            DESCRIPTION.
+
+        """
         # if self.method == 'moments':
         mu = self.momProf
         num_mu = mu.shape[1]
@@ -1183,6 +1207,39 @@ class _BaseCryst:
 
     def plot_csd(self, view_angles=(20, -20), fig_size=None, time_eval=None,
                  vol_based=False, time_div=1, logx=True):
+        """
+
+        Parameters
+        ----------
+        view_angles : tuple (optional, default = (20, -20))
+            TODO (maybe erase?)
+        fig_size : tuple (optional, default = None)
+            Size of the figure to be populated.
+        time_eval : int (optional, default = None)
+            Integer value indicating the time in which 
+            crystal size distribution of interest is calculated.
+        vol_based : bool (optional, default = False)
+            Boolean value indiciating whether the crystal size
+            distribution is in volume-based. 
+        time_div : int (optional, default = 1)
+            TODO
+        logx : bool (optional, default = True)
+            Boolean value indicating whether the x axis is 
+            presented in log scale.
+
+        Raises
+        ------
+        RuntimeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        fig : TYPE
+            DESCRIPTION.
+        ax : TYPE
+            DESCRIPTION.
+
+        """
         self.flatten_states()
 
         if self.method != '1D-FVM':
@@ -1425,37 +1482,45 @@ class BatchCryst(_BaseCryst):
         ----------
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
-        mask_params : TODO
-            TODO
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics 
+            computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
         scale : float
             Scaling factor by which crystal size distribution will be
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool
-            Whether the energy balace is considered (i.e dT/dt = 0)
-        controls : dict of dicts
-            TODO 'temp'
+        isothermal : bool (optional, default = None)
+            Boolean value indicating whether the energy balance is 
+            considered. (i.e dT/dt = 0)
+        controls : dict of dicts (funcs) (optional, default = None)
+            Dictionary with keys representing the state (e.g.'Temp')
+            which is controlled and the value indicating the function
+            to use while computing the varible. Functions are of the form
+            f(time) = state_value
         params_control :
             TODO
-        cfun_solub: func(conc)?
+        cfun_solub: callable
+            User defined function for the solubility function : 
+            func(conc)
+        adiabatic : bool (optional, default =True)
+            Boolean value indicating whether the heat transfer of 
+            the crystallization is considered.
+        rad_zero : float (optional, default = TODO)
+            TODO size of the first bin of the CSD discretization [m]
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation
+        h_conv : float (optional, default = 1000)maybe remove?
             TODO
-        adiabatic : bool
+        vol_ht : float/bool? (optional, default = )
             TODO
-        rad_zero : float
-            TODO size of the first bin of the CSD discretization?
-        reset_states :
-            TODO
-        h_conv : float
-            TODO
-        vol_ht : float
-            TODO
-        basis :
-            TODO
+        basis : str (optional, default = 'mass_conc')
+            Options : 'massfrac', 'massconc'
         jac_type : str
-            TODO
-        state_events :
+            TODO options:'AD'
+        state_events : dict of dicts
             TODO
         """
 
@@ -1464,10 +1529,6 @@ class BatchCryst(_BaseCryst):
                          adiabatic,
                          rad_zero, reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events)
-        """ Construct a Batch Crystallizer object
-        Parameters
-        ----------
-        """
 
         self.is_continuous = False
         self.states_uo.append('conc_target')
@@ -1918,10 +1979,48 @@ class MSMPR(_BaseCryst):
         """ Construct a MSMPR object
         Parameters
         ----------
-        oper_mode : str
-            Operation mode of the reactor. It takes one of the following
-            values: 'Batch', 'MSMPR', 'Semibatch'. If 'Semibatch', it is
-            assumed that an antisolvent stream is entering the tank.
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics 
+            computation
+        method : str
+            Choice of the numerical method. Options are: 'moments', '1D-FVM'
+        scale : float
+            Scaling factor by which crystal size distribution will be
+            multiplied.
+        vol_tank : TODO - Remove, it comes from Phases module.
+        isothermal : bool (optional, default = None)
+            Boolean value indicating whether the energy balance is 
+            considered. (i.e dT/dt = 0)
+        controls : dict of dicts (funcs) (optional, default = None)
+            Dictionary with keys representing the state (e.g.'Temp')
+            which is controlled and the value indicating the function
+            to use while computing the varible. Functions are of the form
+            f(time) = state_value
+        params_control :
+            TODO
+        cfun_solub: callable
+            User defined function for the solubility function : 
+            func(conc)
+        adiabatic : bool (optional, default =True)
+            Boolean value indicating whether the heat transfer of 
+            the crystallization is considered.
+        rad_zero : float (optional, default = TODO)
+            TODO size of the first bin of the CSD discretization [m]
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation
+        h_conv : float (optional, default = 1000)maybe remove?
+            TODO
+        vol_ht : float/bool? (optional, default = )
+            TODO
+        basis : str (optional, default = 'mass_conc')
+            Options : 'massfrac', 'massconc'
+        jac_type : str
+            TODO options:'AD'
+        state_events : dict of dicts
+            TODO
         """
 
         # self.states_uo.append('conc_j')
@@ -2302,7 +2401,53 @@ class SemibatchCryst(MSMPR):
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
                  state_events=None):
-
+        
+        """ Construct a Semi-batch Crystallizer object
+        Parameters
+        ----------
+        target_comp : str, list of strings
+            Name of the crystallizing compound(s) from .json file.
+        mask_params : list of bool (optional, default = None)
+            Binary list of which parameters to exclude from the kinetics 
+            computation
+        method : str
+            Choice of the numerical method. Options are: 'moments', '1D-FVM'
+        scale : float
+            Scaling factor by which crystal size distribution will be
+            multiplied.
+        vol_tank : TODO - Remove, it comes from Phases module.
+        isothermal : bool (optional, default = None)
+            Boolean value indicating whether the energy balance is 
+            considered. (i.e dT/dt = 0)
+        controls : dict of dicts (funcs) (optional, default = None)
+            Dictionary with keys representing the state (e.g.'Temp')
+            which is controlled and the value indicating the function
+            to use while computing the varible. Functions are of the form
+            f(time) = state_value
+        params_control :
+            TODO
+        cfun_solub: callable
+            User defined function for the solubility function : 
+            func(conc)
+        adiabatic : bool (optional, default =True)
+            Boolean value indicating whether the heat transfer of 
+            the crystallization is considered.
+        rad_zero : float (optional, default = TODO)
+            TODO size of the first bin of the CSD discretization [m]
+        reset_states : bool (optional, default = False)
+            Boolean value indicating whether the states should be
+            reset before simulation
+        h_conv : float (optional, default = 1000)maybe remove?
+            TODO
+        vol_ht : float/bool? (optional, default = )
+            TODO
+        basis : str (optional, default = 'mass_conc')
+            Options : 'massfrac', 'massconc'
+        jac_type : str
+            TODO options:'AD'
+        state_events : dict of dicts
+            TODO
+        """
         super().__init__(target_comp, mask_params,
                          method, scale, vol_tank,
                          isothermal, controls, params_control,
