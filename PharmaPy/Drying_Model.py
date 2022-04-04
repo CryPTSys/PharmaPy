@@ -62,8 +62,6 @@ class Drying:
         self.station_diameter = diam_unit
         self.area_cross = self.station_diameter**2 * np.pi/4
         self.resist_medium = resist_medium
-
-        self.dP_media_vacuum = 3582.77
         self.T_ambient = 298
 
         # Transfer coefficients
@@ -120,10 +118,11 @@ class Drying:
         self._Inlet = inlet
 
     def nomenclature(self):
-        self.names_states_in = ['temp', 'mole_frac']
+        self.names_states_in = ['temp', 'mole_frac_gas', 'mole_frac_cond', 
+                                'temp_gas', 'temp_liq']
         self.names_states_out = self.names_states_in
 
-        self.name_states = ['sat', 'y_gas', 'x_liq', 'temp_gas', 'temp_liq']
+        self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas', 'temp_liq']
 
     def get_inputs(self, time):
 
@@ -143,12 +142,11 @@ class Drying:
         return input_dict
     
     def _eval_state_events(self, time, states, sw):
-        is_dryer = self.__class__.__name__ == 'Drying'
         
         events = eval_state_events(
             time, states, sw, self.len_states, 
-            self.states_uo, self.state_event_list, sdot=self.derivatives, 
-            discretized_model=is_dryer)
+            self.name_states, self.state_event_list, sdot=self.derivatives, 
+            discretized_model=True)
         
         return events
     
@@ -166,7 +164,7 @@ class Drying:
 
         return dry_rates
 
-    def unit_model(self, time, states):
+    def unit_model(self, time, states, sw=None):
         '''
         state vector in the order: S|w_gas|w_liq|Tg|Ts
         '''
@@ -339,6 +337,10 @@ class Drying:
         idx_volatiles = idx_liquid[idx_liquid != self.idx_supercrit]
         self.num_volatiles = len(idx_volatiles)
         self.idx_volatiles = idx_volatiles
+        
+        num_y_gas = self.num_volatiles + len(self.idx_supercrit)
+        num_x_liq = self.num_volatiles
+        self.len_states = [1, num_y_gas, num_x_liq, 1, 1]
         num_comp = self.Liquid_1.num_species
 
         # Molar fractions
@@ -450,13 +452,13 @@ class Drying:
             problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                        t0=0)
         else:
-            switches = [True] * len(self.state_even_list)
+            switches = [True] * len(self.state_event_list)
             problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                  t0=0, sw0=switches)
             
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list, 
-                                     any_Event = any_event)
+                                     any_event=any_event)
             
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
@@ -487,7 +489,7 @@ class Drying:
         states_per_fv, states_reord = reorder_pde_outputs(
             states, self.num_nodes, sizes, name_states=self.name_states)
 
-        self.SatProf = states_reord['sat']
+        self.SatProf = states_reord['saturation']
 
         self.yGasProf = states_reord['y_gas']
         self.xLiqProf = states_reord['x_liq']

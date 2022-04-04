@@ -92,8 +92,9 @@ def eval_state_events(time, states, switches,
 
         for di in state_event_list:
             if 'callable' in di.keys():
+                kwargs_callable = di.get('kwargs', {})
                 event_flag = di['callable'](time, dict_states, dict_sdot,
-                                            **di['kwargs'])
+                                            **kwargs_callable)
             else:
                 state_name = di['state_name']
                 state_idx = di['state_idx']
