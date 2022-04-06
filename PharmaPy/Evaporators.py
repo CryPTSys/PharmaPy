@@ -355,30 +355,47 @@ class Evaporator:
         Parameters
         ----------
         vol_drum : float
-            total drum volume (m**3).
-        pres : float, optional
-            pressure set [Pa] (actual pressure is computed by the evaporator
-            model). The default is 101325.
+            total drum volume [m**3].
+        pressure : float, optional
+            pressure setpoint [Pa] (actual pressure is computed by the
+            evaporator model). The default is 101325.
         diam_out : float, optional
             diameter of the vapor outlet pipe [m]. The default is 2.54e-2.
         k_vap : float, optional
             constant for vapor flow proportional control. Vapor flow is
             calculated as F_v = k_vap * (P_model - P) + F_in. The default is 1.
-        cv_gas : TYPE, optional
-            DESCRIPTION. The default is 0.8.
-        h_conv : TYPE, optional
-            DESCRIPTION. The default is 1000.
-        activity_model : TYPE, optional
-            DESCRIPTION. The default is 'ideal'.
-        state_events : TYPE, optional
-            DESCRIPTION. The default is None.
-        stop_at_maxvol : TYPE, optional
-            DESCRIPTION. The default is True.
-        flash_kwds : TYPE, optional
-            DESCRIPTION. The default is None.
+        cv_gas : float, optional TODO: It think this should be removed
+            Yet another vapor controller constant. The default is 0.8.
+        h_conv : float, optional
+            convective heat transfer coefficient for the liquid phase
+            [W/m**2/K]. The default is 1000.
+        activity_model : str, optional
+            model to be used for calculation activity coefficient in
+            vapor-liquid equilibria. Choose one of 'ideal', 'UNIFAC' and
+            'UNIQUAC' The default is 'ideal'.
+        state_events : list of dicts, optional
+            list of dictionaries containing the specification of a state event.
+            To learn about the structure of a state event, see the
+            PharmaPy.Commons.eval_state_events documentation.
+            The default is None.
+        stop_at_maxvol : bool, optional
+            whether or not to automatically stop integration when liquid volume
+            reaches tank volume. This can be important for semi-batch
+            vaporization. is important for
+            The default is True.
+        flash_kwargs : dict, optional
+            dictionary to be passed to the solve_unit method of the
+            PharmaPy.AdiabaticFlash instance run to initialize the vaporizer.
+            The default is None.
+
         Returns
         -------
-        None.
+        A vaporizer object (VO). If a PharmaPy.Stream object is aggregated to the
+        resulting instance (instance.Inlet = PharmaPy.Stream(...)),
+        PharmaPy will internally interpret the VO will be interpreted as a
+        Semi-batch evaporator object for modelling purposes. Otherwise, a Batch
+        evaporator will be run.
+
         """
 
 
@@ -1124,13 +1141,68 @@ class Evaporator:
 
 
 class ContinuousEvaporator:
-    def __init__(self, vol_drum, adiabatic=True,
+    def __init__(self, vol_drum, adiabatic=False,
                  pressure=101325, diam_out=2.54e-2, frac_liq=0.5,
                  k_liq=100, k_vap=1,
                  cv_gas=0.8,
-                 h_conv=1000, temp_ht=298.15,
+                 h_conv=1000,
                  activity_model='ideal', num_interp_points=3, mult_flash=1,
                  state_events=None, reflux_ratio=0):
+        """
+        Create a continuous evaporator object
+
+        Parameters
+        ----------
+        vol_drum : float
+            total drum volume [m**3].
+        adiabatic : bool, optional
+            if True, heat transfer will be disregarded from the energy balance.
+            The default is False.
+        pressure : TYPE, optional
+            pressure setpoint [Pa] (actual pressure is computed by the
+            evaporator model). The default is 101325.
+        diam_out : float, optional
+            diameter of the vapor outlet pipe [m]. The default is 2.54e-2.
+        frac_liq : float, optional
+            setpoint for the fraction of the total tank volume occupied by the
+            liquid phase. The default is 0.5.
+        k_liq : float, optional
+            proportional control constant for liquid level control, which
+            dictates output liquid mole flow (F_L), with
+            F_L = k_liq * (v_drum * frac_liq - V_L(t)), being V_L(t) the liquid
+            volume computed by the DAE system. The default is 100.
+        k_vap : float, optional
+            proportional control constant for pressure, which
+            actual pressure (P) by changing output vapor molar flow (F_V), with
+            F_V = k_vap * f(pressure - P). The default is 1.
+        cv_gas : TYPE, optional  TODO: we should probably remove this
+            DESCRIPTION. The default is 0.8.
+        h_conv : float, optional
+            convective heat transfer coefficient for the liquid phase
+            [W/m**2/K]. The default is 1000.
+        activity_model : str, optional
+            model to be used for calculation activity coefficient in
+            vapor-liquid equilibria. Choose one of 'ideal', 'UNIFAC' and
+            'UNIQUAC' The default is 'ideal'.
+        num_interp_points : int, optional
+            Number of interpolation points to be used by the Interpolation
+            module of PharmaPy to calculate inputs if the evaporator receives
+            material from a dynamic upstream unit operation. The default is 3.
+        state_events : list of dicts, optional
+            list of dictionaries containing the specification of a state event.
+            To learn about the structure of a state event, see the
+            PharmaPy.Commons.eval_state_events documentation.
+            The default is None.
+        reflux_ratio : float, optional
+            reflux ratio ranging from (0 - 1), which dictates the fraction
+            of the vapor flow which is sent back to the unit, assuming total
+            condensation. The default is 0.
+
+        Returns
+        -------
+        A continuous vaporizer object.
+
+        """
 
         self._Inlet = None
         self._Phases = None
@@ -1179,7 +1251,6 @@ class ContinuousEvaporator:
 
         self.activity_model = activity_model
         self.num_interp_points = num_interp_points
-        self.mult_flash = mult_flash
 
         self.nomenclature()
 
