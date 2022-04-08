@@ -44,6 +44,32 @@ def merge_supercritical(flags, x_liq, y_vap, z_super):
 class IsothermalFlash:
     def __init__(self, temp_drum=None, pres_drum=None,
                  gamma_method='ideal'):
+        """
+        Create an isothermal flash object. The model run by the instances of
+        this class is steady state isothermal flash given T and P. This
+        model is often used to determine the thermodynamic state of a given
+        stream or phase (only liquid, vapor-liquid, only vapor)
+
+        Parameters
+        ----------
+        temp_drum : float, optional
+            equipment temperature [K]. If None, temperature will be taken from
+            the Inlet object aggregated to the flash (from PharmaPy.Phases or
+            PharmaPy.Streams modules). The default is None.
+        pres_drum : float, optional
+            equipment pressure [Pa]. If None, pressure will be taken from
+            the Inlet object aggregated to the flash (from PharmaPy.Phases or
+            PharmaPy.Streams modules). The default is None.
+        gamma_method : str, optional
+            one of 'ideal', 'UNIFAC' or 'UNIQUAC'. If 'UNIFAC' or 'UNIQUAC' is
+            passed, the pure-component .json file must have the interaction
+            parameters of the model. The default is 'ideal'.
+
+        Returns
+        -------
+        None.
+
+        """
 
         self.temp = temp_drum
         self.pres = pres_drum
@@ -183,6 +209,31 @@ class IsothermalFlash:
 class AdiabaticFlash:
     def __init__(self, pres_drum, div_energybce=1e3, gamma_method='ideal',
                  mult_midfun=1, seed_basedon_input=False):
+        """
+        Create an adiabatic flash object.
+
+        Parameters
+        ----------
+        pres_drum : float
+            tank pressure [Pa].
+        div_energybce : float, optional
+            Constant by which the energy balance equation is divided.
+            It helps improving the conditioning of the numerical solver.
+            The default is 1e3.
+        gamma_method : str, optional
+            one of 'ideal', 'UNIFAC' or 'UNIQUAC'. If 'UNIFAC' or 'UNIQUAC' is
+            passed, the pure-component .json file must have the interaction
+            parameters of the model. The default is 'ideal'.
+        mult_midfun : TYPE, optional  TODO: should we remove this?
+            DESCRIPTION. The default is 1.
+        seed_basedon_input : TYPE, optional  TODO: should we remove this?
+            DESCRIPTION. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
         self.pres = pres_drum
 
         self.div_energybce = div_energybce
