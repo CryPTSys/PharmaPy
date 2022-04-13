@@ -673,7 +673,7 @@ class VaporPhase(ThermoPhysicalManager):
             return temp_sat
 
     def getDewPoint(self, pres=None, mass_frac=None, mole_frac=None,
-                    thermo_method='ideal', y_vap=False):
+                    thermo_method='ideal', x_liq=False):
 
         if mass_frac is None and mole_frac is None:
             mole_frac = self.mole_frac
@@ -691,6 +691,19 @@ class VaporPhase(ThermoPhysicalManager):
             obj = np.dot(mole_frac, 1/k_vals) - 1
 
             return obj
+        temp_pure = self.AntoineEquation(pres=pres)
+        temp_seed = np.dot(mole_frac, temp_pure)
+        temp_dew = newton(dew_fn, temp_seed, full_output=False)
+
+        if x_liq:
+            k_vals = self.getKeqVLE(temp_dew, pres, mole_frac,
+                                    gamma_model=thermo_method)
+
+            x_frac = mole_frac/k_vals
+
+            return temp_dew, x_frac
+        else:
+            return temp_dew
 
     def getViscosity(self, temp=None, mass_frac=None, mole_frac=None):
         viscosity = self.getViscosityMix(temp, mass_frac, mole_frac,
