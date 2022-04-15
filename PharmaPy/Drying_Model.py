@@ -28,7 +28,7 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9, eta_fun=None, mass_eta=False, 
+                 resist_medium=2.22e9, eta_fun=None, mass_eta=False,
                  state_events=None):
         """
 
@@ -83,7 +83,7 @@ class Drying:
         self.oper_mode = 'Batch'
         self.is_continuous = False
         self.state_event_list = state_events
-        
+
     @property
     def Phases(self):
         return self._Phases
@@ -118,7 +118,7 @@ class Drying:
         self._Inlet = inlet
 
     def nomenclature(self):
-        self.names_states_in = ['temp', 'mole_frac_gas', 'mole_frac_cond', 
+        self.names_states_in = ['temp', 'mole_frac_gas', 'mole_frac_cond',
                                 'temp_gas', 'temp_liq']
         self.names_states_out = self.names_states_in
 
@@ -140,16 +140,16 @@ class Drying:
                 input_dict[name] = inputs[self.bipartite[name]]
 
         return input_dict
-    
+
     def _eval_state_events(self, time, states, sw):
-        
+
         events = eval_state_events(
-            time, states, sw, self.len_states, 
-            self.name_states, self.state_event_list, sdot=self.derivatives, 
+            time, states, sw, self.len_states,
+            self.name_states, self.state_event_list, sdot=self.derivatives,
             discretized_model=True)
-        
+
         return events
-    
+
     def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
         p_sat = self.Liquid_1.AntoineEquation(temp=temp_cond)
 
@@ -221,7 +221,7 @@ class Drying:
         # print(satur.min())
 
         model_eqns = np.column_stack(material_eqns + energy_eqns)
-        
+
         self.derivatives = model_eqns.ravel()
 
         return model_eqns.ravel()
@@ -323,8 +323,8 @@ class Drying:
             return [dTg_dt, dTcond_dt]
 
     def solve_unit(self, deltaP, runtime, p_atm=101325, any_event=True,
-                   verbose=True):
-      
+                   verbose=True, sundials_opts=None):
+
         # ---------- Discretization
         self.z_grid = np.linspace(0, self.cake_height, self.num_nodes + 1)
         self.z_centers = (self.z_grid[1:] + self.z_grid[:-1]) / 2
@@ -337,7 +337,7 @@ class Drying:
         idx_volatiles = idx_liquid[idx_liquid != self.idx_supercrit]
         self.num_volatiles = len(idx_volatiles)
         self.idx_volatiles = idx_volatiles
-        
+
         num_y_gas = self.num_volatiles + len(self.idx_supercrit)
         num_x_liq = self.num_volatiles
         self.len_states = [1, num_y_gas, num_x_liq, 1, 1]
@@ -455,19 +455,24 @@ class Drying:
             switches = [True] * len(self.state_event_list)
             problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                  t0=0, sw0=switches)
-            
+
             def new_handle(solver, info):
-                return handle_events(solver, info, self.state_event_list, 
+                return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
-            
+
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
-            
+
         self.derivatives = model(0, states_prev.ravel())
 
         problem.name = 'Drying Model'
-        
+
         sim = CVode(problem)
+
+        if sundials_opts is not None:
+            for key, val in sundials_opts.items():
+                setattr(sim, key, val)
+
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
 
