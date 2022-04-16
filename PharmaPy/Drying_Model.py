@@ -19,6 +19,7 @@ from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import reorder_pde_outputs, eval_state_events, handle_events
+from PharmaPy.Connections import get_inputs
 # from pathlib import Path
 
 eps = np.finfo(float).eps
@@ -124,22 +125,22 @@ class Drying:
 
         self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas', 'temp_liq']
 
-    def get_inputs(self, time):
+    # def get_inputs(self, time):
 
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_frac': self.Inlet.mole_frac,
-                          'temp': self.Inlet.temp}
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
+    #     if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
+    #         input_dict = {'mole_frac': self.Inlet.mole_frac,
+    #                       'temp': self.Inlet.temp}
+    #     else:
+    #         all_inputs = self.Inlet.InterpolateInputs(time)
 
-            inputs = get_dict_states(self.names_upstream, self.num_concentr,
-                                     0, all_inputs)
+    #         inputs = get_dict_states(self.names_upstream, self.num_concentr,
+    #                                  0, all_inputs)
 
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
+    #         input_dict = {}
+    #         for name in self.names_states_in:
+    #             input_dict[name] = inputs[self.bipartite[name]]
 
-        return input_dict
+    #     return input_dict
 
     def _eval_state_events(self, time, states, sw):
 
@@ -208,7 +209,7 @@ class Drying:
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
-        inputs = self.get_inputs(time)
+        inputs = get_inputs(time, self, num_comp + self.num_volatiles)
 
         material_eqns = self.material_balance(
             time, satur, temp_gas, temp_sol, y_gas, x_liq,
