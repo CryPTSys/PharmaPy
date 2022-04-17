@@ -28,8 +28,4 @@ class DynamicInput:
             args = self.args_control[key]
             controls_out[key] = fun(time, *args)
 
-        for name in self.parent_instance.controllable:
-            if name not in controls_out.keys():
-                controls_out[name] = getattr(self.parent_instance, name)
-
         return controls_out

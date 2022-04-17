@@ -19,7 +19,7 @@ from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import reorder_pde_outputs, eval_state_events, handle_events
-from PharmaPy.Connections import get_inputs
+from PharmaPy.Connections import get_inputs_new
 # from pathlib import Path
 
 eps = np.finfo(float).eps
@@ -119,28 +119,17 @@ class Drying:
         self._Inlet = inlet
 
     def nomenclature(self):
-        self.names_states_in = ['temp', 'mole_frac_gas', 'mole_frac_cond',
-                                'temp_gas', 'temp_liq']
+        self.names_states_in = ['temp', 'mole_frac']
         self.names_states_out = self.names_states_in
 
-        self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas', 'temp_liq']
+        self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas',
+                            'temp_liq']
 
-    # def get_inputs(self, time):
+    def get_inputs(self, time):
 
-    #     if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-    #         input_dict = {'mole_frac': self.Inlet.mole_frac,
-    #                       'temp': self.Inlet.temp}
-    #     else:
-    #         all_inputs = self.Inlet.InterpolateInputs(time)
+        input_dict = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
-    #         inputs = get_dict_states(self.names_upstream, self.num_concentr,
-    #                                  0, all_inputs)
-
-    #         input_dict = {}
-    #         for name in self.names_states_in:
-    #             input_dict[name] = inputs[self.bipartite[name]]
-
-    #     return input_dict
+        return input_dict
 
     def _eval_state_events(self, time, states, sw):
 
@@ -209,7 +198,7 @@ class Drying:
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
-        inputs = get_inputs(time, self, num_comp + self.num_volatiles)
+        inputs = self.get_inputs(time)
 
         material_eqns = self.material_balance(
             time, satur, temp_gas, temp_sol, y_gas, x_liq,
@@ -220,6 +209,7 @@ class Drying:
                                           rho_gas, self.dry_rate, inputs)
 
         # print(satur.min())
+        # print(inputs.values())
 
         model_eqns = np.column_stack(material_eqns + energy_eqns)
 
@@ -343,6 +333,9 @@ class Drying:
         num_x_liq = self.num_volatiles
         self.len_states = [1, num_y_gas, num_x_liq, 1, 1]
         num_comp = self.Liquid_1.num_species
+
+        len_states_in = [1, num_y_gas]
+        self.states_in_dict = dict(zip(self.names_states_in, len_states_in))
 
         # Molar fractions
         # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
