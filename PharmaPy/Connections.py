@@ -6,95 +6,9 @@ Created on Mon Mar  2 15:36:35 2020
 """
 
 from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
-from PharmaPy.Interpolation import local_newton_interpolation
-from scipy.interpolate import CubicSpline
 
 import numpy as np
 import copy
-
-
-def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
-    if isinstance(time, (float, int)):
-        # Assume steady state for extrapolation
-        time = min(time, t_inlet[-1])
-
-        y_interpol = local_newton_interpolation(time, t_inlet, y_inlet,
-                                                **kwargs_interp_fn)
-    else:
-        interpol = CubicSpline(t_inlet, y_inlet, **kwargs_interp_fn)
-        flags_interpol = time > t_inlet[-1]
-
-        if any(flags_interpol):
-            time_interpol = time[~flags_interpol]
-            y_interp = interpol(time_interpol)
-
-            y_extrapol = np.tile(y_interp[-1], (sum(flags_interpol), 1))
-            y_interpol = np.vstack((y_interp, y_extrapol))
-        else:
-            y_interpol = interpol(time)
-
-    return y_interpol
-
-
-def get_input_dict(array, name_dict):
-    names = name_dict.keys()
-    lens = list(name_dict.values())
-
-    acum_len = np.cumsum(lens)[:-1]
-
-    dic_out = dict(zip(names, np.split(array, acum_len, axis=1)))
-
-    return dic_out
-
-
-def get_inputs_new(time, stream, names_in, **kwargs_interp):
-    """
-    Get inputs based on stream object and names of inlet states
-
-    Parameters
-    ----------
-    time : float
-        evaluation time [s].
-    stream : PharmaPy.Stream
-        stream object.
-    names_in : dict
-        dictionary with names of inlet states to the destination unit operation
-        as keys and dimension of the state as values.
-    **kwargs_interp : keyword arguments
-        arguments to be passed to the particular interpolation function.
-
-    Returns
-    -------
-    inputs : dict
-        dictionary with states.
-
-    """
-
-    if stream.DynamicInlet is not None:
-        inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
-
-        for name in names_in:
-            if name not in inputs.keys():
-                inputs[name] = getattr(stream, name)
-
-    elif len(stream.y_upstream) > 0:
-        t_inlet = stream.time_upstream
-        y_inlet = stream.y_upstream
-        input_array = interpolate_inputs(time, t_inlet, y_inlet,
-                                         **kwargs_interp)
-
-        inputs = get_input_dict(input_array, names_in)
-
-        for name in names_in:
-            if name not in inputs.keys():
-                inputs[name] = getattr(stream, name)
-
-    else:
-        inputs = {}
-        for name in names_in:
-            inputs[name] = getattr(stream, name)
-
-    return inputs
 
 
 def get_inputs(time, uo, num_species, num_distr=0):
