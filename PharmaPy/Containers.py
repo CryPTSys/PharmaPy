@@ -15,6 +15,7 @@ from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Crystallizers import SemibatchCryst
 from PharmaPy.NameAnalysis import get_dict_states
+from PharmaPy.Connections import get_inputs_new
 
 from scipy.optimize import newton, fsolve
 import numpy as np
@@ -141,6 +142,86 @@ class Mixer:
                     massfracs.append(di['mass_frac'])
                     masses.append(di['mass_flow'])
                     temps.append(di['temp'])
+
+            dict_inputs = {}
+            dict_inputs['mass_frac'] = massfracs
+            dict_inputs['mass'] = masses
+            dict_inputs['temp'] = temps
+
+            names_out = names_in
+
+        else:
+            for inlet in inlets:
+                massfracs.append(inlet.mass_frac)
+                temps.append(inlet.temp)
+
+                # mass = getattr(inlet, 'mass', getattr(inlet, 'mass_flow'))
+                masses.append(inlet.mass)
+
+            masses = np.array(masses)
+            massfracs = np.array(massfracs)
+            dict_inputs = {'mass': masses, 'mass_frac': massfracs,
+                           'temp': temps}
+
+            # if is_mass:
+            names_out = [name for name in self.names_states_out
+                         if name != 'mass_flow']
+
+            self.is_continuous = False
+            self.timeProf = [0]
+
+            # else:
+            #     names_out = [name for name in self.names_states_out
+            #                  if name != 'mass']
+
+            #     self.is_continuous = True
+
+        self.names_states_out = names_out
+
+        return dict_inputs
+
+    def get_inputs_new(self, inlets=None):
+        if inlets is None:
+            inlets = self.Inlets
+
+        num_species = inlets[0].num_species
+
+        timeseries_flag = [inlet.y_upstream is not None
+                           for inlet in inlets]
+
+        flow_flags = [hasattr(inlet, 'mass_flow') for inlet in inlets]
+
+        is_mass = not(any(flow_flags))
+        is_flow = all(flow_flags)
+
+        if not is_mass and not is_flow:
+            raise RuntimeError('Both mass and mass flow specified for one or '
+                               'more streams. Please provide consistent '
+                               'material amount specification')
+
+        if is_mass:
+            self.oper_mode = 'Batch'
+        else:
+            self.oper_mode = 'Continuous'
+
+        massfracs = []
+        masses = []
+        temps = []
+
+        if is_flow:
+            names_in = [name for name in self.names_states_in
+                        if name != 'mass']
+
+            self.is_continuous = True
+
+            dict_list = []
+            for ind, inlet in enumerate(self.Inlets):
+                timegrid_ref = getattr(inlet, 'time_upstream')
+
+                di = get_inputs_new(timegrid_ref, inlet, )
+
+                self.timeProf = timegrid_ref
+
 
             dict_inputs = {}
             dict_inputs['mass_frac'] = massfracs
@@ -399,6 +480,8 @@ class Mixer:
         # ---------- Read inputs
         solids_flag = [inlet.__module__ == 'PharmaPy.MixedPhases'
                        for inlet in self.Inlets]
+
+        len_in = (self.num)
 
         if any(solids_flag):
             u_input, ind_solids = self.get_inputs_solids()

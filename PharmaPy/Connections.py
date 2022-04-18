@@ -42,7 +42,16 @@ def get_input_dict(array, name_dict):
 
     acum_len = np.cumsum(lens)[:-1]
 
-    dic_out = dict(zip(names, np.split(array, acum_len, axis=1)))
+    if array.ndim == 1:
+        splitted = np.split(array, acum_len, axis=0)
+    else:
+        splitted = np.split(array, acum_len, axis=0)
+
+        for ind, val in enumerate(splitted):
+            if val.shape[1] == 1:
+                splitted[ind] = val.flatten()
+
+    dic_out = dict(zip(names, splitted))
 
     return dic_out
 
@@ -77,9 +86,9 @@ def get_inputs_new(time, stream, names_in, **kwargs_interp):
             if name not in inputs.keys():
                 inputs[name] = getattr(stream, name)
 
-    elif len(stream.y_upstream) > 0:
+    elif stream.y_upstream is not None:
         t_inlet = stream.time_upstream
-        y_inlet = stream.y_upstream
+        y_inlet = stream.y_inlet
         input_array = interpolate_inputs(time, t_inlet, y_inlet,
                                          **kwargs_interp)
 
@@ -270,7 +279,8 @@ class Connection:
                                          0)
 
             # Convert units and pass states to self.Matter
-            name_analyzer.convertUnits(self.Matter)
+            # name_analyzer.convertUnits(self.Matter)
+            name_analyzer.convertUnitsNew(self.Matter)
 
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up

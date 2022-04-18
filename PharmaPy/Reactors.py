@@ -13,7 +13,7 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events)
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.Connections import get_inputs
+from PharmaPy.Connections import get_inputs, get_inputs_new
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -246,6 +246,12 @@ class _BaseReactor:
 
         # idx_inputs = [states_map.get(key) for key in self.input_names]
         # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
+
+    def get_inputs(self, time):
+
+        input_dict = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return input_dict
 
     def unit_model(self, time, states, params):
 
@@ -1615,7 +1621,8 @@ class PlugFlowReactor(_BaseReactor):
         conc = reordered[:, :self.num_species]
         temp = reordered[:, -1]  # TODO: what if isothermal?
 
-        inputs = get_inputs(time, *self.args_inputs)
+        # inputs = get_inputs(time, *self.args_inputs)
+        inputs = self.get_inputs(time)
 
         conc_in = inputs['mole_conc']
         temp_in = inputs['temp']
@@ -1736,6 +1743,9 @@ class PlugFlowReactor(_BaseReactor):
 
         self.trim_idx = np.cumsum(len_states)[:-1]
         self.len_states = len_states
+
+        len_in = [self.num_species, 1, 1]
+        self.states_in_dict = dict(zip(self.names_states_in, len_in))
 
         model = self.unit_model
         if self.state_event_list is None:
