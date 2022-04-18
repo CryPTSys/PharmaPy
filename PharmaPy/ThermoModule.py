@@ -8,7 +8,7 @@ Created on Sun Apr  5 17:28:24 2020
 import json
 import numpy as np
 import pandas as pd
-import os
+import pathlib
 
 
 def ParseDatabase(path_datafile, to_arrays=True):
@@ -702,15 +702,12 @@ class ThermoPhysicalManager:
         group_idx = np.array(self.unifac_groups)
 
         # Import data
-        interac_path = os.path.abspath(
-                os.path.join(
-                    __file__, '../data/thermodynamics/unifac_interaction_params.csv'))
+        root = str(pathlib.Path(__file__).parents[1]) + '/data/thermodynamics/'
+        interac_path = root + 'unifac_interaction_params.csv'
 
         interac_data = pd.read_csv(interac_path, index_col=(0, 1))
 
-        rq_path = os.path.abspath(
-                os.path.join(__file__,
-                             '../data/thermodynamics/unifac_rk_qk.csv'))
+        rq_path = root + 'unifac_rk_qk.csv'
         rk_qk = pd.read_csv(rq_path, index_col=(0, 1))
 
         # Create empty arrays
