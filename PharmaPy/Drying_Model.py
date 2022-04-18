@@ -19,6 +19,7 @@ from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import reorder_pde_outputs, eval_state_events, handle_events
+from PharmaPy.Connections import get_inputs_new
 # from pathlib import Path
 
 eps = np.finfo(float).eps
@@ -28,7 +29,7 @@ gas_ct = 8.314
 
 class Drying:
     def __init__(self, number_nodes, idx_supercrit, diam_unit=0.01,
-                 resist_medium=2.22e9, eta_fun=None, mass_eta=False, 
+                 resist_medium=2.22e9, eta_fun=None, mass_eta=False,
                  state_events=None):
         """
 
@@ -83,7 +84,7 @@ class Drying:
         self.oper_mode = 'Batch'
         self.is_continuous = False
         self.state_event_list = state_events
-        
+
     @property
     def Phases(self):
         return self._Phases
@@ -118,38 +119,27 @@ class Drying:
         self._Inlet = inlet
 
     def nomenclature(self):
-        self.names_states_in = ['temp', 'mole_frac_gas', 'mole_frac_cond', 
-                                'temp_gas', 'temp_liq']
+        self.names_states_in = ['temp', 'mole_frac']
         self.names_states_out = self.names_states_in
 
-        self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas', 'temp_liq']
+        self.name_states = ['saturation', 'y_gas', 'x_liq', 'temp_gas',
+                            'temp_liq']
 
     def get_inputs(self, time):
 
-        if self.Inlet.y_upstream is None or len(self.Inlet.y_upstream) == 1:
-            input_dict = {'mole_frac': self.Inlet.mole_frac,
-                          'temp': self.Inlet.temp}
-        else:
-            all_inputs = self.Inlet.InterpolateInputs(time)
-
-            inputs = get_dict_states(self.names_upstream, self.num_concentr,
-                                     0, all_inputs)
-
-            input_dict = {}
-            for name in self.names_states_in:
-                input_dict[name] = inputs[self.bipartite[name]]
+        input_dict = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
         return input_dict
-    
+
     def _eval_state_events(self, time, states, sw):
-        
+
         events = eval_state_events(
-            time, states, sw, self.len_states, 
-            self.name_states, self.state_event_list, sdot=self.derivatives, 
+            time, states, sw, self.len_states,
+            self.name_states, self.state_event_list, sdot=self.derivatives,
             discretized_model=True)
-        
+
         return events
-    
+
     def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
         p_sat = self.Liquid_1.AntoineEquation(temp=temp_cond)
 
@@ -219,9 +209,10 @@ class Drying:
                                           rho_gas, self.dry_rate, inputs)
 
         # print(satur.min())
+        # print(inputs.values())
 
         model_eqns = np.column_stack(material_eqns + energy_eqns)
-        
+
         self.derivatives = model_eqns.ravel()
 
         return model_eqns.ravel()
@@ -323,8 +314,8 @@ class Drying:
             return [dTg_dt, dTcond_dt]
 
     def solve_unit(self, deltaP, runtime, p_atm=101325, any_event=True,
-                   verbose=True):
-      
+                   verbose=True, sundials_opts=None):
+
         # ---------- Discretization
         self.z_grid = np.linspace(0, self.cake_height, self.num_nodes + 1)
         self.z_centers = (self.z_grid[1:] + self.z_grid[:-1]) / 2
@@ -337,11 +328,14 @@ class Drying:
         idx_volatiles = idx_liquid[idx_liquid != self.idx_supercrit]
         self.num_volatiles = len(idx_volatiles)
         self.idx_volatiles = idx_volatiles
-        
+
         num_y_gas = self.num_volatiles + len(self.idx_supercrit)
         num_x_liq = self.num_volatiles
         self.len_states = [1, num_y_gas, num_x_liq, 1, 1]
         num_comp = self.Liquid_1.num_species
+
+        len_states_in = [1, num_y_gas]
+        self.states_in_dict = dict(zip(self.names_states_in, len_states_in))
 
         # Molar fractions
         # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
@@ -455,19 +449,24 @@ class Drying:
             switches = [True] * len(self.state_event_list)
             problem = Explicit_Problem(self.unit_model, y0=states_prev.ravel(),
                                  t0=0, sw0=switches)
-            
+
             def new_handle(solver, info):
-                return handle_events(solver, info, self.state_event_list, 
+                return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
-            
+
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
-            
+
         self.derivatives = model(0, states_prev.ravel())
 
         problem.name = 'Drying Model'
-        
+
         sim = CVode(problem)
+
+        if sundials_opts is not None:
+            for key, val in sundials_opts.items():
+                setattr(sim, key, val)
+
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
 

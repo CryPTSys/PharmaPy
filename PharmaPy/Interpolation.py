@@ -12,6 +12,22 @@ from scipy.interpolate import CubicSpline
 from scipy.special import comb
 
 
+def local_newton_interpolation(time, t_data, y_data, num_points=3):
+    idx_time = np.argmin(abs(time - t_data))
+
+    idx_lower = max(0, idx_time - 1)
+    idx_upper = min(len(t_data) - 1, idx_lower + num_points)
+
+    t_interp = t_data[idx_lower:idx_upper]
+    y_interp = y_data[idx_lower:idx_upper]
+
+    # Newton interpolation
+    interp = NewtonInterpolation(t_interp, y_interp)
+    y_target = interp.evalPolynomial(time)
+
+    return y_target
+
+
 class NewtonInterpolation:
     def __init__(self, x_data, y_data):
 
