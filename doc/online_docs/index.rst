@@ -9,13 +9,11 @@ Welcome to PharmaPy's documentation!
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
-
-   state_events.rst
    
-..   general_features.rst
-..   unit_operations.rst
-..   simulation_executive.rst
-..   advanced_features.rst
+   general_features.rst
+   unit_operations.rst
+   simulation_executive.rst
+   advanced_features.rst
 
 
 
