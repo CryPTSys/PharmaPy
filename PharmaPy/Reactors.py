@@ -1613,7 +1613,7 @@ class PlugFlowReactor(_BaseReactor):
         # conc, temp = self.unravel_states(states)
         reordered = states.reshape(-1, self.num_states)
         conc = reordered[:, :self.num_species]
-        temp = reordered[:, -1]
+        temp = reordered[:, -1]  # TODO: what if isothermal?
 
         inputs = get_inputs(time, *self.args_inputs)
 
@@ -1686,8 +1686,8 @@ class PlugFlowReactor(_BaseReactor):
 
         return tau
 
-    def solve_unit(self, runtime, num_discr, verbose=True, any_event=True,
-                   sundials_opts=None):
+    def solve_unit(self, num_discr, runtime=None, time_grid=None, verbose=True,
+                   any_event=True, sundials_opts=None):
         """
         ToDo: Fill out this method's docstring comments
         :param runtime:
@@ -1697,6 +1697,12 @@ class PlugFlowReactor(_BaseReactor):
         :param sundials_opts:
         :return:
         """
+
+        if runtime is not None:
+            final_time = runtime + self.elapsed_time
+
+        if time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
 
         self.set_names()
 
@@ -1734,11 +1740,12 @@ class PlugFlowReactor(_BaseReactor):
         model = self.unit_model
         if self.state_event_list is None:
             def model(t, y): return self.unit_model(t, y, None)
-            problem = Explicit_Problem(model, states_init, t0=0)
+            problem = Explicit_Problem(model, states_init,
+                                       t0=self.elapsed_time)
         else:
             switches = [True] * len(self.state_event_list)
-            problem = Explicit_Problem(self.unit_model, states_init, t0=0,
-                                       sw0=switches)
+            problem = Explicit_Problem(self.unit_model, states_init,
+                                       t0=self.elapsed_time, sw0=switches)
 
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list,
@@ -1762,7 +1769,7 @@ class PlugFlowReactor(_BaseReactor):
         if not verbose:
             solver.verbosity = 50
 
-        time, states_solver = solver.simulate(runtime)
+        time, states_solver = solver.simulate(final_time, ncp_list=time_grid)
 
         self.retrieve_results(time, states_solver)
 
@@ -1771,6 +1778,8 @@ class PlugFlowReactor(_BaseReactor):
     def retrieve_results(self, time, states):
         self.timeProf = np.asarray(time)
         num_times = len(time)
+
+        self.elapsed_time = time[-1]
 
         if 'temp' in self.states_uo:
             tempProf = states[:, self.num_species::self.num_species + 1]
