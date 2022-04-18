@@ -583,6 +583,7 @@ class DynamicCollector:
         self._Phases = None
 
         self.is_continuous = False
+        self.has_solids = None
 
         self.names_upstream = None
         self.bipartite = None
@@ -620,12 +621,25 @@ class DynamicCollector:
 
     @Inlet.setter
     def Inlet(self, inlet_object):
-        if inlet_object.__module__ == 'PharmaPy.Phases':
-            self.name_species = inlet_object.name_species
-        elif inlet_object.__module__ == 'PharmaPy.MixedPhases':
+        module = inlet_object.__module__
+
+        if module == 'PharmaPy.MixedPhases':
             self.name_species = inlet_object.Phases[0].name_species
+            self.has_solids = True
+            names_states_in = self.names_states_in[1]
+
+        else:
+            self.name_species = inlet_object.name_species
+            self.has_solids = False
+            names_states_in = self.names_states_in[0]
 
         self.num_species = len(self.name_species)
+        len_in = [self.num_species, 1, 1]
+
+        self.states_in_dict = dict(zip(names_states_in, len_in))
+
+        self.names_states_in = names_states_in
+
         self._Inlet = inlet_object
 
     def nomenclature(self):
@@ -652,9 +666,14 @@ class DynamicCollector:
             input_dict[name] = inputs[self.bipartite[name]]
         return input_dict
 
+    def get_inputs_new(self, time):
+        input_dict = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return input_dict
+
     def unit_model(self, time, states):
         # Calculate inlets
-        u_values = self.get_inputs(time)
+        u_values = self.get_inputs_new(time)
 
         fracs = states[:self.num_species]
 
@@ -694,12 +713,10 @@ class DynamicCollector:
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
-        init_dict = self.get_inputs(self.elapsed_time)
+        init_dict = self.get_inputs_new(self.elapsed_time)
         temp_init = init_dict['temp']
 
-        self.is_cryst = any('distr' in word for word in init_dict.keys())
-
-        if self.is_cryst:
+        if self.has_solids:
             path = self.Inlet.Liquid_1.path_data
             vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
@@ -758,7 +775,7 @@ class DynamicCollector:
 
             liquid = LiquidPhase(path, temp=temp_init, mass_frac=frac_init)
 
-            states_init = np.concatenate((frac_init, [mass_init, temp_init]))
+            states_init = np.concatenate((frac_init, mass_init, temp_init))
 
             self.Phases = (liquid,)
             # classify_phases(self)
