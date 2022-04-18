@@ -65,8 +65,8 @@ class Drying:
         self.T_ambient = 298
 
         # Transfer coefficients
-        self.k_y = 1e-2  # mol/s/m**2 (Seader, Separation process)
-        self.h_T_j = 30  # W/m**2/K
+        self.k_y = 1e-3  # mol/s/m**2 (Seader, Separation process)
+        # self.h_T_j = 30  # W/m**2/K
         self.h_T_j = 10  # W/m**2/K
 
         self.nomenclature()
