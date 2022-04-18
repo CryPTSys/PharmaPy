@@ -45,7 +45,7 @@ def get_input_dict(array, name_dict):
     if array.ndim == 1:
         splitted = np.split(array, acum_len, axis=0)
     else:
-        splitted = np.split(array, acum_len, axis=0)
+        splitted = np.split(array, acum_len, axis=1)
 
         for ind, val in enumerate(splitted):
             if val.shape[1] == 1:
