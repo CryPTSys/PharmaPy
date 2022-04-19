@@ -641,7 +641,7 @@ class BatchReactor(_BaseReactor):
             dtemp_dt = (source_term - ht_term) / capacitance  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_dict = self.Utility.evaluate_inputs(time)
+                ht_dict = self.Utility.get_inputs(time)
 
                 flow_ht = ht_dict['vol_flow']
                 tht_in = ht_dict['temp_in']

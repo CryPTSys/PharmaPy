@@ -543,24 +543,29 @@ class SimulationExec:
         masses_inlets = np.zeros(len(raw_flows))
         for ind, obj in enumerate(raw_flows):
             if hasattr(obj, 'DynamicInlet') and obj.DynamicInlet is not None:
-                qty_str = ('mass_flow', 'mole_flow')
-                mass_profile = obj.evaluate_inputs(time_flows[ind])
-                for string in qty_str:
-                    massprof = mass_profile[string]
-                    isarray = isinstance(massprof, np.ndarray)
+                # qty_str = ('mass_flow', 'mole_flow')
+                inputs = obj.evaluate_inputs(time_flows[ind])
 
-                    if isarray:
-                        qty_unit = string
-                        mass_profile = massprof
-                        break
-                if qty_unit == 'mole_flow':
-                    mass_profile *= obj.mw_av / 1000  # kg/s
+                if 'mole_flow' in inputs:
+                    flow_profile = inputs['mole_flow'] * obj.mw_av / 1000
+                else:
+                    flow_profile = inputs['mass_flow']
+                # for string in qty_str:
+                #     massprof = mass_profile[string]
+                #     isarray = isinstance(massprof, np.ndarray)
+
+                #     if isarray:
+                #         qty_unit = string
+                #         mass_profile = massprof
+                #         break
+                # if qty_unit == 'mole_flow':
 
                 if steady_state:
-                    masses_inlets[ind] = mass_profile[-1] * time_flows[ind][-1]
+                    masses_inlets[ind] = flow_profile[-1] * \
+                        (time_flows[ind][-1] - time_flows[ind][0])
                 else:
                     masses_inlets[ind] = trapezoidal_rule(time_flows[ind],
-                                                          mass_profile)
+                                                          flow_profile)
 
                 # pass
 

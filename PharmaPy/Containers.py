@@ -481,11 +481,14 @@ class Mixer:
             else:
                 states = self.balances_solids(u_input, ind_solids)
         else:
-            time_prof = None
-            for inlet in self.Inlets:
-                time_prof = getattr(inlet, 'time_upstream')
-                if time_prof is not None:
-                    break
+            time_prof = [0]
+            if self.is_continuous:
+
+                for inlet in self.Inlets:
+                    time_prof = getattr(inlet, 'time_upstream', None)
+
+                    if time_prof is not None:
+                        break
 
             u_input = self.get_inputs_new(time_prof)
             self.timeProf = time_prof
@@ -498,7 +501,7 @@ class Mixer:
                 self.Liquid_1 = LiquidPhase(path_thermo=path)
 
             # ---------- Run balances
-            if isinstance(u_input['mass_frac'], tuple):
+            if self.is_continuous:
                 states = self.dynamic_balances(u_input)
             else:
                 states = self.balances(u_input)
