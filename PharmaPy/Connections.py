@@ -257,8 +257,8 @@ class Connection:
         else:
             states_up = self.source_uo.names_states_out
 
-        class_name = self.destination_uo.__class__.__name__
-        if class_name == 'DynamicCollector':
+        class_destination = self.destination_uo.__class__.__name__
+        if class_destination == 'DynamicCollector':
             if self.source_uo.__class__.__name__ == 'MSMPR':
                 states_down = self.destination_uo.names_states_in['crystallizer']
             else:
@@ -298,15 +298,20 @@ class Connection:
         mode = self.destination_uo.oper_mode
         transfered_matter = copy.deepcopy(self.Matter)
 
-        if mode == 'Batch':
+        if class_destination == 'Mixer':
+            self.destination_uo.Inlets = transfered_matter
+            self.destination_uo.material_from_upstream = True
+
+        elif mode == 'Batch':
             self.destination_uo.Phases = transfered_matter
             self.destination_uo.material_from_upstream = True
+
         elif mode == 'Semibatch':
             if self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
-        else:  # Continuous
+        elif mode == 'Continuous':  # Continuous
             source_phases = self.source_uo.Outlet
             if self.source_uo.oper_mode == 'Batch' and source_phases is not self.Matter:
                 if hasattr(self.Matter, 'Phases') and \
@@ -332,14 +337,14 @@ class Connection:
                         elif 'Solid' in name_source and 'Solid' in name_destin:
                             pass
 
-            if hasattr(self.destination_uo, 'Inlet'):
-                self.destination_uo.Inlet = transfered_matter
-                self.destination_uo.material_from_upstream = True
-            else:
-                self.destination_uo.Inlets = transfered_matter
-                self.destination_uo.material_from_upstream = True
+            # if hasattr(self.destination_uo, 'Inlet'):
+            self.destination_uo.Inlet = transfered_matter
+            self.destination_uo.material_from_upstream = True
+            # else:
+            #     self.destination_uo.Inlets = transfered_matter
+            #     self.destination_uo.material_from_upstream = True
 
-            if self.destination_uo.__class__.__name__ == 'DynamicCollector':
+            if class_destination == 'DynamicCollector':
                 if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
                     self.destination_uo.KinCryst = self.source_uo.Kinetics
                     self.destination_uo.kwargs_cryst = {

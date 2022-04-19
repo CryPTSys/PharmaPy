@@ -601,6 +601,7 @@ class DynamicCollector:
         self.kwargs_cryst = None
 
         self.elapsed_time = 0
+        self.oper_mode = 'Continuous'
 
     @property
     def Phases(self):
