@@ -998,7 +998,7 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_controls = self.Utility.evaluate_inputs(time)
+                ht_controls = self.Utility.get_inputs(time)
                 tht_in = ht_controls['temp_in']
                 flow_ht = ht_controls['vol_flow']
 
@@ -1601,7 +1601,7 @@ class PlugFlowReactor(_BaseReactor):
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
 
-            temp_ht = self.Utility.evaluate_inputs(time)['temp_in']
+            temp_ht = self.Utility.get_inputs(time)['temp_in']
             heat_transfer = self.u_ht * a_prime * (temp - temp_ht)  # W/m**3
 
         if heat_profile:

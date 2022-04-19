@@ -653,7 +653,7 @@ class Evaporator:
 
         # Heat transfer
         area_ht = 4 / self.diam_tank * vol_liq + self.area_base  # m**2
-        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
+        temp_ht = self.Utility.get_inputs(time)['temp_in']
 
         heat_transfer = -self.u_ht * area_ht * (temp - temp_ht)
 
@@ -859,7 +859,7 @@ class Evaporator:
         height_liq = vol_liq / (np.pi/4 * diam**2)
         area_ht = np.pi * diam * height_liq  # m**2
 
-        temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
+        temp_ht = self.Utility.get_inputs(0)['temp_in']
 
         ht_init = -self.h_conv * area_ht * (temp_init - temp_ht)
 
@@ -1460,7 +1460,7 @@ class ContinuousEvaporator:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
             area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
-            ht_controls = self.Utility.evaluate_inputs(time)
+            ht_controls = self.Utility.get_inputs(time)
             temp_ht = ht_controls['temp_in']
 
             heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
@@ -1617,7 +1617,7 @@ class ContinuousEvaporator:
             height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
             area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
-            ht_controls = self.Utility.evaluate_inputs(0)
+            ht_controls = self.Utility.get_inputs(0)
             temp_ht = ht_controls['temp_in']
 
             heat_transfer = self.h_conv * area_ht * (temp_bubble_init -

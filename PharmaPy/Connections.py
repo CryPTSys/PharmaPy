@@ -257,12 +257,12 @@ class Connection:
         else:
             states_up = self.source_uo.names_states_out
 
-        if self.destination_uo.__class__.__name__ == 'DynamicCollector':
+        class_name = self.destination_uo.__class__.__name__
+        if class_name == 'DynamicCollector':
             if self.source_uo.__class__.__name__ == 'MSMPR':
-                states_down = self.destination_uo.names_states_in[1]
-                self.destination_uo.name_idx = 1
+                states_down = self.destination_uo.names_states_in['crystallizer']
             else:
-                states_down = self.destination_uo.names_states_in[0]
+                states_down = self.destination_uo.names_states_in['liquid_mixer']
 
         else:
             states_down = self.destination_uo.names_states_in
@@ -285,6 +285,7 @@ class Connection:
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up
 
+        # Assign names to downstream UO
         if self.destination_uo.__class__.__name__ == 'Mixer':
             self.destination_uo.bipartite.append(bipartite)
             self.destination_uo.names_upstream.append(names_upstream)

@@ -625,20 +625,20 @@ class DynamicCollector:
 
         if module == 'PharmaPy.MixedPhases':
             self.name_species = inlet_object.Phases[0].name_species
-            self.has_solids = True
-            names_states_in = self.names_states_in[1]
+
+            names_states_in = self.names_states_in['crystallizer']
+            self.model_type = 'crystallizer'
 
         else:
             self.name_species = inlet_object.name_species
-            self.has_solids = False
-            names_states_in = self.names_states_in[0]
+
+            names_states_in = self.names_states_in['liquid_mixer']
+            self.model_type = 'liquid_mixer'
 
         self.num_species = len(self.name_species)
         len_in = [self.num_species, 1, 1]
 
         self.states_in_dict = dict(zip(names_states_in, len_in))
-
-        self.names_states_in = names_states_in
 
         self._Inlet = inlet_object
 
@@ -646,9 +646,9 @@ class DynamicCollector:
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
         names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
 
-        self.name_idx = 0
+        self.names_states_in = {'liquid_mixer': names_liquid,
+                                'crystallizer': names_solids}
 
-        self.names_states_in = [names_liquid, names_solids]
         self.names_states_out = ['mass_frac', 'mass', 'temp']
 
     def get_inputs(self, time):
@@ -662,7 +662,7 @@ class DynamicCollector:
                                  num_distrib, all_inputs)
 
         input_dict = {}
-        for name in self.names_states_in[self.name_idx]:
+        for name in self.names_states_in[self.model_type]:
             input_dict[name] = inputs[self.bipartite[name]]
         return input_dict
 
@@ -716,7 +716,7 @@ class DynamicCollector:
         init_dict = self.get_inputs_new(self.elapsed_time)
         temp_init = init_dict['temp']
 
-        if self.has_solids:
+        if self.model_type == 'crystallizer':
             path = self.Inlet.Liquid_1.path_data
             vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
@@ -768,7 +768,7 @@ class DynamicCollector:
             self.vol_phase = vol_phase
 
             self.Phases = phases
-        else:
+        elif self.model_type == 'liquid_mixer':
             path = self.Inlet.path_data
             mass_init = init_dict['mass_flow'] / 10
             frac_init = init_dict['mass_frac']

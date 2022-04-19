@@ -61,7 +61,7 @@ class _BaseCryst:
                  state_events):
 
         """ Construct a Crystallizer Object
-        
+
         Parameters
         ----------
         mask_params : list of bool (optional, default = None)
@@ -725,7 +725,7 @@ class _BaseCryst:
             TODO
         sundials_opts :
             TODO
-        any_event : 
+        any_event :
             TODO
         """
 
@@ -1216,15 +1216,15 @@ class _BaseCryst:
         fig_size : tuple (optional, default = None)
             Size of the figure to be populated.
         time_eval : int (optional, default = None)
-            Integer value indicating the time in which 
+            Integer value indicating the time in which
             crystal size distribution of interest is calculated.
         vol_based : bool (optional, default = False)
             Boolean value indiciating whether the crystal size
-            distribution is in volume-based. 
+            distribution is in volume-based.
         time_div : int (optional, default = 1)
             TODO
         logx : bool (optional, default = True)
-            Boolean value indicating whether the x axis is 
+            Boolean value indicating whether the x axis is
             presented in log scale.
 
         Raises
@@ -1483,7 +1483,7 @@ class BatchCryst(_BaseCryst):
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -1492,7 +1492,7 @@ class BatchCryst(_BaseCryst):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -1502,10 +1502,10 @@ class BatchCryst(_BaseCryst):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
@@ -1982,7 +1982,7 @@ class MSMPR(_BaseCryst):
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -1991,7 +1991,7 @@ class MSMPR(_BaseCryst):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -2001,10 +2001,10 @@ class MSMPR(_BaseCryst):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
@@ -2198,7 +2198,7 @@ class MSMPR(_BaseCryst):
         capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg
+        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
@@ -2222,7 +2222,7 @@ class MSMPR(_BaseCryst):
             dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
 
             # Balance in the jacket
-            ht_media = self.Utility.evaluate_inputs(time)
+            ht_media = self.Utility.get_inputs(time)
             flow_ht = ht_media['vol_flow']
             tht_in = ht_media['temp_in']
 
@@ -2401,14 +2401,14 @@ class SemibatchCryst(MSMPR):
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
                  state_events=None):
-        
+
         """ Construct a Semi-batch Crystallizer object
         Parameters
         ----------
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -2417,7 +2417,7 @@ class SemibatchCryst(MSMPR):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -2427,10 +2427,10 @@ class SemibatchCryst(MSMPR):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
