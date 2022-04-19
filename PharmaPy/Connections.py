@@ -92,11 +92,23 @@ def get_inputs_new(time, stream, names_in, **kwargs_interp):
         input_array = interpolate_inputs(time, t_inlet, y_inlet,
                                          **kwargs_interp)
 
+        # di_flags = [isinstance(val, dict) for val in names_in.values()]
+
+        # if any(di_flags):
+        #     for key, val in names_in.items():
+        #         inputs = {}
+        #         ins = []
+        #         if 'Phase' in key:
+        #             di = get_input_dict(input_array, val)
+        #             ins.append(di)
+        #         else:
+        #             di = get_input_dict(input_array)
+        # else:
         inputs = get_input_dict(input_array, names_in)
 
         for name in names_in:
             if name not in inputs.keys():
-                inputs[name] = getattr(stream, name)
+                inputs[name] = getattr(stream, name, 0)  # 0 for CSD
 
     else:
         inputs = {}
@@ -274,9 +286,10 @@ class Connection:
             bipartite = None
             names_upstream = None
         else:
-            name_analyzer = NameAnalyzer(states_up, states_down,
-                                         self.num_species,
-                                         0)
+            name_analyzer = NameAnalyzer(
+                states_up, states_down, self.num_species,
+                len(getattr(self.Matter, 'distrib', []))
+                )
 
             # Convert units and pass states to self.Matter
             # name_analyzer.convertUnits(self.Matter)

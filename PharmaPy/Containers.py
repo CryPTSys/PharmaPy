@@ -15,7 +15,7 @@ from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Crystallizers import SemibatchCryst
 from PharmaPy.NameAnalysis import get_dict_states
-from PharmaPy.Connections import get_inputs_new
+from PharmaPy.Connections import get_inputs_new, get_inputs
 
 from scipy.optimize import newton, fsolve
 import numpy as np
@@ -644,7 +644,7 @@ class DynamicCollector:
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
-        names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
+        names_solids = ['distrib', 'mass_conc', 'vol_flow', 'temp']
 
         self.names_states_in = {'liquid_mixer': names_liquid,
                                 'crystallizer': names_solids}
@@ -713,14 +713,18 @@ class DynamicCollector:
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
         # Initial values
-        init_dict = self.get_inputs_new(self.elapsed_time)
-        temp_init = init_dict['temp']
 
         if self.model_type == 'crystallizer':
+            self.names_states_in = self.names_states_in['crystallizer']
+            init_dict = get_inputs(self.elapsed_time, self, self.num_species,
+                                   len(self.Inlet.x_distrib))
+
             path = self.Inlet.Liquid_1.path_data
+
             vol_init = np.sqrt(eps)
             conc_init = init_dict['mass_conc']
             distr_init = init_dict['distrib'] * vol_init
+            temp_init = init_dict['temp']
 
             vol_init *= (1 - self.Inlet.moments[3])
 
@@ -770,8 +774,12 @@ class DynamicCollector:
             self.Phases = phases
         elif self.model_type == 'liquid_mixer':
             path = self.Inlet.path_data
+
+            init_dict = self.get_inputs_new(self.elapsed_time)
+
             mass_init = init_dict['mass_flow'] / 10
             frac_init = init_dict['mass_frac']
+            temp_init = init_dict['temp']
 
             liquid = LiquidPhase(path, temp=temp_init, mass_frac=frac_init)
 

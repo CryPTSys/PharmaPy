@@ -18,7 +18,7 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events)
 
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
-from PharmaPy.Connections import get_inputs
+from PharmaPy.Connections import get_inputs, get_inputs_new
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -2042,6 +2042,57 @@ class MSMPR(_BaseCryst):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
 
+        # self.states_in_dict['MixedPhase'] = {'distrib': len(self._Inlet.x_distrib)}
+
+    def nomenclature(self):
+        self.names_states_in += ['vol_flow', 'temp']
+
+        self.states_in_dict = {
+            'Liquid_1': {'mass_conc': 1, 'vol_flow': 1, 'temp': 1},
+            'MixedPhase': {}}
+
+        name_class = self.__class__.__name__
+
+        if self.method == 'moments':
+            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
+
+            # for mom in mom_names[::-1]:
+            self.names_states_in.insert(0, 'moments')
+
+            self.states_in_dict['solid']['moments']
+
+            if name_class == 'SemibatchCryst':
+                self.states_uo.append('total_moments')
+            else:
+                self.states_uo.append('moments')
+
+        elif self.method == '1D-FVM':
+            self.names_states_in.insert(0, 'distrib')
+
+            if name_class == 'SemibatchCryst':
+                self.states_uo.insert(0, 'total_distrib')
+            else:
+                self.states_uo.insert(0, 'distrib')
+
+        if name_class == 'SemibatchCryst':
+            self.states_uo.append('vol')
+
+        if self.adiabatic:
+            self.states_uo.append('temp')
+        elif not self.isothermal:
+            self.states_uo += ['temp', 'temp_ht']
+        # elif self.adiabatic:
+        #     self.states_uo.append('temp')
+
+        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
+        self.names_states_out = self.names_states_in
+
+    def get_inputs(self, time):
+
+        inputs = get_inputs_new(time, self.states_in_dict)
+
+        return inputs
+
     def _get_tau(self):
         time_upstream = getattr(self.Inlet, 'time_upstream')
         if time_upstream is None:
@@ -2100,43 +2151,6 @@ class MSMPR(_BaseCryst):
         f_convg, final_fn = fun_of_frac(w_convg, full_output=True)
 
         return x_vec, f_convg, w_convg, info, final_fn
-
-    def nomenclature(self):
-        self.names_states_in += ['vol_flow', 'temp']
-
-        name_class = self.__class__.__name__
-
-        if self.method == 'moments':
-            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
-
-            # for mom in mom_names[::-1]:
-            self.names_states_in.insert(0, 'moments')
-
-            if name_class == 'SemibatchCryst':
-                self.states_uo.append('total_moments')
-            else:
-                self.states_uo.append('moments')
-
-        elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-
-            if name_class == 'SemibatchCryst':
-                self.states_uo.insert(0, 'total_distrib')
-            else:
-                self.states_uo.insert(0, 'distrib')
-
-        if name_class == 'SemibatchCryst':
-            self.states_uo.append('vol')
-
-        if self.adiabatic:
-            self.states_uo.append('temp')
-        elif not self.isothermal:
-            self.states_uo += ['temp', 'temp_ht']
-        # elif self.adiabatic:
-        #     self.states_uo.append('temp')
-
-        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
-        self.names_states_out = self.names_states_in
 
     def material_balances(self, time, distrib, w_conc, temp, vol, params,
                           u_inputs, rhos, moms, phi_in):
