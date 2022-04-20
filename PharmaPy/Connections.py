@@ -56,9 +56,26 @@ def get_input_dict(array, name_dict):
     return dic_out
 
 
+def get_states_from_stream(di, names_in, stream):
+    if 'data_sources' in names_in:
+        data_sources = names_in['data_sources']
+        for name, tup in names_in:
+            for ind, item in enumerate(tup):
+                obj = data_sources[ind]
+                obj_name = obj.__class__.__name__
+                di[obj_name] = {}
+
+                if item is not None:
+                    di[obj_name][name] = getattr(obj, name)
+    else:
+        for name in di:
+            if name not in di.keys():
+                di[name] = getattr(stream, name)
+
+
 def get_inputs_new(time, stream, names_in, **kwargs_interp):
     """
-    Get inputs based on stream object and names of inlet states
+    Get inputs based on stream(s) object and names of inlet states
 
     Parameters
     ----------

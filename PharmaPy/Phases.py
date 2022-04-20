@@ -26,16 +26,22 @@ def classify_phases(instance, names=None):
 
         for phase in phases:
             if 'Liquid' in phase.__class__.__name__:
-                setattr(instance, 'Liquid_{}'.format(liquid_count), phase)
+                phase_name = 'Liquid_{}'.format(liquid_count)
                 liquid_count += 1
+
             elif 'Solid' in phase.__class__.__name__:
-                setattr(instance, 'Solid_{}'.format(solid_count), phase)
+                phase_name = 'Solid_{}'.format(solid_count)
                 solid_count += 1
+
             elif 'Vapor' in phase.__class__.__name__:
-                setattr(instance, 'Vapor_{}'.format(solid_count), phase)
+                phase_name = 'Vapor_{}'.format(solid_count)
                 vapor_count += 1
+
+            setattr(phase, 'name', phase_name)
+            setattr(instance, phase_name, phase)
     else:
         for phase, name in zip(phases, names):
+            setattr(phase, 'name', phase_name)
             setattr(instance, name, phase)
 
 
@@ -181,6 +187,16 @@ class LiquidPhase(ThermoPhysicalManager):
             self.__calcComposition()
 
         self.y_upstream = None
+
+        self._name = None
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        self._name = name
 
     def __set_amounts(self, mass, vol, moles, massfrac, molefrac,
                       conc, mass_conc):
@@ -464,6 +480,15 @@ class VaporPhase(ThermoPhysicalManager):
         self.temp = float(temp)
 
         self.y_upstream = None
+        self._name = None
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        self._name = name
 
     def __set_amounts(self, mass, vol, moles, massfrac, molefrac,
                       conc, mass_conc):
@@ -790,6 +815,16 @@ class SolidPhase(ThermoPhysicalManager):
         self.moisture = moisture
         self.porosity = porosity
         self.distribProf = None
+
+        self._name = None
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, name):
+        self._name = name
 
     def updatePhase(self, x_distrib=None, distrib=None, mass=None):
         if x_distrib is not None:
