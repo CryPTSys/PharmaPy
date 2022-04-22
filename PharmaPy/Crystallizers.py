@@ -2090,7 +2090,7 @@ class MSMPR(_BaseCryst):
 
     def get_inputs(self, time):
 
-        inputs = get_inputs_new(time, self.states_in_dict)
+        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
         return inputs
 

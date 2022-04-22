@@ -47,6 +47,7 @@ def get_input_dict(array, name_dict):
 
         if array.ndim == 1:
             splitted = np.split(array, acum_len, axis=0)
+            splitted = [ar[0] if len(ar) == 1 else ar for ar in splitted]
         else:
             splitted = np.split(array, acum_len, axis=1)
 

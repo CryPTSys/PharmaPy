@@ -574,7 +574,13 @@ class Evaporator:
 
     def get_inputs(self, time):
 
-        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+        if self.Inlet is None:
+            inputs = {'mole_flow': 0,
+                      'mole_frac': np.zeros(
+                          self.num_species + self.include_nitrogen),
+                      'temp': 298.15}
+        else:
+            inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
         return inputs
 
@@ -703,14 +709,7 @@ class Evaporator:
             du_dt = states_dot[-2]
 
         # Inputs
-        if self.Inlet is None:
-            u_inputs = {'mole_flow': 0,
-                        'mole_frac': np.zeros(
-                            self.num_species + self.include_nitrogen),
-                        'temp': 298.15}
-        else:
-            # u_inputs = get_inputs(time, *self.args_inputs)
-            u_inputs = self.get_inputs(time)['Inlet']
+        u_inputs = self.get_inputs(time)['Inlet']
 
         u_inputs['mole_flow'] *= self.allow_flow
 
@@ -1554,7 +1553,7 @@ class ContinuousEvaporator:
                                               pres, u_inputs)
 
             # Concatenate balances
-            balances = np.concatenate((material_bce, energy_bce))
+            balances = np.hstack((material_bce, energy_bce))
 
             if states_dot is not None:
                 # Decompose derivatives
@@ -1570,6 +1569,8 @@ class ContinuousEvaporator:
 
             self.Liquid_1.mole_frac = x_liq
             self.Vapor_1.mole_flow = y_vap
+
+            # print(np.linalg.norm(balances))
 
             return balances
 
