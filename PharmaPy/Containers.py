@@ -530,7 +530,9 @@ class DynamicCollector:
         self.num_species = len(self.name_species)
         len_in = [self.num_species, 1, 1]
 
-        self.states_in_dict = dict(zip(names_states_in, len_in))
+        states_in_dict = dict(zip(names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
 
         self._Inlet = inlet_object
 
@@ -565,7 +567,7 @@ class DynamicCollector:
 
     def unit_model(self, time, states):
         # Calculate inlets
-        u_values = self.get_inputs_new(time)
+        u_values = self.get_inputs_new(time)['Inlet']
 
         fracs = states[:self.num_species]
 
@@ -667,7 +669,7 @@ class DynamicCollector:
         elif self.model_type == 'liquid_mixer':
             path = self.Inlet.path_data
 
-            init_dict = self.get_inputs_new(self.elapsed_time)
+            init_dict = self.get_inputs_new(self.elapsed_time)['Inlet']
 
             mass_init = init_dict['mass_flow'] / 10
             frac_init = init_dict['mass_frac']

@@ -710,7 +710,7 @@ class Evaporator:
                         'temp': 298.15}
         else:
             # u_inputs = get_inputs(time, *self.args_inputs)
-            u_inputs = self.get_inputs(time)
+            u_inputs = self.get_inputs(time)['Inlet']
 
         u_inputs['mole_flow'] *= self.allow_flow
 
@@ -1528,7 +1528,7 @@ class ContinuousEvaporator:
         temp = states[-1]
 
         # Inputs
-        u_inputs = get_inputs(time, *self.args_inputs)
+        u_inputs = self.get_inputs(time)['Inlet']
 
         # Material balance
         material_bces = self.material_balances(time, moles_i,
@@ -1610,7 +1610,7 @@ class ContinuousEvaporator:
         # Moles of i
         mol_i = mol_liq * x_init + mol_vap * y_init
 
-        u_inlet = get_inputs(0, *self.args_inputs)
+        u_inlet = self.get_inputs(0)['Inlet']
         inlet_flow = u_inlet['mole_flow']
 
         # Liquid flow
