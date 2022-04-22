@@ -65,7 +65,7 @@ class CoolingWater:
         return inputs
 
     def get_inputs(self, time):
-        inputs = get_inputs_new(time, self,
-                                {'vol_flow': 1, 'temp_in': 1, 'mass_flow': 1})
+        di = {'Inlet': {'vol_flow': 1, 'temp_in': 1, 'mass_flow': 1}}
+        inputs = get_inputs_new(time, self, di)['Inlet']
 
         return inputs

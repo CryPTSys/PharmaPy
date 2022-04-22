@@ -37,43 +37,45 @@ def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
 
 
 def get_input_dict(array, name_dict):
-    names = name_dict.keys()
-    lens = list(name_dict.values())
 
-    acum_len = np.cumsum(lens)[:-1]
+    dict_out = {}
+    for phase, states in name_dict.items():
+        names = list(states.keys())
+        lens = list(states.values())
 
-    if array.ndim == 1:
-        splitted = np.split(array, acum_len, axis=0)
-    else:
-        splitted = np.split(array, acum_len, axis=1)
+        acum_len = np.cumsum(lens)[:-1]
 
-        for ind, val in enumerate(splitted):
-            if val.shape[1] == 1:
-                splitted[ind] = val.flatten()
+        if array.ndim == 1:
+            splitted = np.split(array, acum_len, axis=0)
+        else:
+            splitted = np.split(array, acum_len, axis=1)
 
-    dic_out = dict(zip(names, splitted))
+            for ind, val in enumerate(splitted):
+                if val.shape[1] == 1:
+                    splitted[ind] = val.flatten()
 
-    return dic_out
+        dict_out[phase] = dict(zip(names, splitted))
 
-
-def get_states_from_stream(di, names_in, stream):
-    if 'data_sources' in names_in:
-        data_sources = names_in['data_sources']
-        for name, tup in names_in:
-            for ind, item in enumerate(tup):
-                obj = data_sources[ind]
-                obj_name = obj.__class__.__name__
-                di[obj_name] = {}
-
-                if item is not None:
-                    di[obj_name][name] = getattr(obj, name)
-    else:
-        for name in di:
-            if name not in di.keys():
-                di[name] = getattr(stream, name)
+    return dict_out
 
 
-def get_inputs_new(time, stream, names_in, **kwargs_interp):
+def get_remaining_states(dict_states_in, stream, inlets):
+    di_out = {}
+    for phase, di in dict_states_in.items():
+        di_out[phase] = {}
+        if 'inlet' in phase.lower():
+            for state in di:
+                if state not in inlets[phase]:
+                    di_out[phase][state] = getattr(stream, state)
+        else:
+            for state in di:
+                if state not in inlets[phase]:
+                    sub_phase = getattr(stream, phase)
+                    di_out[sub_phase][state] = getattr(sub_phase, state)
+    return di_out
+
+
+def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
     """
     Get inputs based on stream(s) object and names of inlet states
 
@@ -98,10 +100,7 @@ def get_inputs_new(time, stream, names_in, **kwargs_interp):
 
     if stream.DynamicInlet is not None:
         inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
-
-        for name in names_in:
-            if name not in inputs.keys():
-                inputs[name] = getattr(stream, name)
+        inputs = {'Inlet': inputs}
 
     elif stream.y_upstream is not None:
         t_inlet = stream.time_upstream
@@ -109,16 +108,17 @@ def get_inputs_new(time, stream, names_in, **kwargs_interp):
         input_array = interpolate_inputs(time, t_inlet, y_inlet,
                                          **kwargs_interp)
 
-        inputs = get_input_dict(input_array, names_in)
-
-        for name in names_in:
-            if name not in inputs.keys():
-                inputs[name] = getattr(stream, name, 0)  # 0 for CSD
+        inputs = get_input_dict(input_array, dict_states_in)
 
     else:
-        inputs = {}
-        for name in names_in:
-            inputs[name] = getattr(stream, name)
+        inputs = {obj: {} for obj in dict_states_in.keys()}
+        # for name in dict_states_in:
+        #     inputs[name] = getattr(stream, name)
+
+    remaining = get_remaining_states(dict_states_in, stream, inputs)
+
+    for key in dict_states_in:
+        inputs[key] = inputs[key] | remaining[key]
 
     return inputs
 

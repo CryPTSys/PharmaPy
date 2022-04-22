@@ -248,15 +248,17 @@ class _BaseReactor:
         # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
 
     def get_inputs(self, time):
+        if self.Inlet is None:
+            inputs = {}
+        else:
+            inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
-        input_dict = get_inputs_new(time, self.Inlet, self.states_in_dict)
-
-        return input_dict
+        return inputs
 
     def unit_model(self, time, states, params):
 
         # Calculate inlets
-        u_values = get_inputs(time, *self.args_inputs)
+        u_values = self.get_inputs(time)
 
         conc = states[:self.num_concentr]
 
@@ -1022,6 +1024,11 @@ class CSTR(_BaseReactor):
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True):
 
+        len_in = [self.num_species, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
+
         self.params_control = params_control
         self.set_names()
 
@@ -1622,7 +1629,7 @@ class PlugFlowReactor(_BaseReactor):
         temp = reordered[:, -1]  # TODO: what if isothermal?
 
         # inputs = get_inputs(time, *self.args_inputs)
-        inputs = self.get_inputs(time)
+        inputs = self.get_inputs(time)['Inlet']
 
         conc_in = inputs['mole_conc']
         temp_in = inputs['temp']
@@ -1705,6 +1712,12 @@ class PlugFlowReactor(_BaseReactor):
         :return:
         """
 
+        num_comp = len(self.Liquid_1.name_species)
+        len_in = [num_comp, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
+
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -1743,9 +1756,6 @@ class PlugFlowReactor(_BaseReactor):
 
         self.trim_idx = np.cumsum(len_states)[:-1]
         self.len_states = len_states
-
-        len_in = [self.num_species, 1, 1]
-        self.states_in_dict = dict(zip(self.names_states_in, len_in))
 
         model = self.unit_model
         if self.state_event_list is None:

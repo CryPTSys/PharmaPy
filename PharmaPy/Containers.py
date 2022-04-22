@@ -83,121 +83,6 @@ class Mixer:
         self.names_upstream = []
         self.bipartite = []
 
-    def get_inputs(self, inlets=None):
-        if inlets is None:
-            inlets = self.Inlets
-
-        num_species = inlets[0].num_species
-
-        timeseries_flag = [inlet.y_upstream is not None
-                           for inlet in inlets]
-
-        flow_flags = [hasattr(inlet, 'mass_flow') for inlet in inlets]
-
-        is_mass = not(any(flow_flags))
-        is_flow = all(flow_flags)
-
-        if not is_mass and not is_flow:
-            raise RuntimeError('Both mass and mass flow specified for one or '
-                               'more streams. Please provide consistent '
-                               'material amount specification')
-
-        if is_mass:
-            self.oper_mode = 'Batch'
-        else:
-            self.oper_mode = 'Continuous'
-
-        massfracs = []
-        masses = []
-        temps = []
-
-        if is_flow:
-            names_in = [name for name in self.names_states_in
-                        if name != 'mass']
-
-            self.is_continuous = True
-
-            timegrid_ref = None
-            for ind, inlet in enumerate(self.Inlets):
-                if inlet.DynamicInlet is not None:
-                    for inl in inlets:
-                        timegrid_ref = getattr(inl, 'time_upstream', None)
-                        if timegrid_ref is not None:
-                            break
-
-                    self.timeProf = timegrid_ref
-                    di = inlet.DynamicInlet.evaluate_inputs(timegrid_ref)
-                    dim = len(di['mass_flow'])
-
-                    temp_prof = np.ones(dim) * inlet.temp
-                    massfrac_prof = np.tile(inlet.mass_frac, (dim, 1))
-
-                    massfracs.append(massfrac_prof)
-                    masses.append(di['mass_flow'])  # TODO: unit conversion if inlet as units of moles/vol
-                    temps.append(temp_prof)  # TODO: what if T is controlled?
-
-                elif inlet.y_upstream is None:
-                    massfracs.append(inlet.mass_frac)
-                    temps.append(inlet.temp)
-                    masses.append(inlet.mass_flow)
-
-                else:
-                    if timegrid_ref is None:
-                        timegrid_ref = inlet.time_upstream
-                        y_inlet = inlet.y_inlet
-
-                        self.timeProf = timegrid_ref
-                    else:
-                        y_inlet = inlet.InterpolateInputs(timegrid_ref)
-
-                    input_dict = get_dict_states(self.names_upstream[ind],
-                                                 num_species, 0, y_inlet)
-
-                    di = {}
-                    for key in names_in:
-                        di[key] = input_dict.get(self.bipartite[ind][key])
-
-                    massfracs.append(di['mass_frac'])
-                    masses.append(di['mass_flow'])
-                    temps.append(di['temp'])
-
-            dict_inputs = {}
-            dict_inputs['mass_frac'] = massfracs
-            dict_inputs['mass'] = masses
-            dict_inputs['temp'] = temps
-
-            names_out = names_in
-
-        else:
-            for inlet in inlets:
-                massfracs.append(inlet.mass_frac)
-                temps.append(inlet.temp)
-
-                # mass = getattr(inlet, 'mass', getattr(inlet, 'mass_flow'))
-                masses.append(inlet.mass)
-
-            masses = np.array(masses)
-            massfracs = np.array(massfracs)
-            dict_inputs = {'mass': masses, 'mass_frac': massfracs,
-                           'temp': temps}
-
-            # if is_mass:
-            names_out = [name for name in self.names_states_out
-                         if name != 'mass_flow']
-
-            self.is_continuous = False
-            self.timeProf = [0]
-
-            # else:
-            #     names_out = [name for name in self.names_states_out
-            #                  if name != 'mass']
-
-            #     self.is_continuous = True
-
-        self.names_states_out = names_out
-
-        return dict_inputs
-
     def get_inputs_new(self, time):
         inlets = self.Inlets
 
@@ -211,7 +96,8 @@ class Mixer:
 
             dict_list = []
             for ind, inlet in enumerate(self.Inlets):
-                di = get_inputs_new(time, inlet, self.states_in_dict)
+                # TODO: extracting 'Inlet' only is not general
+                di = get_inputs_new(time, inlet, self.states_in_dict)['Inlet']
 
                 dict_list.append(di)
 
@@ -469,9 +355,10 @@ class Mixer:
 
         len_in = (self.Inlets[0].num_species, 1, 1)
 
-        self.states_in_dict = dict(zip(self.names_states_in, len_in))
+        states_in_dict = dict(zip(self.names_states_in, len_in))
 
         if any(solids_flag):
+            self.states_in_dict = {'Inlet': states_in_dict}  # TODO (solids?)
             u_input, ind_solids = self.get_inputs_solids()
 
             path = self.Inlets[0].path_data
@@ -481,6 +368,7 @@ class Mixer:
             else:
                 states = self.balances_solids(u_input, ind_solids)
         else:
+            self.states_in_dict = {'Inlet': states_in_dict}
             time_prof = [0]
             if self.is_continuous:
 

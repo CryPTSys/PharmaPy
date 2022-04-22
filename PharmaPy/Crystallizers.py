@@ -2042,14 +2042,15 @@ class MSMPR(_BaseCryst):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
 
-        # self.states_in_dict['MixedPhase'] = {'distrib': len(self._Inlet.x_distrib)}
+        self.states_in_dict['MixedStream'] = {
+            'distrib': len(self._Inlet.x_distrib)}
 
     def nomenclature(self):
         self.names_states_in += ['vol_flow', 'temp']
 
         self.states_in_dict = {
-            'Liquid_1': {'mass_conc': 1, 'vol_flow': 1, 'temp': 1},
-            'MixedPhase': {}}
+            'Liquid_1': {'mass_conc': 1},
+            'MixedStream': {'vol_flow': 1, 'temp': 1}}
 
         name_class = self.__class__.__name__
 
