@@ -677,7 +677,7 @@ class DynamicCollector:
 
             liquid = LiquidPhase(path, temp=temp_init, mass_frac=frac_init)
 
-            states_init = np.concatenate((frac_init, mass_init, temp_init))
+            states_init = np.hstack((frac_init, mass_init, temp_init))
 
             self.Phases = (liquid,)
             # classify_phases(self)

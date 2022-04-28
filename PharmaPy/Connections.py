@@ -39,14 +39,17 @@ def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
 def get_input_dict(array, name_dict):
 
     dict_out = {}
+    count = 0
     for phase, states in name_dict.items():
         names = list(states.keys())
         lens = list(states.values())
 
-        acum_len = np.cumsum(lens)[:-1]
+        acum_len = np.cumsum(lens)
+        if len(acum_len) > 1:
+            acum_len = acum_len[:-1]
 
         if array.ndim == 1:
-            splitted = np.split(array, acum_len, axis=0)
+            splitted = np.split(array[count:], acum_len, axis=0)
             splitted = [ar[0] if len(ar) == 1 else ar for ar in splitted]
         else:
             splitted = np.split(array, acum_len, axis=1)
@@ -55,9 +58,35 @@ def get_input_dict(array, name_dict):
                 if val.shape[1] == 1:
                     splitted[ind] = val.flatten()
 
+        count += acum_len[-1]
+
         dict_out[phase] = dict(zip(names, splitted))
 
     return dict_out
+
+
+def get_missing_field(obj, name, di):
+    dim = di[list(di.keys())[0]]
+
+    n_state = di[name]
+    n_times = 1
+    if isinstance(dim, np.ndarray):
+        if dim.ndim > 1:
+            n_times = dim.shape[0]
+
+    if n_times == 1:
+        if n_state == 1:
+            out = 0
+        else:
+            out = np.zeros(n_state)
+    elif n_times > 1:
+        if n_state == 1:
+            out = np.zeros(n_times)
+
+        else:
+            out = np.zeros((n_times, n_state))
+
+    return out
 
 
 def get_remaining_states(dict_states_in, stream, inlets):
@@ -67,12 +96,21 @@ def get_remaining_states(dict_states_in, stream, inlets):
         if 'inlet' in phase.lower():
             for state in di:
                 if state not in inlets[phase]:
-                    di_out[phase][state] = getattr(stream, state)
+                    field = getattr(stream, state)
+
+                    if field is None:
+                        field = get_missing_field(stream, state, di_out)
+
+                    di_out[phase][state] = field
         else:
             for state in di:
                 if state not in inlets[phase]:
                     sub_phase = getattr(stream, phase)
-                    di_out[sub_phase][state] = getattr(sub_phase, state)
+                    field = getattr(sub_phase, state)
+
+                    if field is None:
+                        field = get_missing_field(sub_phase, state, di_out)
+                        di_out[sub_phase][state] = getattr(sub_phase, state)
     return di_out
 
 

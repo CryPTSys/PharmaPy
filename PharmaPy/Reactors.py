@@ -248,10 +248,11 @@ class _BaseReactor:
         # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
 
     def get_inputs(self, time):
-        if self.Inlet is None:
+        inlet = getattr(self, 'Inlet', None)
+        if inlet is None:
             inputs = {}
         else:
-            inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+            inputs = get_inputs_new(time, inlet, self.states_in_dict)
 
         return inputs
 

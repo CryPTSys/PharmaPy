@@ -291,6 +291,10 @@ class _BaseCryst:
                 num_sp = len(self.Liquid_1.mass_frac)
                 self.name_species = list(string.ascii_uppercase[:num_sp])
 
+        self.states_in_dict = {
+            'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
+            'Inlet': {'vol_flow': 1, 'temp': 1}}
+
     @property
     def Kinetics(self):
         return self._Kinetics
@@ -332,6 +336,15 @@ class _BaseCryst:
 
         for phase, di in zip(self.Phases, self.__original_phase_dict__):
             phase.__dict__.update(di)
+
+    def get_inputs(self, time):
+
+        if self.__class__.__name__ == 'BatchCryst':
+            inputs = {}
+        else:
+            inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return inputs
 
     def method_of_moments(self, mu, conc, temp, params, rho_cry, vol=1):
         kv = self.Solid_1.kv
@@ -441,7 +454,8 @@ class _BaseCryst:
         ind_bces = num_material
 
         # Inputs
-        u_input = get_inputs(time, *self.args_inputs)
+        # u_input = get_inputs(time, *self.args_inputs)
+        u_input = self.get_inputs(time)
 
         # Check for volume
         if 'vol' in self.states_uo:
@@ -487,13 +501,13 @@ class _BaseCryst:
             phis_in = None
         elif name_unit == 'SemibatchCryst' or name_unit == 'MSMPR':
             # massfrac_in = self.Liquid_1.mass_conc_to_frac(w_conc, basis='mass')
-            inlet_temp = u_input['temp']
+            inlet_temp = u_input['Inlet']['temp']
 
             if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
                 # self.Inlet.Liquid_1.updatePhase(mass_frac=massfrac_in)
                 rhos_in = self.Inlet.getDensity(temp)
 
-                inlet_distr = u_input['distrib']
+                inlet_distr = u_input['Inlet']['distrib']
 
                 mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
                                                        mom_num=3)
@@ -728,6 +742,8 @@ class _BaseCryst:
         any_event :
             TODO
         """
+
+        self.states_in_dict['Inlet']['distrib'] = len(self.Solid_1.x_distrib)
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -2042,15 +2058,8 @@ class MSMPR(_BaseCryst):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
 
-        self.states_in_dict['Inlet'] = {
-            'distrib': len(self._Inlet.x_distrib)}
-
     def nomenclature(self):
         self.names_states_in += ['vol_flow', 'temp']
-
-        self.states_in_dict = {
-            'Liquid_1': {'mass_conc': 1},
-            'Inlet': {'vol_flow': 1, 'temp': 1}}
 
         name_class = self.__class__.__name__
 
@@ -2060,7 +2069,7 @@ class MSMPR(_BaseCryst):
             # for mom in mom_names[::-1]:
             self.names_states_in.insert(0, 'moments')
 
-            self.states_in_dict['solid']['moments']
+            # self.states_in_dict['solid']['moments']
 
             if name_class == 'SemibatchCryst':
                 self.states_uo.append('total_moments')
@@ -2087,12 +2096,6 @@ class MSMPR(_BaseCryst):
 
         self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in
-
-    def get_inputs(self, time):
-
-        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
-
-        return inputs
 
     def _get_tau(self):
         time_upstream = getattr(self.Inlet, 'time_upstream')
@@ -2158,9 +2161,9 @@ class MSMPR(_BaseCryst):
 
         rho_sol = rhos[0][1]
 
-        input_flow = u_inputs['vol_flow']
-        input_distrib = u_inputs['distrib'] * self.scale
-        input_conc = u_inputs['mass_conc']
+        input_flow = u_inputs['Inlet']['vol_flow']
+        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+        input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
             ddistr_dt, transf = self.method_of_moments(distrib, w_conc, temp,
@@ -2202,8 +2205,7 @@ class MSMPR(_BaseCryst):
 
         rho_susp, rho_in = rhos
 
-        input_flow = u_inputs['vol_flow']
-        input_temp = u_inputs['temp']
+        input_flow = u_inputs['Inlet']['vol_flow']
 
         # Thermodynamic properties (basis: slurry volume)
         phi_liq = 1 - self.Solid_1.kv * moms[3]

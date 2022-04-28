@@ -1570,8 +1570,6 @@ class ContinuousEvaporator:
             self.Liquid_1.mole_frac = x_liq
             self.Vapor_1.mole_flow = y_vap
 
-            # print(np.linalg.norm(balances))
-
             return balances
 
     def unit_jacobian(self, c, time, states, sdot, params=None):
