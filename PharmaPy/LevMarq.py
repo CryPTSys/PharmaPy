@@ -81,7 +81,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
     num_feval = 0
 
-    print('Seed:')
+    # print('Seed:')
     # print(x)
 
     if verbose:

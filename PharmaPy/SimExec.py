@@ -270,15 +270,21 @@ class SimulationExec:
 
         return stream_table
 
-    def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+    # def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+    #                        wrapper_kwargs=None,
+    #                        spectra=None,
+    #                        fit_spectra=False, global_analysis=True,
+    #                        phase_modifiers=None, control_modifiers=None,
+    #                        measured_ind=None, optimize_flags=None,
+    #                        jac_fun=None,
+    #                        covar_data=None,
+    #                        pick_unit=None):
+
+    def SetParamEstimation(self, x_data, y_data=None, spectra=None,
+                           fit_spectra=False,
                            wrapper_kwargs=None,
-                           spectra=None,
-                           fit_spectra=False, global_analysis=True,
                            phase_modifiers=None, control_modifiers=None,
-                           measured_ind=None, optimize_flags=None,
-                           jac_fun=None,
-                           covar_data=None,
-                           pick_unit=None):
+                           pick_unit=None, **inputs_paramest):
 
         self.LoadUOs()
 
@@ -316,10 +322,8 @@ class SimulationExec:
         for di in kwargs_wrapper:
             di.update({'run_args': wrapper_kwargs})
 
-        # if len(kwargs_wrapper) == 1:
-        #     kwargs_wrapper = kwargs_wrapper[0]
-
         # Get 1D array of parameters from the UO class
+        param_seed = inputs_paramest.get('param_seed')
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
 
@@ -327,36 +331,37 @@ class SimulationExec:
             param_seed = target_unit.Kinetics.concat_params()
         else:
             param_seed = target_unit.params
-        # param_seed = param_seed[target_unit.mask_params]
 
-        name_params = []
+        name_params = inputs_paramest.get('name_params')
 
-        for ind, logic in enumerate(target_unit.mask_params):
-            if logic:
-                if hasattr(target_unit, 'Kinetics'):
-                    name_params.append(target_unit.Kinetics.name_params[ind])
-                else:
-                    name_params.append(target_unit.name_params[ind])
+        if name_params is None:
+            name_params = []
+            for ind, logic in enumerate(target_unit.mask_params):
+                if logic:
+                    if hasattr(target_unit, 'Kinetics'):
+                        name_params.append(
+                            target_unit.Kinetics.name_params[ind])
+                    else:
+                        name_params.append(target_unit.name_params[ind])
 
         name_states = target_unit.states_uo
+
+        inputs_paramest['name_states'] = name_states
+        inputs_paramest['name_params'] = name_params
 
         # Instantiate parameter estimation
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed, x_data, spectra, global_analysis,
-                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
-                optimize_flags=optimize_flags,
-                jac_fun=jac_fun, covar_data=covar_data,
-                name_params=name_params, name_states=name_states)
+                param_seed=param_seed, x_data=x_data, spectra=spectra,
+                kwargs_fun=kwargs_wrapper,
+                **inputs_paramest)
         else:
             self.ParamInst = ParameterEstimation(
                 target_unit.paramest_wrapper,
-                param_seed, x_data, y_data,
-                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
-                optimize_flags=optimize_flags,
-                jac_fun=jac_fun, covar_data=covar_data,
-                name_params=name_params, name_states=name_states)
+                param_seed=param_seed, x_data=x_data, y_data=y_data,
+                kwargs_fun=kwargs_wrapper,
+                **inputs_paramest)
 
     def EstimateParams(self, optim_options=None, method='LM', bounds=None,
                        verbose=True):

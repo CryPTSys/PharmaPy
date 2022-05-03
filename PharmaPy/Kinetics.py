@@ -385,10 +385,16 @@ class RxnKinetics:
         num_orders = self.order_map.sum()
         drate_dorder = np.zeros((self.num_rxns, num_orders))
 
+        count = 0
+
         for ind, row in enumerate(self.order_map):
             conc_m = conc_correc[row]  # see Section 3.2.2
-            drate_dorder[ind] = np.log(conc_m) * f_term[ind]
 
+            norder_i = sum(row)
+            drate_dorder[ind,
+                         count:count + norder_i] = np.log(conc_m) * f_term[ind]
+
+            count += norder_i
         drate_dorder = drate_dorder
 
         return drate_dorder
@@ -407,8 +413,8 @@ class RxnKinetics:
             dr_dthetak = (dk_dphi * f_terms).T
 
             if self.fit_paramsf:
-                dr_dthetaf = self.df_dthetaf(
-                    conc, *self.args_kin) * temp_terms
+                dr_dthetaf = self.df_dthetaf(conc, *self.args_kin)
+                dr_dthetaf = (dr_dthetaf.T * temp_terms).T
 
                 dr_dparams = np.hstack((dr_dthetak, dr_dthetaf))
 

@@ -227,6 +227,9 @@ class _BaseReactor:
             mask_species = [name in self.partic_species
                             for name in self.name_species]
 
+            # mask_species = [self.name_species.index(name) for name in
+            #                 self.partic_species]
+
             self.mask_species = np.asarray(mask_species)
 
         self.name_states = ['mole_conc']
@@ -393,8 +396,7 @@ class _BaseReactor:
         if pick_idx is None:
             conc_plot = self.concProf
             if self.__class__.__name__ == 'BatchReactor':
-                leg_conc = [self.name_species[ind]
-                            for ind in np.where(self.mask_species)[0]]
+                leg_conc = self.partic_species
             else:
                 leg_conc = self.name_species
         else:
