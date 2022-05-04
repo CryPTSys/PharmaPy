@@ -191,6 +191,7 @@ class ParameterEstimation:
 
         if covar_data is None:
             self.stdev_data = [np.ones(num_data) for num_data in self.num_data]
+            self.covar_data = np.ones(len(self.measured_ind))
         else:
             self.stdev_data = [np.sqrt(covar.T.ravel())
                                for covar in covar_data]
