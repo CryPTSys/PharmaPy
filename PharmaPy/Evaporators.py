@@ -579,6 +579,8 @@ class Evaporator:
                       'mole_frac': np.zeros(
                           self.num_species + self.include_nitrogen),
                       'temp': 298.15}
+
+            inputs['Inlet'] = inputs
         else:
             inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 

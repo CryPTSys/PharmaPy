@@ -291,9 +291,9 @@ class _BaseCryst:
                 num_sp = len(self.Liquid_1.mass_frac)
                 self.name_species = list(string.ascii_uppercase[:num_sp])
 
-        self.states_in_dict = {
-            'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
-            'Inlet': {'vol_flow': 1, 'temp': 1}}
+            self.states_in_dict = {
+                'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
+                'Inlet': {'vol_flow': 1, 'temp': 1}}
 
     @property
     def Kinetics(self):
