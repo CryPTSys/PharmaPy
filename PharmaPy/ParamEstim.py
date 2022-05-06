@@ -8,7 +8,7 @@ Created on Mon Oct 28 15:35:48 2019
 
 # from reactor_module import ReactorClass
 import numpy as np
-from scipy.linalg import svd
+from scipy.linalg import svd, inv, ldl
 from itertools import cycle
 
 import matplotlib.pyplot as plt
@@ -165,8 +165,8 @@ class ParameterEstimation:
         self.y_fit = y_fit
 
         # ---------- Covariance
-        if (covar_data is not None) and (type(covar_data) is not list):
-            covar_data = [covar_data]
+        # if (covar_data is not None) and (type(covar_data) is not list):
+        #     covar_data = [covar_data]
 
         self.num_datasets = len(self.y_fit)
 
@@ -191,10 +191,14 @@ class ParameterEstimation:
 
         if covar_data is None:
             self.stdev_data = [np.ones(num_data) for num_data in self.num_data]
-            self.covar_data = np.ones(len(self.measured_ind))
+            covar_data = np.ones(len(self.measured_ind))
         else:
             self.stdev_data = [np.sqrt(covar.T.ravel())
                                for covar in covar_data]
+
+        # l, d, perm = ldl(inv(covar_data))
+
+        # self.sigma_inv = np.dot(l[perm], d**0.5)
 
         # --------------- Parameters
         self.num_params_total = len(param_seed)
@@ -377,9 +381,7 @@ class ParameterEstimation:
             if y_prof.ndim == 1:
                 y_run = y_prof
                 sens_run = sens
-            # elif num_jac:
-            #     y_run = y_prof[:, self.measured_ind]
-            #     sens_run = sens
+
             else:
                 y_run = y_prof[:, self.measured_ind]
                 num_states = y_prof.shape[1]
