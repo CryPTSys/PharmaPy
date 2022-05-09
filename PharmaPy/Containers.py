@@ -26,6 +26,7 @@ import copy
 
 eps = np.finfo(float).eps
 
+
 class Mixer:
     def __init__(self, phases=(), vol=None, temp_refer=298.15):
 
@@ -37,6 +38,8 @@ class Mixer:
         self.vol = vol
 
         self.temp_refer = temp_refer
+
+        self.states_out_dict = {}
 
         self.nomenclature()
         self.is_continuous = None
@@ -71,6 +74,7 @@ class Mixer:
                 self.names_states_in = self.names_states_in['non_flow']
 
         # if update_names:
+        # self.states_out_dict = {'Liquid_1': }
         self.names_upstream.append(None)
         self.bipartite.append(None)
 

@@ -93,6 +93,8 @@ class _BaseReactor:
 
         self.states_uo = ['mole_conc']
         self.names_states_out = ['mole_conc']
+        self.states_out_dict = {}
+
         self.permut = None
         self.names_upstream = None
 
@@ -156,6 +158,15 @@ class _BaseReactor:
 
         self.name_species = self.Liquid_1.name_species
         self.num_species = len(self.name_species)
+
+        names = ('mole_conc', 'temp')
+        dims = (self.num_species, 1)
+        dict_states_out = dict(zip(names, dims))
+
+        if self.states_out_dict.keys():
+            self.states_out_dict['Liquid_1'].update(dict_states_out)
+        else:
+            self.states_out_dict['Liquid_1'] = dict_states_out
 
         self.vol_phase = copy.copy(self.Liquid_1.vol)
         self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
@@ -1448,6 +1459,11 @@ class PlugFlowReactor(_BaseReactor):
     @Inlet.setter
     def Inlet(self, inlet_object):
         self._Inlet = inlet_object
+
+        if self.states_out_dict.keys():
+            self.states_out_dict['Liquid_1']['vol_flow'] = 1
+        else:
+            self.states_out_dict['Liquid_1'] = {'vol_flow': 1}
 
     def nomenclature(self):
         if not self.isothermal:

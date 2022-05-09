@@ -5,7 +5,7 @@ Created on Mon Mar  2 15:36:35 2020
 @author: dcasasor
 """
 
-from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
+from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states, getBipartiteMultiPhase
 from PharmaPy.Interpolation import local_newton_interpolation
 from scipy.interpolate import CubicSpline
 
@@ -312,6 +312,7 @@ class Connection:
             states_up = None
         else:
             states_up = self.source_uo.names_states_out
+            # states_up_dict = self.source_uo.states_out_dict
 
         class_destination = self.destination_uo.__class__.__name__
         if class_destination == 'DynamicCollector':
@@ -322,6 +323,7 @@ class Connection:
 
         else:
             states_down = self.destination_uo.names_states_in
+            # states_down_dict = self.destination_uo.states_in_dict
 
         if states_up is None:
             bipartite = None
@@ -341,6 +343,9 @@ class Connection:
 
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up
+
+            # bipartite_phases = getBipartiteMultiPhase(states_up_dict,
+            #                                           states_down_dict)
 
         # Assign names to downstream UO
         if self.destination_uo.__class__.__name__ == 'Mixer':

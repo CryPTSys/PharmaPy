@@ -414,7 +414,7 @@ def integration(states, time):
     return integral
 
 
-def reorder_sens(sens, separate_sens=False):
+def reorder_sens(sens, separate_sens=False, num_rows=None):
     """
     Reorder sensitivities into submatrices according to the following pattern,
     for ns states, np parameters and nt time samples:
@@ -466,13 +466,18 @@ def reorder_sens(sens, separate_sens=False):
 
     """
 
-    num_times, num_states = sens[0].shape
+    if isinstance(sens, (tuple, list)):
+        num_rows = sens[0].shape[0]
+    elif isinstance(sens, np.ndarray):
+        if num_rows is None:
+            raise ValueError("'num_times' argument has to be passed if 'sens' "
+                             "is a numpy array")
 
     big_sens = np.vstack(sens)
 
     ordered_sens = []
     for col in big_sens.T:
-        reordered = col.reshape(-1, num_times).T
+        reordered = col.reshape(-1, num_rows).T
         ordered_sens.append(reordered)
 
     if separate_sens:

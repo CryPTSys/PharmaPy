@@ -10,6 +10,61 @@ import numpy as np
 from PharmaPy.Gaussians import gaussian
 
 
+def getBipartiteNames(first, second):
+    """
+    Create bipartite graph for matching phases. It only matches phase names.
+    It should rely on some thermodynamic criterion to decide compatible phases.
+
+    Parameters
+    ----------
+    first : dict
+        name dict of the upstream UO.
+    second : dict
+        name dict of the downstream UO.
+
+    Returns
+    -------
+    graph : dict
+        bipartite graph.
+
+    """
+    graph = {}
+    for two in second:
+        for one in first:
+            if one == second:
+                graph[two] = one
+                break
+
+    return graph
+
+
+def getBipartiteMultiPhase(first, second):
+    """
+    Creates bipartite graph for input dictionaries specifying phases and states
+
+    Parameters
+    ----------
+    first : dict
+        DESCRIPTION.
+    second : dict
+        DESCRIPTION.
+
+    Returns
+    -------
+    graph : dict
+
+    """
+
+    upper_graph = getBipartiteNames(first, second)
+
+    graph = {}
+    for phase_down, phase_up in upper_graph.items():
+        key = '/'.join(phase_down, phase_up)
+        graph[key] = getBipartite(first[phase_up], second[phase_down])
+
+    return graph
+
+
 def getBipartite(first, second):
     graph = {}
     types = {}

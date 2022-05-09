@@ -20,7 +20,7 @@ from PharmaPy.jac_module import numerical_jac_data, dx_jac_p
 from PharmaPy import Gaussians as gs
 
 from PharmaPy.LevMarq import levenberg_marquardt
-from PharmaPy.Commons import plot_sens
+from PharmaPy.Commons import plot_sens, reorder_sens
 
 from itertools import cycle
 from cyipopt import minimize_ipopt
@@ -191,14 +191,14 @@ class ParameterEstimation:
 
         if covar_data is None:
             self.stdev_data = [np.ones(num_data) for num_data in self.num_data]
-            covar_data = np.ones(len(self.measured_ind))
+            covar_data = np.eye(len(self.measured_ind))
         else:
             self.stdev_data = [np.sqrt(covar.T.ravel())
                                for covar in covar_data]
 
-        # l, d, perm = ldl(inv(covar_data))
+        l, d, perm = ldl(inv(covar_data))
 
-        # self.sigma_inv = np.dot(l[perm], d**0.5)
+        self.sigma_inv = np.dot(l[perm], d**0.5)
 
         # --------------- Parameters
         self.num_params_total = len(param_seed)
@@ -278,9 +278,7 @@ class ParameterEstimation:
             if y_data.ndim == 1:
                 y_data = y_data[..., np.newaxis]
 
-            y_data = y_data.T
-
-            y_fit = y_data.flatten()
+            y_fit = y_data.T.flatten()
 
         self.num_states = len(y_data)
 
@@ -317,6 +315,7 @@ class ParameterEstimation:
         return np.vstack(selected_sens)
 
     def select_sens(self, sens_ordered, num_states, times=None):
+
         parts = np.split(sens_ordered, num_states, axis=0)
 
         if times is None:
@@ -325,9 +324,7 @@ class ParameterEstimation:
             selected = [parts[ind][times[count]]
                         for count, ind in enumerate(self.measured_ind)]
 
-        selected_array = np.vstack(selected)
-
-        return selected_array
+        return selected
 
     def reconstruct_params(self, params):
         params_reconstr = np.zeros(self.num_params_total)
@@ -387,7 +384,7 @@ class ParameterEstimation:
                 num_states = y_prof.shape[1]
 
                 if self.x_match[ind] is None:
-                    y_run = y_run.T.ravel()
+                    # y_run = y_run.T.ravel()
                     sens_run = self.select_sens(sens, num_states)
                 else:
                     y_run = [y_run[idx, col]
@@ -397,12 +394,25 @@ class ParameterEstimation:
                     x_sens = self.x_match[ind]
                     sens_run = self.select_sens(sens, num_states, x_sens)
 
-            resid_run = (y_run - self.y_fit[ind])/self.stdev_data[ind]
+            resid_run = y_run - self.y_data[ind]
 
             # Store
             y_runs.append(y_run)
             resid_runs.append(resid_run)
-            sens_runs.append(sens_run)
+            sens_runs.append(np.vstack(sens_run))
+
+            sens_by_y = reorder_sens(sens_run)
+            weighted_sens = np.dot(sens_by_y, self.sigma_inv)
+            weighted_sens = reorder_sens(weighted_sens,
+                                         num_rows=self.num_xs[ind])
+
+            sens_runs.append(weighted_sens)
+
+        weighted_residuals = [np.dot(resid, self.sigma_inv)
+                              for resid in resid_runs]
+
+        # sens_concat = np.vstack(sens_list)
+        # weighted_sens = np.vstack(weighted_sens)
 
         if type(self.objfun_iter) is list:
             objfun_val = np.linalg.norm(np.concatenate(resid_runs))**2
@@ -413,13 +423,15 @@ class ParameterEstimation:
         if set_self:
             self.sens_runs = sens_runs
             self.y_runs = y_runs
-            self.resid_runs = resid_runs
+            self.resid_runs = [resid.T.ravel() for resid in resid_runs]
 
             self.residuals = residuals
 
         # Return objective
         if residual_vec:
-            return residuals
+            residual_out = np.concatenate([ar.T.ravel()
+                                           for ar in weighted_residuals])
+            return residual_out
         else:
             residual = 1/2 * residuals.dot(residuals)
             return residual
@@ -435,12 +447,7 @@ class ParameterEstimation:
                 concat_sens = concat_sens[:, self.map_variable]
 
         self.sens = concat_sens
-
-        # if type(self.cond_number) is list:
-        #     self.cond_number.append(self.get_cond_number(concat_sens))
-
-        std_dev = np.concatenate(self.stdev_data)
-        jacobian = (concat_sens.T / std_dev)  # 2D
+        jacobian = concat_sens
 
         if jac_matrix:
             return jacobian
