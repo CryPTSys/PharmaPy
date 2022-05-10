@@ -22,7 +22,6 @@ from PharmaPy import Gaussians as gs
 from PharmaPy.LevMarq import levenberg_marquardt
 from PharmaPy.Commons import plot_sens, reorder_sens
 
-from itertools import cycle
 from cyipopt import minimize_ipopt
 
 linestyles = cycle(['-', '--', '-.', ':'])
@@ -293,29 +292,6 @@ class ParameterEstimation:
         self.sens_runs = None
         self.y_model = []
 
-    def scale_sens(self, param_lims=None):
-        """ Scale sensitivity matrix to make it non-dimensional.
-        After Brun et al. Water Research, 36, 4113-4127 (2002),
-        Jorke et al. Chem. Ing. Tech. 2015, 87, No. 6, 713-725,
-        McLean et al. Can. J. Chem. Eng. 2012, 90, 351-366
-
-        """
-
-        ord_sens = self.reorder_sens(separate_sens=True)
-        selected_sens = [ord_sens[ind] for ind in self.measured_ind]
-
-        if param_lims is None:
-            for ind, sens in enumerate(selected_sens):
-                conc_time = self.conc_profile[:, ind][..., np.newaxis]
-                sens *= self.params / conc_time
-        else:
-            for ind, sens in enumerate(selected_sens):
-                delta_param = [par[1] - par[0] for par in param_lims]
-                delta_param = np.array(delta_param)
-                sens *= delta_param / self.delta_conc[ind]
-
-        return np.vstack(selected_sens)
-
     def select_sens(self, sens_ordered, num_states, times=None):
 
         parts = np.split(sens_ordered, num_states, axis=0)
@@ -542,66 +518,6 @@ class ParameterEstimation:
         self.correl_params = correlation
 
         return covar
-
-    def inspect_data(self, fig_size=None):
-        states_seed = []
-
-        if self.fit_spectra:
-            kwarg_sens = {'reorder': False}
-        else:
-            kwarg_sens = {}
-
-        for ind in range(self.num_datasets):
-            states_pred = self.function(self.param_seed, self.x_fit[ind],
-                                           *self.args_fun[ind],
-                                           **kwarg_sens)
-
-            if isinstance(states_pred, tuple):
-                states_pred = states_pred[0]
-
-            states_seed.append(states_pred)
-
-        if len(states_seed) == 1:
-            y_seed = states_seed[0]
-
-            x_data = self.x_data
-            y_data = self.y_data
-
-            fig, axes = plt.subplots(len(y_data), figsize=fig_size)
-
-            axes = np.atleast_1d(axes)
-
-            for ind, experimental in enumerate(y_data):
-                axes[ind].plot(x_data[ind], y_seed[:, self.measured_ind])
-
-                markers = cycle(['o', 's', '^', '*', 'P', 'X'])
-
-                for idx, row in enumerate(experimental):
-                    color = axes[ind].lines[idx].get_color()
-                    axes[ind].plot(x_data[ind], row, lw=0,
-                                   marker=next(markers), ms=5,
-                                   mfc='None', color=color)
-
-                axes[ind].spines['right'].set_visible(False)
-                axes[ind].spines['top'].set_visible(False)
-
-                axes[ind].set_ylabel(self.name_states[ind])
-
-            axes[0].lines[0].set_label('prediction with seed parameters')
-            axes[0].lines[self.num_measured].set_label('data')
-
-            axes[0].legend(loc='best')
-            axes[-1].set_xlabel('$x$')
-
-        else:
-            pass  # TODO what to do with multiple datasets, maybe a parity plot?
-
-    def get_initial_residuals(self):
-        seed_params = self.param_seed[self.map_variable]
-        residuals_seed = self.get_objective(seed_params, residual_vec=True,
-                                            set_self=False)
-
-        return residuals_seed
 
     def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None):
 
