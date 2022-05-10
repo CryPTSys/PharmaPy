@@ -7,7 +7,6 @@ Created on Mon Apr 27 14:23:01 2020
 
 from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
-from assimulo.exception import TerminateSimulation
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,

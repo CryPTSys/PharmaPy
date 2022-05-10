@@ -47,8 +47,10 @@ class StatisticsClass:
         self.params = inst.params_convg.copy()
         self.params_unactive = inst.param_seed[inst.map_fixed]
 
-        self.y_nominal = [elem.T.copy() for elem in inst.y_model]
-        self.weighted_resid = [elem.copy() for elem in inst.resid_runs]
+        self.y_nominal = inst.y_model
+
+        self.residuals = inst.resid_runs
+
         self.param_names = inst.name_params
 
         # Calculations
@@ -349,93 +351,79 @@ class StatisticsClass:
         return samples, conc_bootstrap, fig, axis
 
     def get_bootsamples(self, num_samples, fix_initial=False):
-        # Create bootstrap samples
-        std_dev = self.inst.stdev_data
+        """
+        Create bootstrap datasets using the y's predicted with the converged
+        parameters. The final prediction error is sampled with replacement
+        and used to generate artificial datasets, wich are all subjected to
+        optimization by the bootstrap_params method below
 
+        Parameters
+        ----------
+        num_samples : int
+            number of bootstrap samples.
+        fix_initial : bool, optional
+            If True, the initial y values are subjected to error.
+            The default is False.
+
+        Returns
+        -------
+        y_boot : list of lists
+            each internal list contains num_samples datasets of dimension
+            n_x x n_states for each experimental dataset provided
+
+        """
         # Remember that multiple datasets are allowed
+
         y_boot = []
         for ind in range(self.inst.num_datasets):  # datasets
-            std_reshaped = std_dev[ind].reshape(-1, self.inst.num_xs[ind])
-            residual = self.weighted_resid[ind].reshape(-1,
-                                                        self.inst.num_xs[ind])
+            residual = self.residuals[ind].T
+            y_nominal = self.y_nominal[ind].T
 
             y_states = []
-            for ct, row in enumerate(self.y_nominal[ind]):  # states
-                resid = residual[ct] * std_reshaped[ct]
-
-                resid = resid[fix_initial:]
+            for res, y in zip(residual, y_nominal):  # states
+                resid = res[fix_initial:]
 
                 boots = np.random.choice(resid,
                                          size=(num_samples, len(resid)),
                                          replace=True)
 
-                y_generated = self.y_nominal[ind][ct][fix_initial:] - boots
+                y_generated = y[fix_initial:] - boots
 
                 if fix_initial:
-                    y_generated = np.insert(y_generated, 0,
-                                            self.y_nominal[ind][ct][0],
-                                            axis=1)
+                    y_generated = np.insert(y_generated, 0, y[0], axis=1)
 
                 y_states.append(y_generated)
 
-            y_boot.append(np.hstack(y_states))
+            y_experiment = [np.column_stack(a) for a in list(zip(*y_states))]
+
+            y_boot.append(y_experiment)
 
         return y_boot
 
-    def bootstrap_params(self, num_samples=100, parallel=None):
+    def bootstrap_params(self, num_samples=100):
         y_samples = self.get_bootsamples(num_samples)
 
         # Run parameter estimation
         boot_params = np.zeros((num_samples, self.inst.num_params))
-        params_complete = self.inst.reconstruct_params(self.params)
-
-        # self.inst.param_seed = params_complete  # start from nominal params
 
         tic = time.time()
-        if parallel is None:
-            for ind in range(num_samples):
-                # Update bootstraped data for all the experimental runs
-                self.inst.y_fit = [y[ind] for y in y_samples]
+        for ind in range(num_samples):
+            # Update bootstraped data for all the experimental runs
+            self.inst.y_data = [y[ind] for y in y_samples]
 
-                # Optimize
-                try:
-                    params, hess_inv, info = self.inst.optimize_fn(
-                        method=self.inst.opt_method,
-                        verbose=False, store_iter=False,
-                        optim_options=self.inst.optim_options)
-                except:
-                    print('Optimization failed.')
-                    params = [np.nan] * self.inst.num_params
-
-                # Store
-                boot_params[ind] = params
-        else:
-            from pathos import multiprocessing as mp
-
-            def run_fit(sample):
-                self.inst.y_fit = sample
-
-                # Optimize
-                params, _, _ = self.inst.optimize_fn(
+            # Optimize
+            try:
+                params, hess_inv, info = self.inst.optimize_fn(
                     method=self.inst.opt_method,
                     verbose=False, store_iter=False,
                     optim_options=self.inst.optim_options)
+            except:
+                print('Optimization failed.')
+                params = [np.nan] * self.inst.num_params
 
-                return params
+            # Store
+            boot_params[ind] = params
 
-            num_cores = parallel['num_cpus']
-
-            reorganized_samples = []
-            for ind in range(num_samples):
-                reorg = [y[ind] for y in y_samples]
-                reorganized_samples.append(reorg)
-
-            pool = mp.ProcessingPool(num_cores)
-            problem = ParallelProblem(self.inst)
-
-            __spec__ = None
-            boots_parallel = pool.map(problem.run_fit, reorganized_samples)
-            pool.close()
 
         toc = time.time()
 

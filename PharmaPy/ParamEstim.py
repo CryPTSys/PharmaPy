@@ -114,7 +114,7 @@ class ParameterEstimation:
                  args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
-                 measured_ind=None, covar_data=None,
+                 measured_ind=None, weight_matrix=None,
                  name_params=None, name_states=None):
         """ Create a ParameterEstimation object
 
@@ -142,7 +142,7 @@ class ParameterEstimation:
             DESCRIPTION. The default is None.
         measured_ind : TYPE, optional
             DESCRIPTION. The default is None.
-        covar_data : TYPE, optional
+        weight_matrix : TYPE, optional
             DESCRIPTION. The default is None.
         name_params : TYPE, optional
             DESCRIPTION. The default is None.
@@ -179,7 +179,6 @@ class ParameterEstimation:
         self.dx_fd = dx_finitediff
 
         # --------------- Data
-        self.measured_ind = measured_ind
         self.experim_names = None
 
         if isinstance(x_data, dict) and isinstance(y_data, dict):
@@ -199,8 +198,12 @@ class ParameterEstimation:
 
         self.x_data = x_data
         self.y_data = y_data
-
         self.num_datasets = len(self.y_data)
+
+        if measured_ind is None:
+            measured_ind = list(range(y_data[0].shape[1]))
+
+        self.measured_ind = measured_ind
 
         if self.experim_names is None:
             self.experim_names = ['exp_%i' % (ind + 1)
@@ -221,20 +224,20 @@ class ParameterEstimation:
         self.args_fun = args_fun
         self.kwargs_fun = kwargs_fun
 
-        num_xs = []
-        num_ys = []
+        num_data = []
         for ind in range(self.num_datasets):
-            num_xs.append(len(self.x_data[ind]))
-            num_ys.append(self.y_data[ind].size)
+            if self.x_masks[ind] is None:
+                num_data.append(self.y_data[ind].size)
+            else:
+                num_data.append(self.x_masks[ind].sum())
 
-        self.num_xs = num_xs
-        self.num_ys = num_ys
-        self.num_data_total = sum(num_ys)
+        self.num_data_total = sum(num_data)
+        self.num_data = num_data
 
-        if covar_data is None:
-            covar_data = np.eye(len(self.measured_ind))
+        if weight_matrix is None:
+            weight_matrix = np.eye(len(self.measured_ind))
 
-        l, d, perm = ldl(inv(covar_data))
+        l, d, perm = ldl(inv(weight_matrix))
 
         self.sigma_inv = np.dot(l[perm], d**0.5)
 
@@ -317,12 +320,12 @@ class ParameterEstimation:
         return states.T.ravel()
 
     def get_objective(self, params, residual_vec=False, set_self=True):
-        # Reconstruct parameter set with fixed and non-fixed indexes
-        params = self.reconstruct_params(params)
-
         # Store parameter values
         if type(self.params_iter) is list:
             self.params_iter.append(params)
+
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
 
         # --------------- Solve
         y_runs = []
@@ -483,10 +486,10 @@ class ParameterEstimation:
             self.params_iter = self.params_iter[np.sort(idx)]
             self.objfun_iter = np.array(self.objfun_iter)[np.sort(idx)]
 
-            col_names = ['obj_fun'] + self.name_params_total
-            # self.paramest_df = pd.DataFrame(
-            #     np.column_stack((self.objfun_iter, self.params_iter)),
-            #     columns=col_names)
+            col_names = ['obj_fun'] + self.name_params
+            self.paramest_df = pd.DataFrame(
+                np.column_stack((self.objfun_iter, self.params_iter)),
+                columns=col_names)
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):
@@ -838,12 +841,12 @@ class MultipleCurveResolution(ParameterEstimation):
                  args_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
-                 measured_ind=None, covar_data=None,
+                 measured_ind=None, weight_matrix=None,
                  name_params=None, name_states=None):
 
         super().__init__(func, param_seed, time_data, spectra,
                          args_fun, optimize_flags, jac_fun,
-                         dx_finitediff, measured_ind, covar_data,
+                         dx_finitediff, measured_ind, weight_matrix,
                          name_params, name_states)
 
         self.fit_spectra = True
