@@ -323,7 +323,7 @@ class SimulationExec:
             di.update({'run_args': wrapper_kwargs})
 
         # Get 1D array of parameters from the UO class
-        param_seed = inputs_paramest.get('param_seed')
+        param_seed = inputs_paramest.pop('param_seed', None)
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
 

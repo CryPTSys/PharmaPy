@@ -743,7 +743,8 @@ class _BaseCryst:
             TODO
         """
 
-        self.states_in_dict['Inlet']['distrib'] = len(self.Solid_1.x_distrib)
+        # x_distr = getattr(self.Solid_1, 'x_distrib', [])
+        # self.states_in_dict['Inlet']['distrib'] = len(x_distr)
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -863,7 +864,7 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
-        self.derivatives = problem.rhs(0, states_init)
+        # self.derivatives = problem.rhs(0, states_init)
 
         if self.state_event_list is not None:
             def new_handle(solver, info):
