@@ -60,11 +60,10 @@ def mcr_spectra(conc, spectra):
 
 
 def get_masked_ydata(y_list, masks, assign_missing=None):
-    nrow = len(masks[0])
-    ncol = len(masks)
+    nrow, ncol = masks.shape
     y_out = np.zeros((nrow, ncol))
 
-    for col, mask in enumerate(masks):
+    for col, mask in enumerate(masks.T):
         y_out[mask, col] = y_list[col]
 
         if assign_missing is not None:
@@ -88,6 +87,7 @@ def analyze_data(x_list, y_list):
             x_unique = np.unique(x_all)
 
             x_common = [np.isin(x_unique, data) for data in x_data]
+            x_common = np.column_stack(x_common)
 
             x_model.append(x_unique)
             x_mask.append(x_common)
@@ -364,8 +364,7 @@ class ParameterEstimation:
 
             y_data = self.y_data[ind].copy()
             if self.x_masks[ind] is not None:
-                isnan = np.isnan(y_data)
-                y_data[isnan] = y_run[isnan]
+                y_data[~self.x_masks[ind]] = y_run[~self.x_masks[ind]]
 
             resid_run = y_run - y_data
 
