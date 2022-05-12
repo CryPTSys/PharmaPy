@@ -36,7 +36,7 @@ def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
     return y_interpol
 
 
-def get_input_dict(array, name_dict):
+def get_input_dict(input_data, name_dict):
 
     dict_out = {}
     count = 0
@@ -48,11 +48,11 @@ def get_input_dict(array, name_dict):
         if len(acum_len) > 1:
             acum_len = acum_len[:-1]
 
-        if array.ndim == 1:
-            splitted = np.split(array[count:], acum_len, axis=0)
+        if input_data.ndim == 1:
+            splitted = np.split(input_data[count:], acum_len, axis=0)
             splitted = [ar[0] if len(ar) == 1 else ar for ar in splitted]
         else:
-            splitted = np.split(array, acum_len, axis=1)
+            splitted = np.split(input_data[:, count:], acum_len, axis=1)
 
             for ind, val in enumerate(splitted):
                 if val.shape[1] == 1:

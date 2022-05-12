@@ -1381,7 +1381,7 @@ class PlugFlowReactor(_BaseReactor):
     def __init__(self, partic_species, diam_in,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
-                 isothermal=True, adiabatic=False,
+                 isothermal=False, adiabatic=False,
                  reset_states=False, controls=None,
                  h_conv=1000, ht_mode='bath', return_sens=True,
                  state_events=None):

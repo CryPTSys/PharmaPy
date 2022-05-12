@@ -2107,11 +2107,9 @@ class MSMPR(_BaseCryst):
         if time_upstream is None:
             time_upstream = [0]
 
-        num_species = len(self.Liquid_1.name_species)
-        num_distrib = len(self.Solid_1.x_distrib)
-        inputs = get_inputs(time_upstream[-1], self, num_species, num_distrib)
+        inputs = self.get_inputs(time_upstream[-1])
 
-        volflow_in = inputs['vol_flow']
+        volflow_in = inputs['Inlet']['vol_flow']
         tau = self.Liquid_1.vol / volflow_in
 
         self.tau = tau
