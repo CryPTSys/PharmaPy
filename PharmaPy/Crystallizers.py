@@ -743,8 +743,12 @@ class _BaseCryst:
             TODO
         """
 
-        # x_distr = getattr(self.Solid_1, 'x_distrib', [])
-        # self.states_in_dict['Inlet']['distrib'] = len(x_distr)
+        if self.__class__.__name__ != 'BatchCryst':
+            if self.method == 'moments':
+                pass  # TODO: MSMPR MoM should be addressed?
+            else:
+                x_distr = getattr(self.Solid_1, 'x_distrib', [])
+                self.states_in_dict['Inlet']['distrib'] = len(x_distr)
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -864,7 +868,7 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
-        # self.derivatives = problem.rhs(0, states_init)
+        self.derivatives = problem.rhs(0, states_init)
 
         if self.state_event_list is not None:
             def new_handle(solver, info):
@@ -2263,6 +2267,10 @@ class MSMPR(_BaseCryst):
 
         states[:, :self.num_distr] *= 1 / self.scale
 
+        # Reordering output states
+        state_reordering = {'distrib': self.num_distr,
+                            'mass_conc': self.num_species}
+
         distProf = states[:, :self.num_distr]
         self.distrib_runs.append(distProf)
 
@@ -2272,8 +2280,8 @@ class MSMPR(_BaseCryst):
             self.distribVolPercProf = self.Solid_1.convert_distribution(
                 num_distr=distProf)
 
-        inputs = get_inputs(time_profile, *self.args_inputs)
-        volflow = inputs['vol_flow']
+        inputs = self.get_inputs(time_profile)
+        volflow = inputs['Inlet']['vol_flow']
 
         num_material = self.num_distr + self.num_species
 
@@ -2287,6 +2295,8 @@ class MSMPR(_BaseCryst):
                                               mom_num=3) * self.Solid_1.kv
 
             mass_sol = rho_solid * vol_sol
+
+            state_reordering['vol'] = 1
 
         else:
             y_outputs = states
@@ -2314,14 +2324,18 @@ class MSMPR(_BaseCryst):
             self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
-            y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
+            y_outputs = np.column_stack((y_outputs, volflow))
+
+            state_reordering['temp'] = 1
 
         elif 'temp' in self.states_uo:
             self.temp_runs.append(states[:, -1])
             self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
-            y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
+            y_outputs = np.column_stack((y_outputs, volflow))
+
+            state_reordering['temp'] = 1
 
         else:
             temp_controlled = self.controls['temp'](
@@ -2330,10 +2344,32 @@ class MSMPR(_BaseCryst):
 
             self.temp_runs.append(temp_controlled)
 
-            y_outputs = np.column_stack((y_outputs, volflow))
+            state_reordering['temp'] = 1
+
+            # I changed the order of these two lines!
             y_outputs = np.column_stack((y_outputs, temp_controlled))
+            y_outputs = np.column_stack((y_outputs, volflow))
 
             self.Liquid_1.temp = self.temp_runs[-1][-1]
+
+        # Reorder states
+        state_reordering['vol_flow'] = 1
+
+        target_order = []
+        for di in self.states_in_dict.values():
+            target_order += list(di.keys())
+
+        ordered_idx = np.arange(y_outputs.shape[1])
+
+        acum = np.cumsum(list(state_reordering.values()))[:-1]
+        idx_per_state = np.split(ordered_idx, acum)
+
+        perm = [list(state_reordering.keys()).index(a) for a in target_order
+                if a in state_reordering.keys()]
+
+        reordered_idx = np.hstack([idx_per_state[ind] for ind in perm])
+
+        y_outputs = y_outputs[:, reordered_idx]
 
         wConcProf = states[:, self.num_distr:num_material]
 
@@ -2509,11 +2545,12 @@ class SemibatchCryst(MSMPR):
         rho_liq, rho_sol = rho_susp
         rho_in_liq, _ = rho_in
 
-        input_flow = u_inputs['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = np.max([eps, input_flow])
 
-        input_distrib = u_inputs['distrib'] * self.scale
-        input_conc = u_inputs['mass_conc']
+        # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
+        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+        input_conc = u_inputs['Liquid_1']['mass_conc']
 
         # print('time = %.2f, vol_liq = %.2e, flowrate = %.2e' % (time, vol_liq, input_flow))
 
@@ -2563,7 +2600,7 @@ class SemibatchCryst(MSMPR):
         rho_susp, rho_in = rhos
 
         # Input properties
-        input_flow = u_inputs['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = np.max([eps, input_flow])
 
         vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume

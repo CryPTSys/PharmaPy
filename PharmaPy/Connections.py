@@ -58,6 +58,10 @@ def get_input_dict(array, name_dict):
                 if val.shape[1] == 1:
                     splitted[ind] = val.flatten()
 
+        for ind, elem in enumerate(splitted):
+            if isinstance(elem, np.ndarray) and len(elem) == 0:
+                splitted[ind] = np.zeros(lens[ind])
+
         count += acum_len[-1]
 
         dict_out[phase] = dict(zip(names, splitted))
