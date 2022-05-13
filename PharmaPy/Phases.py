@@ -149,17 +149,23 @@ class LiquidPhase(ThermoPhysicalManager):
 
             self.mole_frac = np.array(mole_frac)
             self.mole_conc = mole_conc
-            sum_fracs = sum(mole_frac)
-            if verbose:
-                if sum_fracs < 0.99:
+            
+            if self.mole_frac.ndim == 1:
+                sum_fracs = sum(self.mole_frac)
+                less_than_one = sum_fracs < 0.99
+            else:
+                sum_fracs = self.mole_frac.sum(axis=1)
+                less_than_one = any(sum_fracs < 0.99)
+
+            if less_than_one:
+                if verbose:
                     print()
                     print('PharmaPy Warning: '
-                          'The sum of mole fractions is less than 0.99 '
-                          '(sum(mole_frac) = %.4f) for %s object'
+                          'The sum of mass fractions is less than 0.99 '
+                          '(sum(mass_frac) = %.4f) for %s object'
                           % (sum_fracs, self.__class__.__name__))
-                    print(mole_frac)
                     print()
-
+                    
             self.__calcComposition()
 
         elif mass_conc is not None:
@@ -555,7 +561,7 @@ class VaporPhase(ThermoPhysicalManager):
         if num_temp > 1:
             temp = temp[..., np.newaxis]
             idx = np.unique(np.where(temp < self.t_crit)[1])
-            delta_shape = (num_comp, num_temp)
+            delta_shape = (num_temp, num_comp)
         else:
             idx = np.where(temp < self.t_crit)[0]
             delta_shape = num_comp
@@ -565,12 +571,12 @@ class VaporPhase(ThermoPhysicalManager):
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
         deltahvap = np.zeros(delta_shape)
-        deltahvap[idx] = (watson * self.delta_hvap[idx]).T  # J/mole
+        deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
 
         if basis == 'mass':
-            deltahvap = deltahvap / self.mw[idx] * 1000  # J/kg
+            deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
 
-        return deltahvap.T
+        return deltahvap
 
     def getEnthalpy(self, temp=None, temp_ref=298.15, mass_frac=None,
                     mole_frac=None, total_h=True, basis='mass'):
