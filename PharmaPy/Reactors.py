@@ -7,13 +7,12 @@ Created on Mon Apr 27 14:23:01 2020
 
 from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
-from assimulo.exception import TerminateSimulation
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events)
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.Connections import get_inputs
+from PharmaPy.Connections import get_inputs, get_inputs_new
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -93,6 +92,8 @@ class _BaseReactor:
 
         self.states_uo = ['mole_conc']
         self.names_states_out = ['mole_conc']
+        self.states_out_dict = {}
+
         self.permut = None
         self.names_upstream = None
 
@@ -156,6 +157,15 @@ class _BaseReactor:
 
         self.name_species = self.Liquid_1.name_species
         self.num_species = len(self.name_species)
+
+        names = ('mole_conc', 'temp')
+        dims = (self.num_species, 1)
+        dict_states_out = dict(zip(names, dims))
+
+        if self.states_out_dict.keys():
+            self.states_out_dict['Liquid_1'].update(dict_states_out)
+        else:
+            self.states_out_dict['Liquid_1'] = dict_states_out
 
         self.vol_phase = copy.copy(self.Liquid_1.vol)
         self.__original_phase_dict__ = copy.deepcopy(self.Liquid_1.__dict__)
@@ -227,6 +237,9 @@ class _BaseReactor:
             mask_species = [name in self.partic_species
                             for name in self.name_species]
 
+            # mask_species = [self.name_species.index(name) for name in
+            #                 self.partic_species]
+
             self.mask_species = np.asarray(mask_species)
 
         self.name_states = ['mole_conc']
@@ -247,10 +260,19 @@ class _BaseReactor:
         # idx_inputs = [states_map.get(key) for key in self.input_names]
         # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
 
+    def get_inputs(self, time):
+        inlet = getattr(self, 'Inlet', None)
+        if inlet is None:
+            inputs = {}
+        else:
+            inputs = get_inputs_new(time, inlet, self.states_in_dict)
+
+        return inputs
+
     def unit_model(self, time, states, params):
 
         # Calculate inlets
-        u_values = get_inputs(time, *self.args_inputs)
+        u_values = self.get_inputs(time)
 
         conc = states[:self.num_concentr]
 
@@ -384,8 +406,7 @@ class _BaseReactor:
         if pick_idx is None:
             conc_plot = self.concProf
             if self.__class__.__name__ == 'BatchReactor':
-                leg_conc = [self.name_species[ind]
-                            for ind in np.where(self.mask_species)[0]]
+                leg_conc = self.partic_species
             else:
                 leg_conc = self.name_species
         else:
@@ -635,7 +656,7 @@ class BatchReactor(_BaseReactor):
             dtemp_dt = (source_term - ht_term) / capacitance  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_dict = self.Utility.evaluate_inputs(time)
+                ht_dict = self.Utility.get_inputs(time)
 
                 flow_ht = ht_dict['vol_flow']
                 tht_in = ht_dict['temp_in']
@@ -992,7 +1013,7 @@ class CSTR(_BaseReactor):
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
-                ht_controls = self.Utility.evaluate_inputs(time)
+                ht_controls = self.Utility.get_inputs(time)
                 tht_in = ht_controls['temp_in']
                 flow_ht = ht_controls['vol_flow']
 
@@ -1015,6 +1036,11 @@ class CSTR(_BaseReactor):
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True):
+
+        len_in = [self.num_species, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
 
         self.params_control = params_control
         self.set_names()
@@ -1355,7 +1381,7 @@ class PlugFlowReactor(_BaseReactor):
     def __init__(self, partic_species, diam_in,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
-                 isothermal=True, adiabatic=False,
+                 isothermal=False, adiabatic=False,
                  reset_states=False, controls=None,
                  h_conv=1000, ht_mode='bath', return_sens=True,
                  state_events=None):
@@ -1432,6 +1458,11 @@ class PlugFlowReactor(_BaseReactor):
     @Inlet.setter
     def Inlet(self, inlet_object):
         self._Inlet = inlet_object
+
+        if self.states_out_dict.keys():
+            self.states_out_dict['Liquid_1']['vol_flow'] = 1
+        else:
+            self.states_out_dict['Liquid_1'] = {'vol_flow': 1}
 
     def nomenclature(self):
         if not self.isothermal:
@@ -1595,7 +1626,7 @@ class PlugFlowReactor(_BaseReactor):
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
 
-            temp_ht = self.Utility.evaluate_inputs(time)['temp_in']
+            temp_ht = self.Utility.get_inputs(time)['temp_in']
             heat_transfer = self.u_ht * a_prime * (temp - temp_ht)  # W/m**3
 
         if heat_profile:
@@ -1613,9 +1644,10 @@ class PlugFlowReactor(_BaseReactor):
         # conc, temp = self.unravel_states(states)
         reordered = states.reshape(-1, self.num_states)
         conc = reordered[:, :self.num_species]
-        temp = reordered[:, -1]
+        temp = reordered[:, -1]  # TODO: what if isothermal?
 
-        inputs = get_inputs(time, *self.args_inputs)
+        # inputs = get_inputs(time, *self.args_inputs)
+        inputs = self.get_inputs(time)['Inlet']
 
         conc_in = inputs['mole_conc']
         temp_in = inputs['temp']
@@ -1686,8 +1718,8 @@ class PlugFlowReactor(_BaseReactor):
 
         return tau
 
-    def solve_unit(self, runtime, num_discr, verbose=True, any_event=True,
-                   sundials_opts=None):
+    def solve_unit(self, num_discr, runtime=None, time_grid=None, verbose=True,
+                   any_event=True, sundials_opts=None):
         """
         ToDo: Fill out this method's docstring comments
         :param runtime:
@@ -1697,6 +1729,18 @@ class PlugFlowReactor(_BaseReactor):
         :param sundials_opts:
         :return:
         """
+
+        num_comp = len(self.Liquid_1.name_species)
+        len_in = [num_comp, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
+
+        if runtime is not None:
+            final_time = runtime + self.elapsed_time
+
+        if time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
 
         self.set_names()
 
@@ -1734,11 +1778,12 @@ class PlugFlowReactor(_BaseReactor):
         model = self.unit_model
         if self.state_event_list is None:
             def model(t, y): return self.unit_model(t, y, None)
-            problem = Explicit_Problem(model, states_init, t0=0)
+            problem = Explicit_Problem(model, states_init,
+                                       t0=self.elapsed_time)
         else:
             switches = [True] * len(self.state_event_list)
-            problem = Explicit_Problem(self.unit_model, states_init, t0=0,
-                                       sw0=switches)
+            problem = Explicit_Problem(self.unit_model, states_init,
+                                       t0=self.elapsed_time, sw0=switches)
 
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list,
@@ -1762,7 +1807,7 @@ class PlugFlowReactor(_BaseReactor):
         if not verbose:
             solver.verbosity = 50
 
-        time, states_solver = solver.simulate(runtime)
+        time, states_solver = solver.simulate(final_time, ncp_list=time_grid)
 
         self.retrieve_results(time, states_solver)
 
@@ -1771,6 +1816,8 @@ class PlugFlowReactor(_BaseReactor):
     def retrieve_results(self, time, states):
         self.timeProf = np.asarray(time)
         num_times = len(time)
+
+        self.elapsed_time = time[-1]
 
         if 'temp' in self.states_uo:
             tempProf = states[:, self.num_species::self.num_species + 1]

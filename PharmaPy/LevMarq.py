@@ -6,7 +6,7 @@ Created on Fri Nov  8 20:23:12 2019
 @author: dcasasor
 """
 
-from numpy import eye, inner, diag, asarray
+from numpy import ones_like, inner, diag, asarray, maximum
 from numpy.linalg import solve, norm, inv
 
 
@@ -71,18 +71,17 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
     a_matrix = inner(jac, jac)  # Hessian approximation
     b_vector = inner(jac, fun)  # gradient
+
     if fletcher_modif:
-        d_diag = diag(diag(a_matrix))
+        d_scaling = norm(jac, axis=1)
+        d_scaling = max(d_scaling) * ones_like(x)
     else:
-        d_diag = eye(len(x))
+        d_scaling = ones_like(x)
 
     mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
     # mu = lambd_zero
 
     num_feval = 0
-
-    print('Seed:')
-    # print(x)
 
     if verbose:
         print()
@@ -94,17 +93,14 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
-        lm_step = solve(a_matrix + mu*d_diag, -b_vector)
+        d_diag = diag(d_scaling)
+        lm_step = solve(a_matrix + mu*inner(d_diag.T, d_diag), -b_vector)
 
         if norm(lm_step) < eps_2 * norm(x):
             reason = 'Small step'
             break
 
         x_new = x + lm_step
-        # print('iteration %i' % num_feval)
-        # print(x_new)
-
-        # print(x_new)
         fun_new = func(x_new, *args)
         jac_new = deriv(x_new, *args)
 
@@ -123,7 +119,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
             b_vector = inner(jac, fun)
 
             if fletcher_modif:
-                d_diag = diag(diag(a_matrix))
+                d_scaling = maximum(norm(jac, axis=1), d_scaling)
 
             num_iter += 1
 

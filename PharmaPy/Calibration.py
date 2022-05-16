@@ -15,6 +15,7 @@ from matplotlib.ticker import AutoMinorLocator
 class PCR_calibration:
     def __init__(self, data, num_comp=None, standardize=True, snv=False,
                  y_name=None, y_suffixes=None):
+
         self.data = data
         self.standardize = standardize
         self.snv = snv

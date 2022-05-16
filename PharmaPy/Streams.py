@@ -54,6 +54,7 @@ class LiquidStream(LiquidPhase):
         # Outputs from upstream UO
         self.y_upstream = None
         self.time_upstream = None
+        self.bipartite = None
 
         # Controls
         if controls is None:

@@ -11,6 +11,159 @@ import numpy as np
 import copy
 
 
+def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
+    if isinstance(time, (float, int)):
+        # Assume steady state for extrapolation
+        time = min(time, t_inlet[-1])
+
+        y_interpol = local_newton_interpolation(time, t_inlet, y_inlet,
+                                                **kwargs_interp_fn)
+    else:
+        interpol = CubicSpline(t_inlet, y_inlet, **kwargs_interp_fn)
+        flags_interpol = time > t_inlet[-1]
+
+        if any(flags_interpol):
+            time_interpol = time[~flags_interpol]
+            y_interp = interpol(time_interpol)
+
+            y_extrapol = np.tile(y_interp[-1], (sum(flags_interpol), 1))
+            y_interpol = np.vstack((y_interp, y_extrapol))
+        else:
+            y_interpol = interpol(time)
+
+    return y_interpol
+
+
+def get_input_dict(input_data, name_dict):
+
+    dict_out = {}
+    count = 0
+    for phase, states in name_dict.items():
+        names = list(states.keys())
+        lens = list(states.values())
+
+        acum_len = np.cumsum(lens)
+        if len(acum_len) > 1:
+            acum_len = acum_len[:-1]
+
+        if input_data.ndim == 1:
+            splitted = np.split(input_data[count:], acum_len, axis=0)
+            splitted = [ar[0] if len(ar) == 1 else ar for ar in splitted]
+        else:
+            splitted = np.split(input_data[:, count:], acum_len, axis=1)
+
+            for ind, val in enumerate(splitted):
+                if val.shape[1] == 1:
+                    splitted[ind] = val.flatten()
+
+        for ind, elem in enumerate(splitted):
+            if isinstance(elem, np.ndarray) and len(elem) == 0:
+                splitted[ind] = np.zeros(lens[ind])
+
+        count += acum_len[-1]
+
+        dict_out[phase] = dict(zip(names, splitted))
+
+    return dict_out
+
+
+def get_missing_field(obj, name, di):
+    dim = di[list(di.keys())[0]]
+
+    n_state = di[name]
+    n_times = 1
+    if isinstance(dim, np.ndarray):
+        if dim.ndim > 1:
+            n_times = dim.shape[0]
+
+    if n_times == 1:
+        if n_state == 1:
+            out = 0
+        else:
+            out = np.zeros(n_state)
+    elif n_times > 1:
+        if n_state == 1:
+            out = np.zeros(n_times)
+
+        else:
+            out = np.zeros((n_times, n_state))
+
+    return out
+
+
+def get_remaining_states(dict_states_in, stream, inlets):
+    di_out = {}
+    for phase, di in dict_states_in.items():
+        di_out[phase] = {}
+        if 'inlet' in phase.lower():
+            for state in di:
+                if state not in inlets[phase]:
+                    field = getattr(stream, state)
+
+                    if field is None:
+                        field = get_missing_field(stream, state, di_out)
+
+                    di_out[phase][state] = field
+        else:
+            for state in di:
+                if state not in inlets[phase]:
+                    sub_phase = getattr(stream, phase)
+                    field = getattr(sub_phase, state)
+
+                    if field is None:
+                        field = get_missing_field(sub_phase, state, di_out)
+                        di_out[sub_phase][state] = getattr(sub_phase, state)
+    return di_out
+
+
+def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
+    """
+    Get inputs based on stream(s) object and names of inlet states
+
+    Parameters
+    ----------
+    time : float
+        evaluation time [s].
+    stream : PharmaPy.Stream
+        stream object.
+    names_in : dict
+        dictionary with names of inlet states to the destination unit operation
+        as keys and dimension of the state as values.
+    **kwargs_interp : keyword arguments
+        arguments to be passed to the particular interpolation function.
+
+    Returns
+    -------
+    inputs : dict
+        dictionary with states.
+
+    """
+
+    if stream.DynamicInlet is not None:
+        inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
+        inputs = {'Inlet': inputs}
+
+    elif stream.y_upstream is not None:
+        t_inlet = stream.time_upstream
+        y_inlet = stream.y_inlet
+        input_array = interpolate_inputs(time, t_inlet, y_inlet,
+                                         **kwargs_interp)
+
+        inputs = get_input_dict(input_array, dict_states_in)
+
+    else:
+        inputs = {obj: {} for obj in dict_states_in.keys()}
+        # for name in dict_states_in:
+        #     inputs[name] = getattr(stream, name)
+
+    remaining = get_remaining_states(dict_states_in, stream, inputs)
+
+    for key in dict_states_in:
+        inputs[key] = inputs[key] | remaining[key]
+
+    return inputs
+
+  
 def get_inputs(time, uo, num_species, num_distr=0):
     Inlet = getattr(uo, 'Inlet', None)
 
@@ -161,16 +314,18 @@ class Connection:
             states_up = None
         else:
             states_up = self.source_uo.names_states_out
+            # states_up_dict = self.source_uo.states_out_dict
 
-        if self.destination_uo.__class__.__name__ == 'DynamicCollector':
+        class_destination = self.destination_uo.__class__.__name__
+        if class_destination == 'DynamicCollector':
             if self.source_uo.__class__.__name__ == 'MSMPR':
-                states_down = self.destination_uo.names_states_in[1]
-                self.destination_uo.name_idx = 1
+                states_down = self.destination_uo.names_states_in['crystallizer']
             else:
-                states_down = self.destination_uo.names_states_in[0]
+                states_down = self.destination_uo.names_states_in['liquid_mixer']
 
         else:
             states_down = self.destination_uo.names_states_in
+            # states_down_dict = self.destination_uo.states_in_dict
 
         if states_up is None:
             bipartite = None
@@ -179,16 +334,19 @@ class Connection:
             bipartite = None
             names_upstream = None
         else:
-            name_analyzer = NameAnalyzer(states_up, states_down,
-                                         self.num_species,
-                                         0)
+            name_analyzer = NameAnalyzer(
+                states_up, states_down, self.num_species,
+                len(getattr(self.Matter, 'distrib', []))
+                )
 
             # Convert units and pass states to self.Matter
-            name_analyzer.convertUnits(self.Matter)
+            # name_analyzer.convertUnits(self.Matter)
+            name_analyzer.convertUnitsNew(self.Matter)
 
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up
 
+        # Assign names to downstream UO
         if self.destination_uo.__class__.__name__ == 'Mixer':
             self.destination_uo.bipartite.append(bipartite)
             self.destination_uo.names_upstream.append(names_upstream)
@@ -200,15 +358,20 @@ class Connection:
         mode = self.destination_uo.oper_mode
         transfered_matter = copy.deepcopy(self.Matter)
 
-        if mode == 'Batch':
+        if class_destination == 'Mixer':
+            self.destination_uo.Inlets = transfered_matter
+            self.destination_uo.material_from_upstream = True
+
+        elif mode == 'Batch':
             self.destination_uo.Phases = transfered_matter
             self.destination_uo.material_from_upstream = True
+
         elif mode == 'Semibatch':
             if self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
-        else:  # Continuous
+        elif mode == 'Continuous':  # Continuous
             source_phases = self.source_uo.Outlet
             if self.source_uo.oper_mode == 'Batch' and source_phases is not self.Matter:
                 if hasattr(self.Matter, 'Phases') and \
@@ -234,14 +397,14 @@ class Connection:
                         elif 'Solid' in name_source and 'Solid' in name_destin:
                             pass
 
-            if hasattr(self.destination_uo, 'Inlet'):
-                self.destination_uo.Inlet = transfered_matter
-                self.destination_uo.material_from_upstream = True
-            else:
-                self.destination_uo.Inlets = transfered_matter
-                self.destination_uo.material_from_upstream = True
+            # if hasattr(self.destination_uo, 'Inlet'):
+            self.destination_uo.Inlet = transfered_matter
+            self.destination_uo.material_from_upstream = True
+            # else:
+            #     self.destination_uo.Inlets = transfered_matter
+            #     self.destination_uo.material_from_upstream = True
 
-            if self.destination_uo.__class__.__name__ == 'DynamicCollector':
+            if class_destination == 'DynamicCollector':
                 if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
                     self.destination_uo.KinCryst = self.source_uo.Kinetics
                     self.destination_uo.kwargs_cryst = {
