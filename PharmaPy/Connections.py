@@ -6,6 +6,8 @@ Created on Mon Mar  2 15:36:35 2020
 """
 
 from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
+from PharmaPy.Interpolation import local_newton_interpolation
+from scipy.interpolate import CubicSpline
 
 import numpy as np
 import copy
