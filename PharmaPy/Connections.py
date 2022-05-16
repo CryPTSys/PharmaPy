@@ -5,7 +5,7 @@ Created on Mon Mar  2 15:36:35 2020
 @author: dcasasor
 """
 
-from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states, getBipartiteMultiPhase
+from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
 from PharmaPy.Interpolation import local_newton_interpolation
 from scipy.interpolate import CubicSpline
 
@@ -347,9 +347,6 @@ class Connection:
 
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up
-
-            # bipartite_phases = getBipartiteMultiPhase(states_up_dict,
-            #                                           states_down_dict)
 
         # Assign names to downstream UO
         if self.destination_uo.__class__.__name__ == 'Mixer':
