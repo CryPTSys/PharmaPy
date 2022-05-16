@@ -165,7 +165,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
 
     return inputs
 
-
+  
 def get_inputs(time, uo, num_species, num_distr=0):
     Inlet = getattr(uo, 'Inlet', None)
 
