@@ -156,10 +156,10 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
     if full_output:
         if max_fun_eval == 0:
-            output_dict = {'fun': fun, 'jac': jac, 'num_iter': num_iter,
-                           'num_fun_eval': num_feval}
+            output_dict = {'x': x, 'fun': fun, 'jac': jac,
+                           'num_iter': num_iter, 'num_fun_eval': num_feval}
         else:
-            output_dict = {'fun': fun, 'jac': jac,
+            output_dict = {'x': x, 'fun': fun, 'jac': jac,
                            'norm_step': norm(lm_step),
                            'stop_criterion': reason, 'num_iter': num_iter,
                            'num_fun_eval': num_feval}
