@@ -178,9 +178,33 @@ class VaporStream(VaporPhase):
         self.vol_flow = self.vol
         self.mole_flow = self.moles
 
+        self.controllable = ('mass_flow', 'mole_flow', 'vol_flow', 'temp')
+
         # del self.mass
         # del self.vol
         # del self.moles
+
+    @property
+    def DynamicInlet(self):
+        return self._DynamicInlet
+
+    @DynamicInlet.setter
+    def DynamicInlet(self, dynamic_object):
+        dynamic_object.controllable = self.controllable
+        dynamic_object.parent_instance = self
+
+        self._DynamicInlet = dynamic_object
+
+    def evaluate_inputs(self, time):
+        if self.DynamicInlet is None:
+            inputs = {}
+            for attr in self.controllable:
+                inputs[attr] = getattr(self, attr)
+
+        else:
+            inputs = self.DynamicInlet.evaluate_inputs(time)
+
+        return inputs
 
 
 if __name__ == '__main__':

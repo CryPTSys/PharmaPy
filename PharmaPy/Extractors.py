@@ -16,7 +16,6 @@ from PharmaPy.Streams import LiquidStream
 class EquilibriumLLE:
     def __init__(self, Inlet=None, temp_drum=None, pres_drum=None,
                  gamma_method='UNIQUAC'):
-        # UNIQUAC
 
         self.temp = temp_drum
         self.pres = pres_drum
