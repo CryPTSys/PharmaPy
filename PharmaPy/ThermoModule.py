@@ -72,6 +72,10 @@ def ParseDatabase(path_datafile, to_arrays=True):
             interac['amk'] = np.array(interac.get('amk', None))
             interac['vk'] = np.array(interac.get('vk', None))
 
+            if 'unifac_groups' in interac:  # Avoid pandas xs warning
+                interac['unifac_groups'] = [
+                    tuple(pair) for pair in interac['unifac_groups']]
+
             dd_arrays.update(interac)
         return dd_arrays
     else:
@@ -708,7 +712,7 @@ class ThermoPhysicalManager:
         interac_data = pd.read_csv(interac_path, index_col=(0, 1))
 
         rq_path = root + 'unifac_rk_qk.csv'
-        rk_qk = pd.read_csv(rq_path, index_col=(0, 1))
+        rk_qk = pd.read_csv(rq_path, index_col=(2, 0))
 
         # Create empty arrays
         num_groups = len(group_idx)
