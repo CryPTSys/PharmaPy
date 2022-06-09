@@ -1194,6 +1194,8 @@ class Evaporator:
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
             axes object of matplotlib (plt.subplots(**kwargs)).
+            Do not use nrows or ncols arguments, since the plot grid is already
+            defined by PharmaPy
 
         Returns
         -------
@@ -2000,6 +2002,8 @@ class ContinuousEvaporator:
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
             axes objects of matplotlib (plt.subplots(**kwargs)).
+            Do not use nrows or ncols arguments, since the plot grid is already
+            defined by PharmaPy
 
         Returns
         -------
