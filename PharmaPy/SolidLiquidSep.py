@@ -362,6 +362,7 @@ class DeliquoringStep:
 
         self.Outlet = self.CakePhase
         self.CakePhase.saturation = self.satProf[-1]
+        self.CakePhase.z_external = self.z_centers
         self.Outlet.Phases = (liquid_out, solid_out)
         self.outputs = states
 

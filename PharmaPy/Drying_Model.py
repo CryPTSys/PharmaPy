@@ -190,7 +190,9 @@ class Drying:
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)
         sat_red = np.maximum(0, sat_red)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
-        vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas /10
+        # vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas 
+        vel_gas = self.dPg_dz / \
+        (self.CakePhase.alpha * visc_gas * self.rho_sol * (1 - self.porosity))
         
         # ---------- Drying rate term
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
@@ -255,14 +257,15 @@ class Drying:
         # fluxes_yg = high_resolution_fvm(y_gas, boundary_cond=y_gas_inputs)
         fluxes_yg = upwind_fvm(y_gas, boundary_cond=y_gas_inputs)
 
-        dygas_dz = np.diff(fluxes_yg, axis=0).T / self.dz
-
+        dygas_dz = np.diff(fluxes_yg, axis=0).T / self.dz 
+        
+        convection = -u_gas * dygas_dz / epsilon_gas
         # Transfer term
         transfer_gas = dry_rate.T / epsilon_gas / dens_gas
         # Dynamic saturation correction term
-        correction_gas = y_gas.T / (1 - satur) * dsat_dt
+        total_mass_correction = y_gas.T / (1 - satur) * dsat_dt 
 
-        dygas_dt = -u_gas * dygas_dz + transfer_gas + correction_gas
+        dygas_dt = convection + transfer_gas + total_mass_correction
 
         if return_terms:    # TODO: check term by term in material balance down this line
             self.masstrans_comp = 1
@@ -275,7 +278,7 @@ class Drying:
     def energy_balance(self, time, temp_gas, temp_sol, satur, y_gas, x_liq,
                        u_gas, rho_gas, dry_rate, inputs, return_terms=False):
         
-        temp_ref = 298
+        # temp_ref = 298
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
         # ----- Reading inputs
         temp_gas_inputs = inputs['temp']
@@ -286,25 +289,31 @@ class Drying:
         cvg_mix = cpg_mix - gas_ct / mw_avg_gas * 1000  # J/kg K
 
         epsilon_gas = self.porosity * (1 - satur)
-        denom_gas = cpg_mix * epsilon_gas * rho_gas
+        denom_gas = cvg_mix * epsilon_gas * rho_gas
         
         latent_heat = self.Vapor_1.getHeatVaporization(temp_sol,
                                                        basis='mass')
-        latent_terms = (dry_rate[:, self.idx_volatiles] * latent_heat).sum(axis=1)
+        
+        xliq_extended = np.column_stack((x_liq, np.zeros((x_liq.shape[0], 
+                                                          len(self.idx_supercrit)))))
+       
+        cpl_mix = self.Liquid_1.getCp(temp=temp_sol, mass_frac=xliq_extended,
+                                      basis='mass')
+        sensible_heat = cpg_mix * (temp_sol - temp_gas) * dry_rate.sum(axis=1)
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
-        drying_terms = rho_gas / self.rho_liq * latent_terms
-        heat_loss = 14626*3 * (temp_gas - 295)
+        drying_terms = rho_gas / self.rho_liq * cpg_mix
+        # heat_loss = 14626 * (temp_gas - (273+22))
         heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
         fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
-        dTg_dz = np.diff(fluxes_Tg) / self.dz
+        dTg_dz = np.diff(fluxes_Tg) / self.dz * epsilon_gas * rho_gas
         
-        conv_term = -u_gas * dTg_dz * cpg_mix / cvg_mix
+        conv_term = -u_gas * dTg_dz * cpg_mix * rho_gas
         
-        dTg_dt = conv_term + (drying_terms - heat_transf - heat_loss) / denom_gas
+        dTg_dt = (conv_term + sensible_heat - heat_transf - heat_loss) / denom_gas
 
         # Empty port
         #dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
@@ -314,17 +323,11 @@ class Drying:
         # ----- Condensed phases equations
         dens_liq = self.rho_liq 
 
-        xliq_extended = np.column_stack((x_liq, np.zeros((x_liq.shape[0], 
-                                                          len(self.idx_supercrit)))))
-        cpl_mix = self.Liquid_1.getCp(temp=temp_sol, mass_frac=xliq_extended,
-                                      basis='mass')
-
+        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat).sum(axis=1)
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
-        sensible_heat = cpl_mix * (temp_sol - temp_ref) * dry_rate.sum(axis=1)
-
-        dTcond_dt = (sensible_heat - latent_terms + heat_transf) / denom_cond
+        dTcond_dt = (-drying_terms + heat_transf) / denom_cond
 
 
         if return_terms:
@@ -448,7 +451,7 @@ class Drying:
         #     (alpha*rho_sol*(1 - porosity)*self.cake_height +
         #      self.resist_medium)
         deltaP -= deltaP_media
-
+        self.deltaP = deltaP
         p_top = p_atm + deltaP
 
         self.dPg_dz = deltaP / self.cake_height
@@ -517,16 +520,27 @@ class Drying:
         self.SatProf = states_reord['saturation']
 
         self.yGasProf = states_reord['y_gas']
+        
+        self.yGas_mole = np.zeros_like(self.yGasProf) # convert mass_frac to mole_frac
+        for i in np.arange(num_gas):
+            self.yGas_mole[i] = self.yGasProf[i] / self.Vapor_1.mw[i]
+        self.yGasProf_mole = self.yGas_mole / np.sum(self.yGas_mole, axis=0) * 100
+        
         self.xLiqProf = states_reord['x_liq']
-
+        self.xLiq_mole = np.zeros_like(self.xLiqProf) # convert mass_frac to mole_frac
+        for i in self.idx_volatiles:
+            self.xLiq_mole[i] = self.xLiqProf[i] / self.Liquid_1.mw[i]
+        self.xLiqProf_mole = self.xLiq_mole / np.sum(self.xLiq_mole, axis=0) * 100
+        
         self.tempGasProf = states_reord['temp_gas']
         self.tempLiqProf = states_reord['temp_liq']
+        self.CakePhase.z_external = self.z_centers
 
         self.statesPerFiniteVolume = states_per_fv
 
         self.num_gas = num_gas
         self.num_liq = num_liq
-
+        
 
     def flatten_states(self):
         pass
@@ -544,8 +558,8 @@ class Drying:
             fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
 
             idx_time = np.argmin(abs(time - self.timeProf))
-            w_liq = [self.xLiqProf[ind] for ind in pick_liq]
-            w_vap = [self.yGasProf[ind] for ind in pick_vap]
+            w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
+            w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
 
             xliq_plot = np.hstack(w_liq)[idx_time].reshape(-1, self.num_nodes)
             ygas_plot = np.hstack(w_vap)[idx_time].reshape(-1, self.num_nodes)
@@ -571,8 +585,8 @@ class Drying:
             fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
 
             idx_node = np.argmin(abs(z_pos - self.z_centers))
-            w_liq = [self.xLiqProf[ind] for ind in pick_liq]
-            w_vap = [self.yGasProf[ind] for ind in pick_vap]
+            w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
+            w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
 
             xliq_plot = np.vstack(w_liq)[:, idx_node].reshape(-1, len(self.timeProf))
             ygas_plot = np.vstack(w_vap)[:, idx_node].reshape(-1, len(self.timeProf))
