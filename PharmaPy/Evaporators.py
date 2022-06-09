@@ -222,11 +222,13 @@ class AdiabaticFlash:
             The default is 1e3.
         gamma_method : str, optional
             one of 'ideal', 'UNIFAC' or 'UNIQUAC'. If 'UNIFAC' or 'UNIQUAC' is
-            passed, the pure-component .json file must have the interaction
-            parameters of the model. The default is 'ideal'.
-        mult_midfun : TYPE, optional  TODO: should we remove this?
+            passed, the pure-component .json property file must have required
+            parameters for the activity coefficient model. For an example of
+            this, see <webpage>  # TODO: entry on the webpage is necessary
+            The default is 'ideal'.
+        mult_midfun : TYPE, optional  # TODO: should we remove this?
             DESCRIPTION. The default is 1.
-        seed_basedon_input : TYPE, optional  TODO: should we remove this?
+        seed_basedon_input : TYPE, optional  # TODO: should we remove this?
             DESCRIPTION. The default is False.
 
         Returns
@@ -329,6 +331,21 @@ class AdiabaticFlash:
         return balances
 
     def solve_unit(self, v_seed=0.5):
+        """ Solve AdiabaticFlash unit
+
+
+        Parameters
+        ----------
+        v_seed : float, optional
+            A seed for output fraction of vapor with respect to feed material
+            to the flash. It must be in the range 0-1. The default is 0.5.
+
+        Returns
+        -------
+        solution : SciPy OptimizerResult object
+            solution of the root finding algorithm.
+
+        """
 
         if self.seed_basedon_input:
             x_seed = self.Inlet.mole_frac
@@ -443,13 +460,10 @@ class Evaporator:
         -------
         A vaporizer object (VO). If a PharmaPy.Stream object is aggregated to the
         resulting instance (instance.Inlet = PharmaPy.Stream(...)),
-        PharmaPy will internally interpret the VO will be interpreted as a
-        Semi-batch evaporator object for modelling purposes. Otherwise, a Batch
-        evaporator will be run.
+        the VO will be interpreted as a Semi-batch evaporator object.
+        Otherwise, a Batch evaporator will be run.
 
         """
-
-
 
         self._Inlet = None
         self._Phases = None
@@ -959,6 +973,32 @@ class Evaporator:
                 self.allow_flow = False
 
     def solve_unit(self, runtime, verbose=True, sundials_opts=None):
+        """ Solve Evaporator model
+
+
+        Parameters
+        ----------
+        runtime : float
+            final time of the simulation routine.
+        verbose : bool, optional
+            if True, integrator statistics will be displayed after the model
+            is solved. The default is True.
+        sundials_opts : dict, optional
+            options to be passed to SUNDIALS. For a list of available options,
+            visit https://jmodelica.org/assimulo/ODE_CVode.html.
+            The default is None.
+
+        Returns
+        -------
+        time : list
+            list of time steps taken by the numerical integrator.
+        states : numpy array
+            array containing the solution of the model.
+            For a list of available states with their labels, see
+            # TODO: we need to define how to tell the users how to know which
+            names to use to retrieve the states of the system
+
+        """
 
         num_comp = len(self.Liquid_1.name_species)
         len_in = [num_comp, 1, 1]
@@ -1137,7 +1177,33 @@ class Evaporator:
 
         self.duty_type = [0, 0]  # TODO: this should depend on operation T
 
-    def plot_profiles(self, fig_size=None, pick_comp=None, time_div=1):
+    def plot_profiles(self, pick_comp=None, time_div=1, **fig_kwargs):
+        """
+        Convenience function to plot model solution. Dynamic profiles displayed
+        by this funcion are x_liq vs t, y_vap vs t, T/P vs t
+        and mol_liq/mol_vap vs t.
+
+        Parameters
+        ----------
+        pick_comp : list of int, optional
+            indexes of states to be plot. If None, all the states are plotted.
+            The default is None.
+        time_div : float, optional
+            Scaling factor by which the time coordinate is divided.
+            The default is 1.
+        **fig_kwargs : keyword arguments
+            keyword arguments to be passed to the construction of fig and
+            axes object of matplotlib (plt.subplots(**kwargs)).
+
+        Returns
+        -------
+        fig : TYPE
+            figure object.
+        ax : numpy array
+            grid of axis objects.
+
+        """
+
         self.flatten_states()
 
         if pick_comp is None:
@@ -1147,7 +1213,7 @@ class Evaporator:
 
         # Fractions
         time_plot = self.timeProf / time_div
-        fig, ax = plt.subplots(2, 2, figsize=fig_size)
+        fig, ax = plt.subplots(2, 2, **fig_kwargs)
         ax[0, 0].plot(time_plot, self.xliqProf[:, pick_comp])
         ax[0, 1].plot(time_plot, self.yvapProf[:, pick_comp])
 
@@ -1687,8 +1753,35 @@ class ContinuousEvaporator:
 
         return events
 
-    def solve_unit(self, runtime, solve=True, steady_state=False, verbose=True,
+    def solve_unit(self, runtime, steady_state=False, verbose=True,
                    sundials_opts=None, any_event=True):
+        """
+        Solve ContinuousEvaporator model
+
+        Parameters
+        ----------
+        runtime : float
+            final time of the simulation routine.
+        steady_state : bool, optional
+            If True, a steady-state version of the model is solved. Otherwise,
+            a dynamic model is solved. The default is False.
+        verbose : bool, optional
+            if True, integrator statistics will be displayed after the model
+            is solved. The default is True.
+        sundials_opts : dict, optional
+            options to be passed to SUNDIALS. For a list of available options,
+            visit https://jmodelica.org/assimulo/ODE_CVode.html.
+            The default is None.
+        any_event : TYPE, optional
+            DESCRIPTION. The default is True.
+
+        Returns
+        -------
+        If steady_state, then a SciPy OptimizationResult object is returned.
+        Else, a tuple containing a list of times returned by the numerical
+        integrator and an array of solved states is returned.
+
+        """
 
         num_comp = len(self.Liquid_1.name_species)
         len_in = [num_comp, 1, 1]
@@ -1716,7 +1809,7 @@ class ContinuousEvaporator:
             steady_solution = fsolve(obj_fn, states_initial)
 
             return steady_solution
-        elif solve:
+        else:
             if self.state_event_list is None:
                 def model(t, y, ydot, params=None, energy=False):
                     return self.unit_model(t, y, ydot, None, params, energy)
@@ -1774,9 +1867,6 @@ class ContinuousEvaporator:
             self.retrieve_results(time, states)
 
             return time, states
-        else:
-            fun_eval = self.unit_model(0, states_initial, sdev_initial)
-            return fun_eval
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
@@ -1889,8 +1979,37 @@ class ContinuousEvaporator:
             # self.Phases.concProf = self.concProf
             # self.Phases.timeProf = self.timeProf
 
-    def plot_profiles(self, fig_size=None, pick_comp=None, time_div=1,
-                      vol_plot=True):
+    def plot_profiles(self, pick_comp=None, time_div=1, vol_plot=True,
+                      **fig_kwargs):
+        """
+        Convenience function to plot model solution. Dynamic profiles displayed
+        by this funcion are x_liq vs t, y_vap vs t, T/P vs t and
+        either mol_liq-mol_vap vs t or vol_liq-vol_vap vs t.
+
+        Parameters
+        ----------
+        pick_comp : list of int, optional
+            indexes of states to be plot. If None, all the states are plotted.
+            The default is None.
+        time_div : float, optional
+            Scaling factor by which the time coordinate is divided.
+            The default is 1.
+        vol_plot : bool, optional
+            If True, vol_liq-vol_vap vs t is plotted. Otherwise,
+            mol_liq-mol_vap vs t is plotted.
+        **fig_kwargs : keyword arguments
+            keyword arguments to be passed to the construction of fig and
+            axes objects of matplotlib (plt.subplots(**kwargs)).
+
+        Returns
+        -------
+        fig : TYPE
+            figure object.
+        ax : numpy array
+            grid of axis objects.
+
+        """
+
         self.flatten_states()
 
         if pick_comp is None:
@@ -1900,7 +2019,8 @@ class ContinuousEvaporator:
 
         # Fractions
         time_plot = self.timeProf / time_div
-        fig, ax = plt.subplots(2, 2, figsize=fig_size)
+        fig, ax = plt.subplots(2, 2, **fig_kwargs)
+
         ax[0, 0].plot(time_plot, self.xliqProf[:, pick_comp])
         ax[0, 1].plot(time_plot, self.yvapProf[:, pick_comp])
 
