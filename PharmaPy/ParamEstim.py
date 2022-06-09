@@ -377,6 +377,7 @@ class ParameterEstimation:
 
             sens_by_y = reorder_sens(sens_run)
             weighted_sens = np.dot(sens_by_y, self.sigma_inv)
+
             weighted_sens = reorder_sens(weighted_sens,
                                          num_rows=len(self.x_model[ind]))
 
@@ -421,7 +422,7 @@ class ParameterEstimation:
         jacobian = concat_sens
 
         if jac_matrix:
-            return jacobian.T
+            return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
             gradient = jacobian.dot(self.residuals)  # 1D
             return gradient
