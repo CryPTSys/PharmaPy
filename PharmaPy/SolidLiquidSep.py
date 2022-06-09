@@ -110,6 +110,21 @@ class Carousel:
 class DeliquoringStep:
     def __init__(self, num_nodes, params=None, diam_unit=0.01,
                  resist_medium=1e9):
+        
+        """
+        
+        Parameters
+        ----------
+        number_nodes : float
+            Number of apatial discretization of the cake along the axial 
+            coordinate.
+        params : 
+        diam_unit : float (optional, default=0.01)
+            Diameter of the dryer's cross section [m]
+        resist_medium : float (optional, default=1e9)
+            Mesh resistance of filter in dryer. [m**-1]
+            
+        """
 
         self.num_nodes = num_nodes
         self.diam_unit = diam_unit
@@ -170,8 +185,12 @@ class DeliquoringStep:
         return model_eqns
 
     def material_balance(self, theta, sat_star, conc_star):
-        """Calculate material balance for a non-dimensional version of the
+        
+        """
+        
+        Calculate material balance for a non-dimensional version of the
         governing equations. Based on Wakeman
+        
         """
 
         lambd = 5

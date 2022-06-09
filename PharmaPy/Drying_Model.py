@@ -563,8 +563,10 @@ class Drying:
             Size of the figure to be populated.
         jump : int (optional, default=5)
             Number of samples to be skipped in plotting.
-        pick_idx : list of int (optional, default=None)
+        pick_idx : tuple of lists (optional, default=None)
             List of index of components to include in plotting.
+            Length of tuple is 2. Index 0 and 1 corresponds to index of compounds
+            in liquid phase and gas phase respectively. 
             If None, all the existing components are plotted.
             
         '''
@@ -605,8 +607,8 @@ class Drying:
             fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
 
             idx_node = np.argmin(abs(z_pos - self.z_centers))
-            w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
-            w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
+            w_liq = [self.xLiqProf[ind] for ind in pick_liq]
+            w_vap = [self.yGasProf[ind] for ind in pick_vap]
 
             xliq_plot = np.vstack(w_liq)[:, idx_node].reshape(-1, len(self.timeProf))
             ygas_plot = np.vstack(w_vap)[:, idx_node].reshape(-1, len(self.timeProf))
