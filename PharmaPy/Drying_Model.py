@@ -35,25 +35,26 @@ class Drying:
 
         Parameters
         ----------
-        number_nodes : TYPE
-            DESCRIPTION.
-        idx_supercrit : TYPE
-            DESCRIPTION.
-        diam_unit : TYPE, optional
-            DESCRIPTION. The default is 0.01.
-        resist_medium : TYPE, optional
-            DESCRIPTION. The default is 2.22e9.
-        eta_fun : TYPE, optional
-            DESCRIPTION. The default is None.
-        mass_eta : bool, optional
-            If true, drying rate limiting factor is a function of mass fractional saturation value.
-            The default is False.
-        state_events : list of dicts?
-        TODO
-
-        Returns
-        -------
-        None.
+        number_nodes : float
+            Number of apatial discretization of the cake along the axial 
+            coordinate.
+        supercrit_names : list of str
+            Names of the species in drying gas medium which doesn't participate
+            in the mass transfer phenomenon. Names correspond to species names
+            in the physical properties .json file.
+        diam_unit : float (optional, default=0.01)
+            Diameter of the dryer's cross section [m]
+        resist_medium : float (optional, default=2.22e9)
+            Mesh resistance of filter in dryer. [m**-1]
+        eta_fun : callable
+            Function with signature eta_fun(saturation). The default is None.
+        mass_eta : bool (optional, default=None)
+            If true, drying rate limiting factor is a function of mass fractional
+            saturation value. 
+        state_events : list of dict (optional, default=None)
+            Dictionary with keys respresenting properties used to monitor the event.
+            Keys are composed of 'state_name', 'state_idx', 'value', 'callable'. 
+            Refer to 'parameter estimation' module for details.
 
         """
         self.supercrit_names = supercrit_names
@@ -548,6 +549,25 @@ class Drying:
 
     def plot_profiles(self, time=None, z_pos=None, fig_size=None, jump=5,
                       pick_idx=None):
+        '''
+
+        Parameters
+        ----------
+        time : int (optional, default=None)
+            Integer value indicating the time on which calculated drying 
+            outputs to be plotted.
+        z_pos : int (optional, default=None)
+            Integer value indicating the axial position of cake coordniate 
+            at which calculated drying outputs to be plotted.
+        fig_size : tuple (optional, default = None)
+            Size of the figure to be populated.
+        jump : int (optional, default=5)
+            Number of samples to be skipped in plotting.
+        pick_idx : list of int (optional, default=None)
+            List of index of components to include in plotting.
+            If None, all the existing components are plotted.
+            
+        '''
         if pick_idx is None:
             pick_liq = np.arange(self.num_liq)
             pick_vap = np.arange(self.num_gas)
