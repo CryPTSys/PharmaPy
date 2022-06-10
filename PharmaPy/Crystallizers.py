@@ -18,7 +18,7 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events)
 
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
-from PharmaPy.Connections import get_inputs
+from PharmaPy.Connections import get_inputs, get_inputs_new
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -61,7 +61,7 @@ class _BaseCryst:
                  state_events):
 
         """ Construct a Crystallizer Object
-        
+
         Parameters
         ----------
         mask_params : list of bool (optional, default = None)
@@ -291,6 +291,10 @@ class _BaseCryst:
                 num_sp = len(self.Liquid_1.mass_frac)
                 self.name_species = list(string.ascii_uppercase[:num_sp])
 
+            self.states_in_dict = {
+                'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
+                'Inlet': {'vol_flow': 1, 'temp': 1}}
+
     @property
     def Kinetics(self):
         return self._Kinetics
@@ -332,6 +336,15 @@ class _BaseCryst:
 
         for phase, di in zip(self.Phases, self.__original_phase_dict__):
             phase.__dict__.update(di)
+
+    def get_inputs(self, time):
+
+        if self.__class__.__name__ == 'BatchCryst':
+            inputs = {}
+        else:
+            inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return inputs
 
     def method_of_moments(self, mu, conc, temp, params, rho_cry, vol=1):
         kv = self.Solid_1.kv
@@ -441,7 +454,8 @@ class _BaseCryst:
         ind_bces = num_material
 
         # Inputs
-        u_input = get_inputs(time, *self.args_inputs)
+        # u_input = get_inputs(time, *self.args_inputs)
+        u_input = self.get_inputs(time)
 
         # Check for volume
         if 'vol' in self.states_uo:
@@ -487,13 +501,13 @@ class _BaseCryst:
             phis_in = None
         elif name_unit == 'SemibatchCryst' or name_unit == 'MSMPR':
             # massfrac_in = self.Liquid_1.mass_conc_to_frac(w_conc, basis='mass')
-            inlet_temp = u_input['temp']
+            inlet_temp = u_input['Inlet']['temp']
 
             if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
                 # self.Inlet.Liquid_1.updatePhase(mass_frac=massfrac_in)
                 rhos_in = self.Inlet.getDensity(temp)
 
-                inlet_distr = u_input['distrib']
+                inlet_distr = u_input['Inlet']['distrib']
 
                 mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
                                                        mom_num=3)
@@ -725,9 +739,16 @@ class _BaseCryst:
             TODO
         sundials_opts :
             TODO
-        any_event : 
+        any_event :
             TODO
         """
+
+        if self.__class__.__name__ != 'BatchCryst':
+            if self.method == 'moments':
+                pass  # TODO: MSMPR MoM should be addressed?
+            else:
+                x_distr = getattr(self.Solid_1, 'x_distrib', [])
+                self.states_in_dict['Inlet']['distrib'] = len(x_distr)
 
         self.Kinetics.target_idx = self.target_ind
 
@@ -1216,15 +1237,15 @@ class _BaseCryst:
         fig_size : tuple (optional, default = None)
             Size of the figure to be populated.
         time_eval : int (optional, default = None)
-            Integer value indicating the time in which 
+            Integer value indicating the time in which
             crystal size distribution of interest is calculated.
         vol_based : bool (optional, default = False)
             Boolean value indiciating whether the crystal size
-            distribution is in volume-based. 
+            distribution is in volume-based.
         time_div : int (optional, default = 1)
             TODO
         logx : bool (optional, default = True)
-            Boolean value indicating whether the x axis is 
+            Boolean value indicating whether the x axis is
             presented in log scale.
 
         Raises
@@ -1483,7 +1504,7 @@ class BatchCryst(_BaseCryst):
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -1492,7 +1513,7 @@ class BatchCryst(_BaseCryst):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -1502,10 +1523,10 @@ class BatchCryst(_BaseCryst):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
@@ -1982,7 +2003,7 @@ class MSMPR(_BaseCryst):
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -1991,7 +2012,7 @@ class MSMPR(_BaseCryst):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -2001,10 +2022,10 @@ class MSMPR(_BaseCryst):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
@@ -2042,16 +2063,53 @@ class MSMPR(_BaseCryst):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
 
+    def nomenclature(self):
+        self.names_states_in += ['vol_flow', 'temp']
+
+        name_class = self.__class__.__name__
+
+        if self.method == 'moments':
+            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
+
+            # for mom in mom_names[::-1]:
+            self.names_states_in.insert(0, 'moments')
+
+            # self.states_in_dict['solid']['moments']
+
+            if name_class == 'SemibatchCryst':
+                self.states_uo.append('total_moments')
+            else:
+                self.states_uo.append('moments')
+
+        elif self.method == '1D-FVM':
+            self.names_states_in.insert(0, 'distrib')
+
+            if name_class == 'SemibatchCryst':
+                self.states_uo.insert(0, 'total_distrib')
+            else:
+                self.states_uo.insert(0, 'distrib')
+
+        if name_class == 'SemibatchCryst':
+            self.states_uo.append('vol')
+
+        if self.adiabatic:
+            self.states_uo.append('temp')
+        elif not self.isothermal:
+            self.states_uo += ['temp', 'temp_ht']
+        # elif self.adiabatic:
+        #     self.states_uo.append('temp')
+
+        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
+        self.names_states_out = self.names_states_in
+
     def _get_tau(self):
         time_upstream = getattr(self.Inlet, 'time_upstream')
         if time_upstream is None:
             time_upstream = [0]
 
-        num_species = len(self.Liquid_1.name_species)
-        num_distrib = len(self.Solid_1.x_distrib)
-        inputs = get_inputs(time_upstream[-1], self, num_species, num_distrib)
+        inputs = self.get_inputs(time_upstream[-1])
 
-        volflow_in = inputs['vol_flow']
+        volflow_in = inputs['Inlet']['vol_flow']
         tau = self.Liquid_1.vol / volflow_in
 
         self.tau = tau
@@ -2101,51 +2159,14 @@ class MSMPR(_BaseCryst):
 
         return x_vec, f_convg, w_convg, info, final_fn
 
-    def nomenclature(self):
-        self.names_states_in += ['vol_flow', 'temp']
-
-        name_class = self.__class__.__name__
-
-        if self.method == 'moments':
-            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
-
-            # for mom in mom_names[::-1]:
-            self.names_states_in.insert(0, 'moments')
-
-            if name_class == 'SemibatchCryst':
-                self.states_uo.append('total_moments')
-            else:
-                self.states_uo.append('moments')
-
-        elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-
-            if name_class == 'SemibatchCryst':
-                self.states_uo.insert(0, 'total_distrib')
-            else:
-                self.states_uo.insert(0, 'distrib')
-
-        if name_class == 'SemibatchCryst':
-            self.states_uo.append('vol')
-
-        if self.adiabatic:
-            self.states_uo.append('temp')
-        elif not self.isothermal:
-            self.states_uo += ['temp', 'temp_ht']
-        # elif self.adiabatic:
-        #     self.states_uo.append('temp')
-
-        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
-        self.names_states_out = self.names_states_in
-
     def material_balances(self, time, distrib, w_conc, temp, vol, params,
                           u_inputs, rhos, moms, phi_in):
 
         rho_sol = rhos[0][1]
 
-        input_flow = u_inputs['vol_flow']
-        input_distrib = u_inputs['distrib'] * self.scale
-        input_conc = u_inputs['mass_conc']
+        input_flow = u_inputs['Inlet']['vol_flow']
+        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+        input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
             ddistr_dt, transf = self.method_of_moments(distrib, w_conc, temp,
@@ -2187,8 +2208,7 @@ class MSMPR(_BaseCryst):
 
         rho_susp, rho_in = rhos
 
-        input_flow = u_inputs['vol_flow']
-        input_temp = u_inputs['temp']
+        input_flow = u_inputs['Inlet']['vol_flow']
 
         # Thermodynamic properties (basis: slurry volume)
         phi_liq = 1 - self.Solid_1.kv * moms[3]
@@ -2198,7 +2218,7 @@ class MSMPR(_BaseCryst):
         capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg
+        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
@@ -2222,7 +2242,7 @@ class MSMPR(_BaseCryst):
             dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
 
             # Balance in the jacket
-            ht_media = self.Utility.evaluate_inputs(time)
+            ht_media = self.Utility.get_inputs(time)
             flow_ht = ht_media['vol_flow']
             tht_in = ht_media['temp_in']
 
@@ -2245,6 +2265,10 @@ class MSMPR(_BaseCryst):
 
         states[:, :self.num_distr] *= 1 / self.scale
 
+        # Reordering output states
+        state_reordering = {'distrib': self.num_distr,
+                            'mass_conc': self.num_species}
+
         distProf = states[:, :self.num_distr]
         self.distrib_runs.append(distProf)
 
@@ -2254,8 +2278,8 @@ class MSMPR(_BaseCryst):
             self.distribVolPercProf = self.Solid_1.convert_distribution(
                 num_distr=distProf)
 
-        inputs = get_inputs(time_profile, *self.args_inputs)
-        volflow = inputs['vol_flow']
+        inputs = self.get_inputs(time_profile)
+        volflow = inputs['Inlet']['vol_flow']
 
         num_material = self.num_distr + self.num_species
 
@@ -2269,6 +2293,8 @@ class MSMPR(_BaseCryst):
                                               mom_num=3) * self.Solid_1.kv
 
             mass_sol = rho_solid * vol_sol
+
+            state_reordering['vol'] = 1
 
         else:
             y_outputs = states
@@ -2296,14 +2322,18 @@ class MSMPR(_BaseCryst):
             self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
-            y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
+            y_outputs = np.column_stack((y_outputs, volflow))
+
+            state_reordering['temp'] = 1
 
         elif 'temp' in self.states_uo:
             self.temp_runs.append(states[:, -1])
             self.Liquid_1.temp = self.temp_runs[-1][-1]
 
             y_outputs = y_outputs[:, :-1]
-            y_outputs = np.insert(y_outputs, -1, volflow, axis=1)
+            y_outputs = np.column_stack((y_outputs, volflow))
+
+            state_reordering['temp'] = 1
 
         else:
             temp_controlled = self.controls['temp'](
@@ -2312,10 +2342,32 @@ class MSMPR(_BaseCryst):
 
             self.temp_runs.append(temp_controlled)
 
-            y_outputs = np.column_stack((y_outputs, volflow))
+            state_reordering['temp'] = 1
+
+            # I changed the order of these two lines!
             y_outputs = np.column_stack((y_outputs, temp_controlled))
+            y_outputs = np.column_stack((y_outputs, volflow))
 
             self.Liquid_1.temp = self.temp_runs[-1][-1]
+
+        # Reorder states
+        state_reordering['vol_flow'] = 1
+
+        target_order = []
+        for di in self.states_in_dict.values():
+            target_order += list(di.keys())
+
+        ordered_idx = np.arange(y_outputs.shape[1])
+
+        acum = np.cumsum(list(state_reordering.values()))[:-1]
+        idx_per_state = np.split(ordered_idx, acum)
+
+        perm = [list(state_reordering.keys()).index(a) for a in target_order
+                if a in state_reordering.keys()]
+
+        reordered_idx = np.hstack([idx_per_state[ind] for ind in perm])
+
+        y_outputs = y_outputs[:, reordered_idx]
 
         wConcProf = states[:, self.num_distr:num_material]
 
@@ -2401,14 +2453,14 @@ class SemibatchCryst(MSMPR):
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
                  state_events=None):
-        
+
         """ Construct a Semi-batch Crystallizer object
         Parameters
         ----------
         target_comp : str, list of strings
             Name of the crystallizing compound(s) from .json file.
         mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics 
+            Binary list of which parameters to exclude from the kinetics
             computation
         method : str
             Choice of the numerical method. Options are: 'moments', '1D-FVM'
@@ -2417,7 +2469,7 @@ class SemibatchCryst(MSMPR):
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
         isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is 
+            Boolean value indicating whether the energy balance is
             considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
@@ -2427,10 +2479,10 @@ class SemibatchCryst(MSMPR):
         params_control :
             TODO
         cfun_solub: callable
-            User defined function for the solubility function : 
+            User defined function for the solubility function :
             func(conc)
         adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of 
+            Boolean value indicating whether the heat transfer of
             the crystallization is considered.
         rad_zero : float (optional, default = TODO)
             TODO size of the first bin of the CSD discretization [m]
@@ -2491,11 +2543,12 @@ class SemibatchCryst(MSMPR):
         rho_liq, rho_sol = rho_susp
         rho_in_liq, _ = rho_in
 
-        input_flow = u_inputs['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = np.max([eps, input_flow])
 
-        input_distrib = u_inputs['distrib'] * self.scale
-        input_conc = u_inputs['mass_conc']
+        # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
+        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+        input_conc = u_inputs['Liquid_1']['mass_conc']
 
         # print('time = %.2f, vol_liq = %.2e, flowrate = %.2e' % (time, vol_liq, input_flow))
 
@@ -2545,7 +2598,7 @@ class SemibatchCryst(MSMPR):
         rho_susp, rho_in = rhos
 
         # Input properties
-        input_flow = u_inputs['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = np.max([eps, input_flow])
 
         vol_solid = moms[3] * self.Solid_1.kv  # mu_3 is total, not by volume

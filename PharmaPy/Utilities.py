@@ -6,6 +6,8 @@ Created on Sun Aug  9 13:52:55 2020
 @author: dcasasor
 """
 
+from PharmaPy.Connections import get_inputs_new
+
 
 class CoolingWater:
     def __init__(self, vol_flow=None, mass_flow=None, temp_in=298.15,
@@ -25,6 +27,7 @@ class CoolingWater:
 
         # Outputs
         self.temp_out = None
+        self.y_upstream = None
 
         self._DynamicInlet = None
 
@@ -58,5 +61,11 @@ class CoolingWater:
 
         else:
             inputs = self.DynamicInlet.evaluate_inputs(time)
+
+        return inputs
+
+    def get_inputs(self, time):
+        di = {'Inlet': {'vol_flow': 1, 'temp_in': 1, 'mass_flow': 1}}
+        inputs = get_inputs_new(time, self, di)['Inlet']
 
         return inputs
