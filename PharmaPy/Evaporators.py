@@ -13,6 +13,7 @@ from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
+from PharmaPy.Plotting import plot_function
 
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -1179,7 +1180,7 @@ class Evaporator:
 
         self.duty_type = [0, 0]  # TODO: this should depend on operation T
 
-    def plot_profiles(self, pick_comp=None, time_div=1, **fig_kwargs):
+    def plot_profiles(self, pick_comp=None, **fig_kwargs):
         """
         Convenience function to plot model solution. Dynamic profiles displayed
         by this funcion are x_liq vs t, y_vap vs t, T/P vs t
@@ -1190,9 +1191,6 @@ class Evaporator:
         pick_comp : list of int, optional
             indexes of states to be plot. If None, all the states are plotted.
             The default is None.
-        time_div : float, optional
-            Scaling factor by which the time coordinate is divided.
-            The default is 1.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
             axes object of matplotlib (plt.subplots(**kwargs)).
@@ -1208,67 +1206,29 @@ class Evaporator:
 
         """
 
-        self.flatten_states()
-
         if pick_comp is None:
             pick_comp = np.arange(self.num_species)
         else:
             pick_comp = pick_comp
 
         # Fractions
-        time_plot = self.timeProf / time_div
-        fig, ax = plt.subplots(2, 2, **fig_kwargs)
-        ax[0, 0].plot(time_plot, self.xliqProf[:, pick_comp])
-        ax[0, 1].plot(time_plot, self.yvapProf[:, pick_comp])
+        if pick_comp is None:
+            states_plot = ('x_liq', 'y_vap', 'temp', 'pres', 'mol_liq',
+                           'mol_vap')
+        else:
+            states_plot = (['x_liq', pick_comp], ['y_vap', pick_comp], 'temp',
+                           'pres', 'mol_liq', 'mol_vap')
 
-        ax[0, 0].set_ylabel('$x_i$')
-        ax[0, 1].set_ylabel('$y_i$')
-
-        leg = [self.Liquid_1.name_species[ind] for ind in pick_comp]
-        ax[0, 0].legend(leg)
-
-        # T and P
-        ax[1, 0].plot(time_plot, self.tempProf, 'k')
-
-        ax_pres = ax[1, 0].twinx()
-
-        color = 'r'
-        ax_pres.plot(time_plot, self.presProf/1000, color)
-
-        ax_pres.spines['right'].set_color(color)
-        ax_pres.tick_params(colors=color)
-        ax_pres.yaxis.label.set_color(color)
-
-        ax[1, 0].set_ylabel('$T$ (K)')
-        ax_pres.set_ylabel('$P$ (kPa)')
-
-        # Moles
-        ax[1, 1].plot(time_plot, self.molLiqProf, 'k')
-        ax_vap = ax[1, 1].twinx()
-        ax_vap.plot(time_plot, self.molVapProf, color)
-
-        ax_vap.spines['right'].set_color(color)
-        ax_vap.tick_params(colors=color)
-        ax_vap.yaxis.label.set_color(color)
-
-        ax[1, 1].set_ylabel('$M_L$ (mol)')
-        ax_vap.set_ylabel('$M_V$ (mol)')
+        ylabels = ('$x_{liq}$', '$y_{vap}$', '$T$', '$P$', '$N_L$', '$N_V$')
+        fig, ax = plot_function(self, states_plot, fig_map=(0, 1, 2, 2, 3, 3),
+                                ylabels=ylabels,
+                                nrows=2, ncols=2, **fig_kwargs)
 
         for axis in ax.flatten():
-            axis.grid(which='both')
-
-            axis.spines['top'].set_visible(False)
-            axis.spines['right'].set_visible(False)
-
             axis.xaxis.set_minor_locator(AutoMinorLocator(2))
             axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        for axis in [ax_vap, ax_pres]:
-            axis.spines['top'].set_visible(False)
-            axis.yaxis.set_minor_locator(AutoMinorLocator(2))
-
-        if time_div == 1:
-            fig.text(0.5, 0, 'time (s)', ha='center')
+        fig.text(0.5, 0, 'time (s)', ha='center')
 
         fig.tight_layout()
 
