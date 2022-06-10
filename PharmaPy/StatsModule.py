@@ -91,22 +91,14 @@ class StatisticsClass:
 
         t_stat = stats.t.ppf((1 + self.alpha)/2, self.dof)
 
-        ones = np.array([-1, 1])
-        confidence_int = {}
-        sigma_t = {}
+        delta_par = sigma_params * t_stat
 
-        intervals_array = []
+        intervals = np.column_stack((self.params - delta_par,
+                                     self.params + delta_par))
 
-        for ind, val in enumerate(self.params):
-            sig_t = sigma_params[ind] * t_stat
-            interval = sig_t * ones + val
+        confidence_int = dict(zip(self.param_names, intervals))
 
-            confidence_int[self.param_names[ind]] = interval
-            sigma_t[self.param_names[ind]] = sig_t
-
-            intervals_array.append(interval)
-
-        intervals_array = np.array(intervals_array)
+        perc_deviation = np.abs(delta_par / self.params * 100)
 
         if verbose:
             alperc = self.alpha * 100
@@ -120,16 +112,18 @@ class StatisticsClass:
 
             for ind, (key, val) in enumerate(confidence_int.items()):
                 low, high = val
-                perc = abs(sigma_t[key] / self.params[ind]) * 100
                 print("{:<12} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.5f}".format(
-                        key, low, self.params[ind], high, sigma_t[key], perc))
+                        key, low, self.params[ind], high, delta_par[ind], perc_deviation[ind]))
 
             print('{:<55}'.format('-'*100))
 
         if set_self:
-            self.confid_intervals = confidence_int
+            self.confid_intervals = {'intervals': confidence_int,
+                                     'delta_param': delta_par,
+                                     'perc_deviation': perc_deviation}
+
             self.covar_params = covar_params
-            self.intervals_array = intervals_array
+            self.intervals_array = intervals
 
         return confidence_int
 
@@ -195,7 +189,7 @@ class StatisticsClass:
         if alphas is None:
             alphas = [self.alpha]
 
-        f_stat = stats.f.ppf(alphas, self.num_par, self.dof)
+        f_stat = stats.f.ppf(alphas, self.num_par, self.dof)  # TODO: I think self.num_par should be just 2
         contours = f_stat * self.num_par * self.var_fun
 
         # Order

@@ -111,48 +111,80 @@ class Experiment:
 class ParameterEstimation:
 
     def __init__(self, func, param_seed, x_data, y_data=None,
+                 measured_ind=None,
                  args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
-                 measured_ind=None, weight_matrix=None,
+                 weight_matrix=None,
                  name_params=None, name_states=None):
         """ Create a ParameterEstimation object
-
 
         Parameters
         ----------
         func : callable
             model function with signaure func(params, x_data, *args, **kwargs).
+            It must return either an array of size len(x_i) in the one-state
+            case, and an array of size len(x_i) x num_states for models
+            describing multiple states. See 'x_data' for details on x_i
         param_seed : array-like
             parameter seed values.
         x_data : numpy array, list of arrays or dict
-            array with experimental values for the independent variable.
+            array with experimental values for the independent variable x. If
+            several datasets Ne are passed, either a list of arrays
+                x_data = [x_1, ..., x_i, ..., x_Ne]
+            or a dictionary of arrays:
+                x_data = {'name_exp_1': x_1,, ..., 'name_exp_i': x_i, ...,
+                          'name_exp_N': x_Ne}
+            can be specified.
         y_data : numpy array or list of arrays, optional
-            experimental values for the dependent variable(s).
+            experimental values for the dependent variable(s) y.
+            Array y is of dimension len(x_i) x N_meas, where N_meas is less
+            than or equal to the number of states returned by func (Ny).
+            It supports same data structures as 'x_data'. If 'ydata' is a
+            dictionary, its keys must match those of 'x_data'.
             The default is None.
-        args_fun : TYPE, optional
-            DESCRIPTION. The default is None.
-        kwargs_fun : TYPE, optional
-            DESCRIPTION. The default is None.
-        optimize_flags : TYPE, optional
-            DESCRIPTION. The default is None.
-        jac_fun : TYPE, optional
-            DESCRIPTION. The default is None.
-        dx_finitediff : TYPE, optional
-            DESCRIPTION. The default is None.
-        measured_ind : TYPE, optional
-            DESCRIPTION. The default is None.
-        weight_matrix : TYPE, optional
-            DESCRIPTION. The default is None.
-        name_params : TYPE, optional
-            DESCRIPTION. The default is None.
-        name_states : TYPE, optional
-            DESCRIPTION. The default is None.
+        measured_ind : list of int, optional
+            Indexes of the states returned by func that are measured and
+            passed in each dataset contained in 'y_data'.
+            If None, it is assumed that all the states are measured.
+            The default is None.
+        args_fun : tuple or list of tuples, optional
+            positional arguments to be passed to func. For multiple datasets,
+            pass a list of tuples. The default is None.
+        kwargs_fun : dict, list of dicts, optional
+            keyword arguments to be passed to func. For multiple datasets,
+            pass a list of dicts. The default is None.
+        optimize_flags : list of bools, optional
+            list with dimension len(param_seed). If a given parameter is to
+            be optimized, its corresponding flag is True. Otherwise, the flag
+            must be False. If not provided, all the flags are set to
+            True (all the parameters are used for optimization).
+            The default is None.
+        jac_fun : callable, optional
+            jacobian function with the same signature as func. It must return
+            an array with elements
+                dy_j(t) / dparam_p (j = 1, ..., Ny, p = 1, ..., Np).
+
+            The resulting array must be of size [sum_i len(x_i)] x num_params,
+            which is formed by stacking jacobian matrices for each state
+            vertically. If None, the jacobian is computed using finite
+            differences. The default is None.
+        dx_finitediff : float, optional
+            perturbation in the parameter space used to estimate the
+            parametric jacobian. The default is None.
+        weight_matrix : numpy array, optional
+            array with dimension N_meas x N_meas, indicating weighting
+            factors for the measured states. A typical choice is a
+            diagonal matrix of experimental state variances.
+            The default is None.
+        name_params : list of str, optional
+            list with parameter names. The default is None.
+        name_states : list of str, optional
+            list with state names. The default is None.
 
         Returns
         -------
-        dp : TYPE
-            DESCRIPTION.
+        ParameterEstimation object
 
         """
 
@@ -337,7 +369,7 @@ class ParameterEstimation:
             result = self.function(params, self.x_model[ind],
                                    *self.args_fun[ind], **self.kwargs_fun[ind])
 
-            if type(result) is tuple:  # func also returns the jacobian
+            if isinstance(result, (tuple, list)):  # func also returns the jacobian
                 y_prof, sens = result
 
             else:  # call a separate function for jacobian
@@ -377,6 +409,7 @@ class ParameterEstimation:
 
             sens_by_y = reorder_sens(sens_run)
             weighted_sens = np.dot(sens_by_y, self.sigma_inv)
+
             weighted_sens = reorder_sens(weighted_sens,
                                          num_rows=len(self.x_model[ind]))
 
@@ -421,7 +454,7 @@ class ParameterEstimation:
         jacobian = concat_sens
 
         if jac_matrix:
-            return jacobian.T
+            return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
             gradient = jacobian.dot(self.residuals)  # 1D
             return gradient

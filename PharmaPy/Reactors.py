@@ -866,7 +866,8 @@ class CSTR(_BaseReactor):
     def __init__(self, partic_species, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='jacket', return_sens=True):
+                 h_conv=1000, ht_mode='jacket', return_sens=True,
+                 state_events=None):
         """
         Inherited constructor for the continuous stirred-tank
         reactor (CSTR) class.
@@ -909,7 +910,7 @@ class CSTR(_BaseReactor):
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
-                         h_conv, ht_mode, return_sens)
+                         h_conv, ht_mode, return_sens, state_events)
 
         self._Inlet = None
         self.oper_mode = 'Continuous'
@@ -1172,7 +1173,8 @@ class SemibatchReactor(CSTR):
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
-                 h_conv=1000, ht_mode='jacket', return_sens=True):
+                 h_conv=1000, ht_mode='jacket', return_sens=True,
+                 state_events=None):
         """
         Inherited constructor for the semibatch stirred-tank
         reactor class. This method inherits from the CSTR constructor.
@@ -1218,7 +1220,7 @@ class SemibatchReactor(CSTR):
         super().__init__(partic_species, mask_params,
                          base_units, temp_ref,
                          isothermal, reset_states, controls,
-                         h_conv, ht_mode, return_sens)
+                         h_conv, ht_mode, return_sens, state_events)
 
         self.oper_mode = 'Semibatch'
         self.is_continuous = False
