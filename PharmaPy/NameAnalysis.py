@@ -10,6 +10,61 @@ import numpy as np
 from PharmaPy.Gaussians import gaussian
 
 
+def getBipartiteNames(first, second):
+    """
+    Create bipartite graph for matching phases. It only matches phase names.
+    It should rely on some thermodynamic criterion to decide compatible phases.
+
+    Parameters
+    ----------
+    first : dict
+        name dict of the upstream UO.
+    second : dict
+        name dict of the downstream UO.
+
+    Returns
+    -------
+    graph : dict
+        bipartite graph.
+
+    """
+    graph = {}
+    for two in second:
+        for one in first:
+            if one == second:
+                graph[two] = one
+                break
+
+    return graph
+
+
+def getBipartiteMultiPhase(first, second):
+    """
+    Creates bipartite graph for input dictionaries specifying phases and states
+
+    Parameters
+    ----------
+    first : dict
+        DESCRIPTION.
+    second : dict
+        DESCRIPTION.
+
+    Returns
+    -------
+    graph : dict
+
+    """
+
+    upper_graph = getBipartiteNames(first, second)
+
+    graph = {}
+    for phase_down, phase_up in upper_graph.items():
+        key = '/'.join(phase_down, phase_up)
+        graph[key] = getBipartite(first[phase_up], second[phase_down])
+
+    return graph
+
+
 def getBipartite(first, second):
     graph = {}
     types = {}
@@ -188,6 +243,44 @@ class NameAnalyzer:
         matter_transf.y_inlet = y_inlet
 
         return dict_states
+
+    def convertUnitsNew(self, matter_transf):
+        y_upstr = matter_transf.y_upstream
+
+        dict_in = get_dict_states(self.names_up, self.num_species,
+                                  self.num_distr, y_upstr)
+
+        dict_out = {}
+        comp = self.conv_types['composition']
+
+        for target, source in self.bipartite.items():
+            if source is not None:
+
+                y_j = dict_in[source]
+                if target != source:
+                    if 'conc' in target or 'frac' in target:
+                        converted_state = self.__convertComposition(
+                            source, target, y_j, matter_transf)
+
+                    elif 'flow' in target:
+                        converted_state = self.__convertFlow(
+                            source, target, y_j, matter_transf,
+                            dict_in[comp[0]], comp[0])
+
+                    elif 'distrib' in target:
+                        converted_state = self.__convert_distrib(
+                            source, target, y_j, matter_transf)
+
+                    dict_out[target] = converted_state
+
+                else:
+                    dict_out[target] = dict_in[source]
+
+        y_inlet = np.column_stack(list(dict_out.values()))
+
+        matter_transf.y_inlet = y_inlet
+
+        return dict_out
 
     def __convertComposition(self, prefix_up, prefix_down, composition,
                              matter_object):

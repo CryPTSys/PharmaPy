@@ -270,15 +270,21 @@ class SimulationExec:
 
         return stream_table
 
-    def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+    # def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
+    #                        wrapper_kwargs=None,
+    #                        spectra=None,
+    #                        fit_spectra=False, global_analysis=True,
+    #                        phase_modifiers=None, control_modifiers=None,
+    #                        measured_ind=None, optimize_flags=None,
+    #                        jac_fun=None,
+    #                        covar_data=None,
+    #                        pick_unit=None):
+
+    def SetParamEstimation(self, x_data, y_data=None, spectra=None,
+                           fit_spectra=False,
                            wrapper_kwargs=None,
-                           spectra=None,
-                           fit_spectra=False, global_analysis=True,
                            phase_modifiers=None, control_modifiers=None,
-                           measured_ind=None, optimize_flags=None,
-                           jac_fun=None,
-                           covar_data=None,
-                           pick_unit=None):
+                           pick_unit=None, **inputs_paramest):
 
         self.LoadUOs()
 
@@ -316,10 +322,8 @@ class SimulationExec:
         for di in kwargs_wrapper:
             di.update({'run_args': wrapper_kwargs})
 
-        # if len(kwargs_wrapper) == 1:
-        #     kwargs_wrapper = kwargs_wrapper[0]
-
         # Get 1D array of parameters from the UO class
+        param_seed = inputs_paramest.pop('param_seed', None)
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
 
@@ -327,36 +331,37 @@ class SimulationExec:
             param_seed = target_unit.Kinetics.concat_params()
         else:
             param_seed = target_unit.params
-        # param_seed = param_seed[target_unit.mask_params]
 
-        name_params = []
+        name_params = inputs_paramest.get('name_params')
 
-        for ind, logic in enumerate(target_unit.mask_params):
-            if logic:
-                if hasattr(target_unit, 'Kinetics'):
-                    name_params.append(target_unit.Kinetics.name_params[ind])
-                else:
-                    name_params.append(target_unit.name_params[ind])
+        if name_params is None:
+            name_params = []
+            for ind, logic in enumerate(target_unit.mask_params):
+                if logic:
+                    if hasattr(target_unit, 'Kinetics'):
+                        name_params.append(
+                            target_unit.Kinetics.name_params[ind])
+                    else:
+                        name_params.append(target_unit.name_params[ind])
 
         name_states = target_unit.states_uo
+
+        inputs_paramest['name_states'] = name_states
+        inputs_paramest['name_params'] = name_params
 
         # Instantiate parameter estimation
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed, x_data, spectra, global_analysis,
-                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
-                optimize_flags=optimize_flags,
-                jac_fun=jac_fun, covar_data=covar_data,
-                name_params=name_params, name_states=name_states)
+                param_seed=param_seed, x_data=x_data, spectra=spectra,
+                kwargs_fun=kwargs_wrapper,
+                **inputs_paramest)
         else:
             self.ParamInst = ParameterEstimation(
                 target_unit.paramest_wrapper,
-                param_seed, x_data, y_data,
-                kwargs_fun=kwargs_wrapper, measured_ind=measured_ind,
-                optimize_flags=optimize_flags,
-                jac_fun=jac_fun, covar_data=covar_data,
-                name_params=name_params, name_states=name_states)
+                param_seed=param_seed, x_data=x_data, y_data=y_data,
+                kwargs_fun=kwargs_wrapper,
+                **inputs_paramest)
 
     def EstimateParams(self, optim_options=None, method='LM', bounds=None,
                        verbose=True):
@@ -543,24 +548,29 @@ class SimulationExec:
         masses_inlets = np.zeros(len(raw_flows))
         for ind, obj in enumerate(raw_flows):
             if hasattr(obj, 'DynamicInlet') and obj.DynamicInlet is not None:
-                qty_str = ('mass_flow', 'mole_flow')
-                mass_profile = obj.evaluate_inputs(time_flows[ind])
-                for string in qty_str:
-                    massprof = mass_profile[string]
-                    isarray = isinstance(massprof, np.ndarray)
+                # qty_str = ('mass_flow', 'mole_flow')
+                inputs = obj.evaluate_inputs(time_flows[ind])
 
-                    if isarray:
-                        qty_unit = string
-                        mass_profile = massprof
-                        break
-                if qty_unit == 'mole_flow':
-                    mass_profile *= obj.mw_av / 1000  # kg/s
+                if 'mole_flow' in inputs:
+                    flow_profile = inputs['mole_flow'] * obj.mw_av / 1000
+                else:
+                    flow_profile = inputs['mass_flow']
+                # for string in qty_str:
+                #     massprof = mass_profile[string]
+                #     isarray = isinstance(massprof, np.ndarray)
+
+                #     if isarray:
+                #         qty_unit = string
+                #         mass_profile = massprof
+                #         break
+                # if qty_unit == 'mole_flow':
 
                 if steady_state:
-                    masses_inlets[ind] = mass_profile[-1] * time_flows[ind][-1]
+                    masses_inlets[ind] = flow_profile[-1] * \
+                        (time_flows[ind][-1] - time_flows[ind][0])
                 else:
                     masses_inlets[ind] = trapezoidal_rule(time_flows[ind],
-                                                          mass_profile)
+                                                          flow_profile)
 
                 # pass
 
