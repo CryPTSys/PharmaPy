@@ -25,8 +25,12 @@ def unravel_states(states, num_states, name_states, discretized=False,
     if discretized:
         states_reord = states.reshape(-1, sum(num_states))
         states_split = np.split(states_reord, acum_len, axis=1)
-    else:
+    elif states.ndim == 1:
         states_split = np.split(states, acum_len)
+        states_split = [a[0] if len(a) == 1 else a for a in states_split]
+    elif states.ndim > 1:
+        states_split = np.split(states, acum_len, axis=1)
+        states_split = [a[:, 0] if a.shape[1] == 1 else a for a in states_split]
 
     if state_map is not None:
         states_split = [array for ind, array in enumerate(states_split)

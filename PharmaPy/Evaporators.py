@@ -13,6 +13,7 @@ from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
+from PharmaPy.Plotting import plot_function
 
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
@@ -550,6 +551,24 @@ class Evaporator:
         self.num_species = len(self.Liquid_1.mole_frac)
         self.name_species = phase.name_species
 
+        self.states_di = {
+            'mol_i': {'index': self.name_species, 'units': 'mol',
+                      'dim': len(self.name_species)},
+            'x_liq': {'index': self.name_species, 'units': '',
+                      'dim': len(self.name_species)},
+            'y_vap': {'index': self.name_species, 'units': '',
+                      'dim': len(self.name_species)},
+            'mol_liq': {'units': 'mol', 'dim': 1},
+            'mol_vap': {'units': 'mol', 'dim': 1},
+            'pres': {'units': 'Pa', 'dim': 1},
+            'u_int': {'units': 'J', 'dim': 1},
+            'temp': {'units': 'K', 'dim': 1},
+            }
+
+        self.name_states = list(self.states_di.keys())
+
+        self.dim_states = [di['dim'] for di in self.states_di.values()]
+
     @property
     def Inlet(self):
         return self._Inlet
@@ -580,8 +599,8 @@ class Evaporator:
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'moles', 'temp']
-        self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
-                            'pres', 'u_int', 'temp']
+        # self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+        #                     'pres', 'u_int', 'temp']
 
         self.names_upstream = None
         self.bipartite = None
@@ -600,14 +619,14 @@ class Evaporator:
 
         return inputs
 
-    def material_balances(self, time, mol_i, x_i, y_i,
-                          mol_liq, mol_vap, pres, temp, u_inputs,
+    def material_balances(self, time, mol_i, x_liq, y_vap,
+                          mol_liq, mol_vap, pres, u_int, temp, u_inputs,
                           dmoli_dt=None):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
 
-        mw_vap = np.dot(self.Vapor_1.mw, y_i)
+        mw_vap = np.dot(self.Vapor_1.mw, y_vap)
 
         rho_mol = pres / gas_ct / temp  # mol/m**3
         rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
@@ -615,7 +634,7 @@ class Evaporator:
 
         flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
-        rho_liq = self.Liquid_1.getDensity(mole_frac=x_i, temp=temp,
+        rho_liq = self.Liquid_1.getDensity(mole_frac=x_liq, temp=temp,
                                            basis='mole')
 
         vol_liq = mol_liq / rho_liq / 1000  # m**3
@@ -625,29 +644,29 @@ class Evaporator:
             return flow_vap, vol_liq
         else:
             # Differential eqns
-            diff_i = input_flow * input_fracs - flow_vap * y_i - dmoli_dt  # bce - dMi_dt
+            diff_i = input_flow * input_fracs - flow_vap * y_vap - dmoli_dt  # bce - dMi_dt
 
             # Algebraic eqns
             not_super = 1 - self.is_supercritic
-            component_bce = mol_liq * x_i * not_super + mol_vap * y_i - mol_i
+            component_bce = mol_liq * x_liq * not_super + mol_vap * y_vap - mol_i
             global_bce = mol_liq + mol_vap - sum(mol_i)
 
             vol_eqn = vol_liq + vol_vap - self.vol_tot
 
-            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_i, self.activity_model)
+            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_liq, self.activity_model)
 
-            equilibria = y_i * not_super - k_i * x_i
-            equilibria = (y_i - k_i * x_i)[not_super.astype(bool)]
-            # equilibria = y_i - k_i * x_i
+            equilibria = y_vap * not_super - k_i * x_liq
+            equilibria = (y_vap - k_i * x_liq)[not_super.astype(bool)]
+            # equilibria = y_vap - k_i * x_liq
 
             p_sat = self.Liquid_1.AntoineEquation(temp=temp) * not_super
-            p_super = y_i[self.is_supercritic] * pres
+            p_super = y_vap[self.is_supercritic] * pres
 
-            pres_eqn = np.dot(p_sat, x_i) + sum(p_super) - pres
-            # pres_eqn = sum(y_i - x_i)
+            pres_eqn = np.dot(p_sat, x_liq) + sum(p_super) - pres
+            # pres_eqn = sum(y_vap - x_liq)
 
-            alg_balances = np.concatenate((component_bce,  # x_i
-                                           equilibria,  # y_i
+            alg_balances = np.concatenate((component_bce,  # x_liq
+                                           equilibria,  # y_vap
                                            np.array([global_bce]),  # M_L
                                            np.array([vol_eqn]),  # M_V
                                            np.array([pres_eqn])  # P
@@ -656,8 +675,9 @@ class Evaporator:
 
             return diff_i, alg_balances, flow_vap, vol_liq
 
-    def energy_balances(self, time, u_int, temp, x_i, y_i, mol_liq, mol_vap,
-                        vol_liq, flow_vap, pres, u_inputs, du_dt=None):
+    def energy_balances(self, time, vol_liq, flow_vap, u_int, temp,
+                        x_liq, y_vap, mol_liq, mol_vap, pres, mol_i,
+                        u_inputs, du_dt=None):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -676,8 +696,8 @@ class Evaporator:
             else:
                 h_in = 0
 
-        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
-        h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
+        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_liq, basis='mole')
+        h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap, basis='mole')
 
         # Heat transfer
         area_ht = 4 / self.diam_tank * vol_liq + self.area_base  # m**2
@@ -699,30 +719,19 @@ class Evaporator:
 
     def unit_model(self, time, states, states_dot, sw, params=None):
 
-        n_comp = self.num_species + self.include_nitrogen
-
         # Decompose states
-        moles_i = states[:n_comp]
-
-        fracs = states[n_comp:3*n_comp]
-        x_liq = fracs[:n_comp]
-        y_vap = fracs[n_comp:]
-
-        mol_liq = states[3*n_comp]
-        mol_vap = states[3*n_comp + 1]
-
-        pres = states[3*n_comp + 2]
-
-        u_int = states[-2]
-        temp = states[-1]
+        di_states = unravel_states(states, self.dim_states, self.name_states)
 
         # Decompose derivatives
         if states_dot is None:
             dmoli_dt = None
             du_dt = None
         else:
-            dmoli_dt = states_dot[:n_comp]
-            du_dt = states_dot[-2]
+            di_dot = unravel_states(states_dot, self.dim_states,
+                                    self.name_states)
+            # dmoli_dt = states_dot[:n_comp]
+            dmoli_dt = di_dot['mol_i']
+            du_dt = di_dot['u_int']
 
         # Inputs
         u_inputs = self.get_inputs(time)['Inlet']
@@ -730,51 +739,42 @@ class Evaporator:
         u_inputs['mole_flow'] *= self.allow_flow
 
         if states_dot is None:
-            # Material balance
-            material_bces = self.material_balances(time, moles_i,
-                                                   x_liq, y_vap, mol_liq, mol_vap,
-                                                   pres, temp,
-                                                   u_inputs, dmoli_dt)
+            material_bces = self.material_balances(time, **di_states,
+                                                   u_inputs=u_inputs,
+                                                   dmoli_dt=dmoli_dt)
 
             flow_vap, vol_liq = material_bces
 
             # Energy balance
-            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
-                                              mol_liq, mol_vap,
-                                              vol_liq, flow_vap,
-                                              pres, u_inputs, du_dt)
+            energy_bce = self.energy_balances(time, vol_liq, flow_vap,
+                                              u_inputs=u_inputs,
+                                              du_dt=du_dt,
+                                              **di_states)
 
             return material_bces, energy_bce
         else:
-
-            # Material balance
-            material_bces = self.material_balances(time, moles_i,
-                                                   x_liq, y_vap, mol_liq, mol_vap,
-                                                   pres, temp,
-                                                   u_inputs, dmoli_dt)
+            material_bces = self.material_balances(time, **di_states,
+                                                   u_inputs=u_inputs,
+                                                   dmoli_dt=dmoli_dt)
 
             material_bce = np.concatenate(material_bces[:-2])
             flow_vap, vol_liq = material_bces[-2:]
 
             # Energy balance
-            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
-                                              mol_liq, mol_vap,
-                                              vol_liq, flow_vap,
-                                              pres, u_inputs, du_dt)
+            energy_bce = self.energy_balances(time, vol_liq, flow_vap,
+                                              u_inputs=u_inputs,
+                                              du_dt=du_dt,
+                                              **di_states)
 
             # Concatenate balances
             balances = np.concatenate((material_bce, energy_bce))
 
-            # nspecies = self.num_species
-            # multipliers = [1/100] * (nspecies * 2) + [1] * nspecies + [1/100, 1, 1/100]+ [1/1000] * 2
-            # balances *= np.array(multipliers)
-
             # Update output objects (TODO: is this really necessary?)
-            self.Liquid_1.temp = temp
-            self.Vapor_1.temp = temp
+            self.Liquid_1.temp = di_states['temp']
+            self.Vapor_1.temp = di_states['temp']
 
-            self.Liquid_1.mole_frac = x_liq
-            self.Vapor_1.mole_flow = y_vap
+            self.Liquid_1.mole_frac = di_states['x_liq']
+            self.Vapor_1.mole_flow = di_states['y_vap']
 
             # print(abs(balances).max())
 
@@ -985,7 +985,7 @@ class Evaporator:
             is solved. The default is True.
         sundials_opts : dict, optional
             options to be passed to SUNDIALS. For a list of available options,
-            visit https://jmodelica.org/assimulo/ODE_CVode.html.
+            visit https://jmodelica.org/assimulo/DAE_IDA.html
             The default is None.
 
         Returns
@@ -1047,10 +1047,6 @@ class Evaporator:
         solver.make_consistent('IDA_YA_YDP_INIT')
         solver.suppress_alg = True
 
-        # if timesim_limit:
-        #     solver.report_continuously = True
-        #     solver.time_limit = timesim_limit
-
         if not verbose:
             solver.verbosity = 50
 
@@ -1076,6 +1072,13 @@ class Evaporator:
 
     def retrieve_results(self, time, states):
         n_comp = self.num_species + self.include_nitrogen
+
+        dynamic_profiles = unravel_states(states, self.dim_states,
+                                          self.name_states)
+
+        dynamic_profiles['time'] = np.asarray(time)
+
+        self.dynamic_profiles = dynamic_profiles
 
         self.time_runs.append(np.asarray(time))
         self.elapsed_time += time[-1]
@@ -1177,7 +1180,7 @@ class Evaporator:
 
         self.duty_type = [0, 0]  # TODO: this should depend on operation T
 
-    def plot_profiles(self, pick_comp=None, time_div=1, **fig_kwargs):
+    def plot_profiles(self, pick_comp=None, **fig_kwargs):
         """
         Convenience function to plot model solution. Dynamic profiles displayed
         by this funcion are x_liq vs t, y_vap vs t, T/P vs t
@@ -1188,9 +1191,6 @@ class Evaporator:
         pick_comp : list of int, optional
             indexes of states to be plot. If None, all the states are plotted.
             The default is None.
-        time_div : float, optional
-            Scaling factor by which the time coordinate is divided.
-            The default is 1.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
             axes object of matplotlib (plt.subplots(**kwargs)).
@@ -1206,67 +1206,29 @@ class Evaporator:
 
         """
 
-        self.flatten_states()
-
         if pick_comp is None:
             pick_comp = np.arange(self.num_species)
         else:
             pick_comp = pick_comp
 
         # Fractions
-        time_plot = self.timeProf / time_div
-        fig, ax = plt.subplots(2, 2, **fig_kwargs)
-        ax[0, 0].plot(time_plot, self.xliqProf[:, pick_comp])
-        ax[0, 1].plot(time_plot, self.yvapProf[:, pick_comp])
+        if pick_comp is None:
+            states_plot = ('x_liq', 'y_vap', 'temp', 'pres', 'mol_liq',
+                           'mol_vap')
+        else:
+            states_plot = (['x_liq', pick_comp], ['y_vap', pick_comp], 'temp',
+                           'pres', 'mol_liq', 'mol_vap')
 
-        ax[0, 0].set_ylabel('$x_i$')
-        ax[0, 1].set_ylabel('$y_i$')
-
-        leg = [self.Liquid_1.name_species[ind] for ind in pick_comp]
-        ax[0, 0].legend(leg)
-
-        # T and P
-        ax[1, 0].plot(time_plot, self.tempProf, 'k')
-
-        ax_pres = ax[1, 0].twinx()
-
-        color = 'r'
-        ax_pres.plot(time_plot, self.presProf/1000, color)
-
-        ax_pres.spines['right'].set_color(color)
-        ax_pres.tick_params(colors=color)
-        ax_pres.yaxis.label.set_color(color)
-
-        ax[1, 0].set_ylabel('$T$ (K)')
-        ax_pres.set_ylabel('$P$ (kPa)')
-
-        # Moles
-        ax[1, 1].plot(time_plot, self.molLiqProf, 'k')
-        ax_vap = ax[1, 1].twinx()
-        ax_vap.plot(time_plot, self.molVapProf, color)
-
-        ax_vap.spines['right'].set_color(color)
-        ax_vap.tick_params(colors=color)
-        ax_vap.yaxis.label.set_color(color)
-
-        ax[1, 1].set_ylabel('$M_L$ (mol)')
-        ax_vap.set_ylabel('$M_V$ (mol)')
+        ylabels = ('$x_{liq}$', '$y_{vap}$', '$T$', '$P$', '$N_L$', '$N_V$')
+        fig, ax = plot_function(self, states_plot, fig_map=(0, 1, 2, 2, 3, 3),
+                                ylabels=ylabels,
+                                nrows=2, ncols=2, **fig_kwargs)
 
         for axis in ax.flatten():
-            axis.grid(which='both')
-
-            axis.spines['top'].set_visible(False)
-            axis.spines['right'].set_visible(False)
-
             axis.xaxis.set_minor_locator(AutoMinorLocator(2))
             axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        for axis in [ax_vap, ax_pres]:
-            axis.spines['top'].set_visible(False)
-            axis.yaxis.set_minor_locator(AutoMinorLocator(2))
-
-        if time_div == 1:
-            fig.text(0.5, 0, 'time (s)', ha='center')
+        fig.text(0.5, 0, 'time (s)', ha='center')
 
         fig.tight_layout()
 
@@ -1411,6 +1373,24 @@ class ContinuousEvaporator:
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1)
 
+        self.states_di = {
+            'mol_i': {'index': self.name_species, 'units': 'mol',
+                      'dim': len(self.name_species)},
+            'x_liq': {'index': self.name_species, 'units': '',
+                      'dim': len(self.name_species)},
+            'y_vap': {'index': self.name_species, 'units': '',
+                      'dim': len(self.name_species)},
+            'mol_liq': {'units': 'mol', 'dim': 1},
+            'mol_vap': {'units': 'mol', 'dim': 1},
+            'pres': {'units': 'Pa', 'dim': 1},
+            'u_int': {'units': 'J', 'dim': 1},
+            'temp': {'units': 'K', 'dim': 1},
+            }
+
+        self.name_states = list(self.states_di.keys())
+
+        self.dim_states = [di['dim'] for di in self.states_di.values()]
+
     @property
     def Inlet(self):
         return self._Inlet
@@ -1433,8 +1413,8 @@ class ContinuousEvaporator:
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'mole_flow', 'temp']
-        self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
-                            'pres', 'U_internal', 'temp']
+        # self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
+        #                     'pres', 'U_internal', 'temp']
 
         self.name_differential = ['moles_i', 'U_internal']
         self.name_algebraic = ['x_liq', 'y_vap', 'mol_liq', 'mol_vap',
@@ -1478,15 +1458,15 @@ class ContinuousEvaporator:
 
         return vol_liq, vol_vap, flow_liq, flow_vap
 
-    def material_balances(self, time, moles_i, x_i, y_i,
-                          mol_liq, mol_vap, pres, temp, u_inputs,
+    def material_balances(self, time, mol_i, x_liq, y_vap,
+                          mol_liq, mol_vap, pres, u_int, temp, u_inputs,
                           flows_out=False):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
 
         vol_liq, vol_vap, flow_liq, flow_vap = self.get_mole_flows(
-            temp, pres, x_i, y_i, mol_liq, mol_vap, input_flow)
+            temp, pres, x_liq, y_vap, mol_liq, mol_vap, input_flow)
 
         vol_eqn = vol_liq + vol_vap - self.vol_tot
 
@@ -1494,21 +1474,22 @@ class ContinuousEvaporator:
             return flow_liq, flow_vap, vol_liq
         else:
             # Differential eqns
-            dmoli_dt = input_flow * input_fracs - flow_liq * x_i - \
-                (1 - self.reflux_ratio) * flow_vap * y_i
+            dmoli_dt = input_flow * input_fracs - flow_liq * x_liq - \
+                (1 - self.reflux_ratio) * flow_vap * y_vap
 
             # Algebraic eqns
-            component_bce = mol_liq * x_i + mol_vap * y_i - moles_i
-            global_bce = mol_liq + mol_vap - sum(moles_i)
+            component_bce = mol_liq * x_liq + mol_vap * y_vap - mol_i
+            global_bce = mol_liq + mol_vap - sum(mol_i)
 
-            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_i, self.activity_model)
-            equilibria = y_i - k_i * x_i
+            k_i = self.Liquid_1.getKeqVLE(temp, pres, x_liq,
+                                          self.activity_model)
+            equilibria = y_vap - k_i * x_liq
 
             p_sat = self.Liquid_1.AntoineEquation(temp=temp)
-            pres_eqn = np.dot(x_i, p_sat) - pres
+            pres_eqn = np.dot(x_liq, p_sat) - pres
 
-            alg_balances = np.concatenate((component_bce,  # x_i
-                                           equilibria,  # y_i
+            alg_balances = np.concatenate((component_bce,  # x_liq
+                                           equilibria,  # y_vap
                                            np.array([global_bce]),  # M_L
                                            np.array([vol_eqn]),  # M_V
                                            np.array([pres_eqn])  # P
@@ -1517,9 +1498,9 @@ class ContinuousEvaporator:
 
             return dmoli_dt, alg_balances, flow_liq, flow_vap, vol_liq
 
-    def energy_balances(self, time, u_int, temp, x_i, y_i, mol_liq, mol_vap,
-                        vol_liq, flow_liq, flow_vap, pres, u_inputs,
-                        heat_prof=False):
+    def energy_balances(self, time, flow_liq, flow_vap, vol_liq, u_int, temp,
+                        x_liq, y_vap, mol_i, mol_liq, mol_vap, pres,
+                        u_inputs, heat_prof=False):
 
         input_flow = u_inputs['mole_flow']
         input_fracs = u_inputs['mole_frac']
@@ -1529,14 +1510,15 @@ class ContinuousEvaporator:
         h_in = self.Inlet.getEnthalpy(temp=input_temp, mole_frac=input_fracs,
                                       basis='mole')
 
-        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_i, basis='mole')
+        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_liq, basis='mole')
 
         if self.reflux_ratio == 0:
-            h_top = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i, basis='mole')
+            h_top = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
+                                             basis='mole')
         else:
-            temp_bubble = self.Liquid_1.getBubblePoint(pres, mole_frac=y_i)
-            h_top = self.Liquid_1.getEnthalpy(temp=temp_bubble, mole_frac=y_i,
-                                              basis='mole')
+            temp_bubble = self.Liquid_1.getBubblePoint(pres, mole_frac=y_vap)
+            h_top = self.Liquid_1.getEnthalpy(temp=temp_bubble,
+                                              mole_frac=y_vap, basis='mole')
 
         # Heat transfer
         if self.adiabatic:
@@ -1554,7 +1536,7 @@ class ContinuousEvaporator:
                 q_cond = 0
                 h_vap = h_top
             else:
-                h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_i,
+                h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
                                                  basis='mole')
 
                 q_cond = flow_vap * (h_vap - h_top)
@@ -1579,66 +1561,52 @@ class ContinuousEvaporator:
     def unit_model(self, time, states, states_dot, sw, params=None,
                    enrgy_bce=False):
 
-        n_comp = self.num_species
-
         # Decompose states
-        moles_i = states[:n_comp]
-
-        fracs = states[n_comp:3*n_comp]
-        x_liq = fracs[:n_comp]
-        y_vap = fracs[n_comp:]
-
-        mol_liq = states[3*n_comp]
-        mol_vap = states[3*n_comp + 1]
-
-        pres = states[3*n_comp + 2]
-
-        u_int = states[-2]
-        temp = states[-1]
+        di_states = unravel_states(states, self.dim_states, self.name_states)
 
         # Inputs
         u_inputs = self.get_inputs(time)['Inlet']
 
         # Material balance
-        material_bces = self.material_balances(time, moles_i,
-                                               x_liq, y_vap, mol_liq, mol_vap,
-                                               pres, temp,
-                                               u_inputs)
+        material_bces = self.material_balances(time, **di_states,
+                                               u_inputs=u_inputs)
 
         material_bce = np.concatenate(material_bces[:-3])
         flow_liq, flow_vap, vol_liq = material_bces[-3:]
 
         if enrgy_bce:
-            energy_terms = self.energy_balances(time, u_int, temp, x_liq, y_vap,
-                                                mol_liq, mol_vap, vol_liq,
-                                                flow_liq, flow_vap,
-                                                pres, u_inputs, heat_prof=True)
+            energy_terms = self.energy_balances(time, flow_liq, flow_vap, vol_liq,
+                                                **di_states,
+                                                u_inputs=u_inputs,
+                                                heat_prof=True)
 
             return (flow_liq, flow_vap, vol_liq), energy_terms
         else:
             # Energy balance
-            energy_bce = self.energy_balances(time, u_int, temp, x_liq, y_vap,
-                                              mol_liq, mol_vap, vol_liq,
-                                              flow_liq, flow_vap,
-                                              pres, u_inputs)
+            energy_bce = self.energy_balances(time, flow_liq, flow_vap, vol_liq,
+                                              **di_states, u_inputs=u_inputs)
 
             # Concatenate balances
             balances = np.hstack((material_bce, energy_bce))
 
             if states_dot is not None:
                 # Decompose derivatives
-                dmolesi_dt = states_dot[:n_comp]
-                duint_dt = states_dot[-2]
+                di_dot = unravel_states(states_dot, self.dim_states,
+                                        self.name_states)
 
-                balances[:n_comp] = balances[:n_comp] - dmolesi_dt
+                dmolesi_dt = di_dot['mol_i']
+                duint_dt = di_dot['u_int']
+
+                balances[:self.num_species] = balances[:self.num_species] - \
+                    dmolesi_dt
                 balances[-2] = balances[-2] - duint_dt
 
             # Update output objects
-            self.Liquid_1.temp = temp
-            self.Vapor_1.temp = temp
+            self.Liquid_1.temp = di_states['temp']
+            self.Vapor_1.temp = di_states['temp']
 
-            self.Liquid_1.mole_frac = x_liq
-            self.Vapor_1.mole_flow = y_vap
+            self.Liquid_1.mole_frac = di_states['x_liq']
+            self.Vapor_1.mole_flow = di_states['y_vap']
 
             return balances
 
@@ -1871,7 +1839,15 @@ class ContinuousEvaporator:
             return time, states
 
     def retrieve_results(self, time, states):
+
         time = np.asarray(time)
+
+        dynamic_profiles = unravel_states(states, self.dim_states,
+                                          self.name_states)
+
+        dynamic_profiles['time'] = time
+        self.dynamic_profiles = dynamic_profiles
+
         n_comp = self.num_species
 
         self.time_runs.append(time)
