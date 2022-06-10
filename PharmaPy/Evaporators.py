@@ -1846,6 +1846,18 @@ class ContinuousEvaporator:
                                           self.name_states)
 
         dynamic_profiles['time'] = time
+
+        inputs_all = self.get_inputs(time)['Inlet']
+
+        vol_liq, vol_vap, flow_liq, flow_vap = self.get_mole_flows(
+            dynamic_profiles['temp'], dynamic_profiles['pres'],
+            dynamic_profiles['x_liq'], dynamic_profiles['y_vap'],
+            dynamic_profiles['mol_liq'], dynamic_profiles['mol_vap'],
+            inputs_all['mole_flow'])
+
+        dynamic_profiles['vol_liq'] = vol_liq
+        dynamic_profiles['vol_vap'] = vol_vap
+
         self.dynamic_profiles = dynamic_profiles
 
         n_comp = self.num_species
@@ -1874,13 +1886,13 @@ class ContinuousEvaporator:
         self.Phases = self.Liquid_1
         self.__original_phase__ = holder
 
-        inputs_all = get_inputs(time, *self.args_inputs)
+        # inputs_all = get_inputs(time, *self.args_inputs)
 
-        vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
-            self.temp_runs[-1], self.pres_runs[-1],
-            self.xliq_runs[-1], self.yvap_runs[-1],
-            self.molLiq_runs[-1], self.molVap_runs[-1],
-            inputs_all['mole_flow'])
+        # vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
+        #     self.temp_runs[-1], self.pres_runs[-1],
+        #     self.xliq_runs[-1], self.yvap_runs[-1],
+        #     self.molLiq_runs[-1], self.molVap_runs[-1],
+        #     inputs_all['mole_flow'])
 
         self.flowLiqProf = flow_liq
         self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
@@ -1969,9 +1981,6 @@ class ContinuousEvaporator:
         pick_comp : list of int, optional
             indexes of states to be plot. If None, all the states are plotted.
             The default is None.
-        time_div : float, optional
-            Scaling factor by which the time coordinate is divided.
-            The default is 1.
         vol_plot : bool, optional
             If True, vol_liq-vol_vap vs t is plotted. Otherwise,
             mol_liq-mol_vap vs t is plotted.
@@ -1998,68 +2007,29 @@ class ContinuousEvaporator:
             pick_comp = pick_comp
 
         # Fractions
-        time_plot = self.timeProf / time_div
-        fig, ax = plt.subplots(2, 2, **fig_kwargs)
-
-        ax[0, 0].plot(time_plot, self.xliqProf[:, pick_comp])
-        ax[0, 1].plot(time_plot, self.yvapProf[:, pick_comp])
-
-        ax[0, 0].set_ylabel('$x_i$')
-        ax[0, 1].set_ylabel('$y_i$')
-
-        leg = [self.name_species[ind] for ind in pick_comp]
-        ax[0, 0].legend(leg)
-
-        # T and P
-        ax[1, 0].plot(time_plot, self.tempProf, 'k')
-
-        ax_pres = ax[1, 0].twinx()
-
-        color = 'r'
-        ax_pres.plot(time_plot, self.presProf/1000, color)
-
-        ax_pres.spines['right'].set_color(color)
-        ax_pres.tick_params(colors=color)
-        ax_pres.yaxis.label.set_color(color)
-
-        ax[1, 0].set_ylabel('$T$ (K)')
-        ax_pres.set_ylabel('$P$ (kPa)')
-
-        # Moles or volume
-        if vol_plot:
-            ax[1, 1].plot(time_plot, self.volLiqProf, 'k')
-            ax_vap = ax[1, 1].twinx()
-            ax_vap.plot(time_plot, self.vol_tot - self.volLiqProf, color)
-
-            ax[1, 1].set_ylabel('$V_L$ ($m^3$)')
-            ax_vap.set_ylabel('$V_V$ ($m^3$)')
+        if pick_comp is None:
+            states_plot = ['x_liq', 'y_vap', 'temp', 'pres']
         else:
-            ax[1, 1].plot(time_plot, self.molLiqProf, 'k')
-            ax_vap = ax[1, 1].twinx()
-            ax_vap.plot(time_plot, self.molVapProf, color)
+            states_plot = [['x_liq', pick_comp], ['y_vap', pick_comp], 'temp',
+                            'pres']
 
-            ax[1, 1].set_ylabel('$M_L$ (mol)')
-            ax_vap.set_ylabel('$M_V$ (mol)')
+        ylabels = ['$x_{liq}$', '$y_{vap}$', '$T$', '$P$']
+        if vol_plot:
+            states_plot += ['vol_liq', 'vol_vap']
+            ylabels += ['$V_L$', '$V_V$']
+        else:
+            states_plot += ['mol_liq', 'mol_vap']
+            ylabels += ['$N_L$', '$N_V$']
 
-        ax_vap.spines['right'].set_color(color)
-        ax_vap.tick_params(colors=color)
-        ax_vap.yaxis.label.set_color(color)
+        fig, ax = plot_function(self, states_plot, fig_map=(0, 1, 2, 2, 3, 3),
+                                ylabels=ylabels,
+                                nrows=2, ncols=2, **fig_kwargs)
 
         for axis in ax.flatten():
-            axis.grid(which='both')
-
-            axis.spines['top'].set_visible(False)
-            axis.spines['right'].set_visible(False)
-
             axis.xaxis.set_minor_locator(AutoMinorLocator(2))
             axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        for axis in [ax_vap, ax_pres]:
-            axis.spines['top'].set_visible(False)
-            axis.yaxis.set_minor_locator(AutoMinorLocator(2))
-
-        if time_div == 1:
-            fig.text(0.5, 0, 'time (s)', ha='center')
+        fig.text(0.5, 0, 'time (s)', ha='center')
 
         fig.tight_layout()
 

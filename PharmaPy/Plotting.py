@@ -113,7 +113,11 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
             ylabel = ylabels[ind]
 
         if hasattr(uo, 'states_di') and include_units:
-            units = uo.states_di[name]['units']
+            if name in uo.states_di:
+                units = uo.states_di[name]['units']
+            else:
+                units = ''
+
             if len(units) > 0:
                 ylabel = ylabel + ' (' + uo.states_di[name]['units'] + ')'
 
