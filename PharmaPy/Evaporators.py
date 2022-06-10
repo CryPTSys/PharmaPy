@@ -1072,10 +1072,12 @@ class Evaporator:
     def retrieve_results(self, time, states):
         n_comp = self.num_species + self.include_nitrogen
 
-        dynamic_results = unravel_states(states, self.dim_states,
-                                         self.name_states)
+        dynamic_profiles = unravel_states(states, self.dim_states,
+                                          self.name_states)
 
-        self.dynamic_results = dynamic_results
+        dynamic_profiles['time'] = np.asarray(time)
+
+        self.dynamic_profiles = dynamic_profiles
 
         self.time_runs.append(np.asarray(time))
         self.elapsed_time += time[-1]
