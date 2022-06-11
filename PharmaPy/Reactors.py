@@ -41,7 +41,7 @@ def check_stoichiometry(stoich, mws):
               "aggregated Kinetic instance.")
 
 
-def complete_dict_states(time, di, opt_keys, phase, controls):
+def complete_dict_states(time, di, opt_keys, phase, controls, u_inputs=None):
     for key in opt_keys:
         if key not in di:
             if key in controls.keys():
@@ -53,6 +53,12 @@ def complete_dict_states(time, di, opt_keys, phase, controls):
                     val = val * np.ones_like(time)
 
                 di[key] = val
+
+        if u_inputs is not None:
+            if di[key].ndim == 1:
+                di[key] = np.hstack((u_inputs[key], di[key]))
+            else:
+                di[key] = np.vstack((u_inputs[key], di[key]))
 
     return di
 
@@ -284,9 +290,14 @@ class _BaseReactor:
             self.name_states.remove('temp')
             self.name_states.remove('temp_ht')
 
-        if not self.__class__.__name__ == 'SemibatchReactor':
+        reactor_type = self.__class__.__name__
+        if not reactor_type  == 'SemibatchReactor':
             del self.dim_states[self.name_states.index('vol')]
             self.name_states.remove('vol')
+
+        if reactor_type == 'PlugFlowReactor':  # Not implemented yet
+            del self.dim_states[self.name_states.index('temp_ht')]
+            self.name_states.remove('temp_ht')
 
         #     name_concentr = [r'mole_conc_{}'.format(sp)
         #                      for sp in self.name_species]
@@ -1555,13 +1566,13 @@ class PlugFlowReactor(_BaseReactor):
 
         return volPosition, states_solver
 
-    def material_balances(self, time, conc, vol_diff, temp, flow_in, rate_j):
+    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in, rate_j):
         # Inputs
 
         # Finite differences
-        diff_conc = np.diff(conc, axis=0)
+        diff_conc = np.diff(mole_conc, axis=0)
 
-        rates = np.zeros((len(conc), self.num_species))
+        rates = np.zeros((len(mole_conc), self.num_species))
         rates[:, self.mask_species] = rate_j
 
         dconc_dt = -flow_in*(diff_conc.T / vol_diff).T + \
@@ -1569,13 +1580,13 @@ class PlugFlowReactor(_BaseReactor):
 
         return dconc_dt
 
-    def energy_balances(self, time, conc, vol_diff, temp, flow_in, rate_i,
+    def energy_balances(self, time, mole_conc, vol_diff, temp, flow_in, rate_i,
                         heat_profile=False):
 
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         # Volumetric heat capacity
-        cp_vol = inner1d(cp_j, conc) * 1000  # J/m**3/K
+        cp_vol = inner1d(cp_j, mole_conc) * 1000  # J/m**3/K
 
         # Heat of reaction
         delta_href = self.Kinetics.delta_hrxn
@@ -1611,26 +1622,24 @@ class PlugFlowReactor(_BaseReactor):
 
     def unit_model(self, time, states, sw=None, enrgy_bce=False):
 
-        # conc, temp = self.unravel_states(states)
-        reordered = states.reshape(-1, self.num_states)
-        conc = reordered[:, :self.num_species]
-        temp = reordered[:, -1]  # TODO: what if isothermal?
+        di_states = unravel_states(states, self.len_states, self.name_states,
+                                   discretized=True)
 
-        # inputs = get_inputs(time, *self.args_inputs)
         inputs = self.get_inputs(time)['Inlet']
 
-        conc_in = inputs['mole_conc']
-        temp_in = inputs['temp']
+        di_states = complete_dict_states(time, di_states, ('mole_conc', 'temp'),
+                                         self.Liquid_1, self.controls,
+                                         inputs)
+
         flow_in = inputs['vol_flow']  # m**3/s
 
         # Include left boundary
-        conc_all = np.vstack((conc_in, conc))
-        temp_all = np.insert(temp, 0, temp_in)
+        temp_all = di_states['temp']
 
         vol_diff = np.diff(self.vol_discr)
 
         # Reaction rates
-        conc_partic = conc_all[:, self.mask_species]
+        conc_partic = di_states['mole_conc'][:, self.mask_species]
         if self.Kinetics.keq_params is None:
             rates_i = self.Kinetics.get_rxn_rates(
                 conc_partic, temp_all, overall_rates=False)
@@ -1649,21 +1658,22 @@ class PlugFlowReactor(_BaseReactor):
 
         rates_j = np.dot(rates_i, self.Kinetics.normalized_stoich.T)
 
-        material_bces = self.material_balances(time, conc_all, vol_diff,
-                                               temp_all, flow_in, rates_j)
+        material_bces = self.material_balances(time, **di_states,
+                                               vol_diff=vol_diff,
+                                               flow_in=flow_in, rate_j=rates_j)
 
         if 'temp' in self.states_uo:
             if enrgy_bce:
-                ht_inst = self.energy_balances(time, conc_all, vol_diff,
-                                               temp_all,
-                                               flow_in, rates_i,
+                ht_inst = self.energy_balances(time, **di_states,
+                                               vol_diff=vol_diff,
+                                               flow_in=flow_in, rate_i=rates_i,
                                                heat_profile=True)
                 return ht_inst
 
             else:
-                energy_bce = self.energy_balances(time, conc_all, vol_diff,
-                                                  temp_all,
-                                                  flow_in, rates_i,
+                energy_bce = self.energy_balances(time, **di_states,
+                                                  vol_diff=vol_diff,
+                                                  flow_in=flow_in, rate_i=rates_i,
                                                   heat_profile=False)
 
                 balances = np.column_stack((material_bces, energy_bce)).ravel()
