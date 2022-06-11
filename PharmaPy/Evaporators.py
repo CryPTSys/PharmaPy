@@ -551,6 +551,8 @@ class Evaporator:
         self.num_species = len(self.Liquid_1.mole_frac)
         self.name_species = phase.name_species
 
+        self.nomenclature()
+
         self.states_di = {
             'mol_i': {'index': self.name_species, 'units': 'mol',
                       'dim': len(self.name_species)},
@@ -564,6 +566,13 @@ class Evaporator:
             'u_int': {'units': 'J', 'dim': 1},
             'temp': {'units': 'K', 'dim': 1},
             }
+
+        self.fstates_di = {
+            'flow_liq': {'units': 'mol/s', 'dim': 1},
+            'flow_vap': {'units': 'mol/s', 'dim': 1},
+            'vol_liq': {'units': 'm^3', 'dim': 1},
+            'vol_vap': {'units': 'm^3', 'dim': 1}
+                }
 
         self.name_states = list(self.states_di.keys())
 
@@ -599,8 +608,6 @@ class Evaporator:
     def nomenclature(self):
         self.names_states_in = ['mole_frac', 'mole_flow', 'temp']
         self.names_states_out = ['mole_frac', 'moles', 'temp']
-        # self.name_states = ['moles_i', 'x_liq', 'y_vap', 'mol_liq', 'mol_vap',
-        #                     'pres', 'u_int', 'temp']
 
         self.names_upstream = None
         self.bipartite = None
@@ -1858,6 +1865,9 @@ class ContinuousEvaporator:
         dynamic_profiles['vol_liq'] = vol_liq
         dynamic_profiles['vol_vap'] = vol_vap
 
+        dynamic_profiles['flow_liq'] = flow_liq
+        dynamic_profiles['flow_vap'] = flow_vap
+
         self.dynamic_profiles = dynamic_profiles
 
         n_comp = self.num_species
@@ -1885,14 +1895,6 @@ class ContinuousEvaporator:
         holder = copy.deepcopy(self.__original_phase__)
         self.Phases = self.Liquid_1
         self.__original_phase__ = holder
-
-        # inputs_all = get_inputs(time, *self.args_inputs)
-
-        # vol_liq, _, flow_liq, flow_vap = self.get_mole_flows(
-        #     self.temp_runs[-1], self.pres_runs[-1],
-        #     self.xliq_runs[-1], self.yvap_runs[-1],
-        #     self.molLiq_runs[-1], self.molVap_runs[-1],
-        #     inputs_all['mole_flow'])
 
         self.flowLiqProf = flow_liq
         self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
@@ -1969,7 +1971,7 @@ class ContinuousEvaporator:
             # self.Phases.concProf = self.concProf
             # self.Phases.timeProf = self.timeProf
 
-    def plot_profiles(self, pick_comp=None, time_div=1, vol_plot=True,
+    def plot_profiles(self, pick_comp=None, time_div=1, vol_plot=False,
                       **fig_kwargs):
         """
         Convenience function to plot model solution. Dynamic profiles displayed

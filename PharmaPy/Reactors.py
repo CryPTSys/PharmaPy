@@ -10,9 +10,10 @@ from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
-                              eval_state_events, handle_events)
+                              eval_state_events, handle_events, unravel_states)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
+from PharmaPy.Plotting import plot_function
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -38,6 +39,22 @@ def check_stoichiometry(stoich, mws):
               "provided stoichiometric matrix. "
               "Check 'stoich_matrix' argument passed to the "
               "aggregated Kinetic instance.")
+
+
+def complete_dict_states(time, di, opt_keys, phase, controls):
+    for key in opt_keys:
+        if key not in di:
+            if key in controls.keys():
+                di[key] = controls[key](time)
+            else:
+                val = getattr(phase, key, None)
+
+                if isinstance(time, (list, np.ndarray)) and len(time) > 1:
+                    val = val * np.ones_like(time)
+
+                di[key] = val
+
+    return di
 
 
 class _BaseReactor:
@@ -233,18 +250,43 @@ class _BaseReactor:
         return heat_transf
 
     def set_names(self):
+        mask_species = [True] * self.num_species
         if self.name_species is not None:
             mask_species = [name in self.partic_species
                             for name in self.name_species]
 
-            # mask_species = [self.name_species.index(name) for name in
-            #                 self.partic_species]
+        self.mask_species = np.asarray(mask_species)
 
-            self.mask_species = np.asarray(mask_species)
+        if self.__class__.__name__ == 'BatchReactor':
+            dim_conc = self.mask_species.sum()
+        else:
+            dim_conc = self.num_species
 
-        self.name_states = ['mole_conc']
-        if not self.isothermal:
-            self.name_states.append('temp')
+        self.states_di = {
+            'mole_conc': {'index': self.name_species, 'dim': dim_conc,
+                          'units': 'mol/L'},
+            'temp': {'units': 'K', 'dim': 1},
+            'temp_ht': {'units': 'K', 'dim': 1},
+            'vol': {'units': 'm**3', 'dim': 1}
+            }
+
+        self.fstates_di = {
+            'q_ht': {'units': 'W', 'dim': 1},
+            'q_rxn': {'units': 'W', 'dim': 1}}
+
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+
+        if self.isothermal:
+            del self.dim_states[self.name_states.index('temp')]
+            del self.dim_states[self.name_states.index('temp_ht')]
+
+            self.name_states.remove('temp')
+            self.name_states.remove('temp_ht')
+
+        if not self.__class__.__name__ == 'SemibatchReactor':
+            del self.dim_states[self.name_states.index('vol')]
+            self.name_states.remove('vol')
 
         #     name_concentr = [r'mole_conc_{}'.format(sp)
         #                      for sp in self.name_species]
@@ -270,40 +312,28 @@ class _BaseReactor:
         return inputs
 
     def unit_model(self, time, states, params):
-
         # Calculate inlets
         u_values = self.get_inputs(time)
 
-        conc = states[:self.num_concentr]
+        # Decompose states
+        di_states = unravel_states(states, self.dim_states, self.name_states)
 
-        ind = 0
-        if 'vol' in self.states_uo:
-            vol = states[self.num_concentr]
-            ind += 1
-        else:
-            vol = self.Liquid_1.vol
+        di_states = complete_dict_states(time, di_states,
+                                         ('vol', 'temp', 'temp_ht'),
+                                         self.Liquid_1, self.controls)
 
-        if 'temp' in self.states_uo:
-            temp = states[self.num_concentr + ind]
-            if 'temp_ht' in self.states_uo:
-                temp_ht = states[self.num_concentr + ind + 1]
-        elif 'temp' in self.controls.keys():
-            temp = self.controls['temp'](time)
-        else:
-            temp = self.Liquid_1.temp  # Isothermal
-            temp_ht = None
-
-        self.Liquid_1.temp = temp
+        self.Liquid_1.temp = di_states['temp']
 
         if self.oper_mode != 'Batch':
-            self.Liquid_1.updatePhase(mole_conc=conc, vol=vol)
+            self.Liquid_1.updatePhase(mole_conc=di_states['mole_conc'],
+                                      vol=di_states['vol'])
 
-        material_bces = self.material_balances(time, conc, vol, temp,
-                                               u_values)
+        material_bces = self.material_balances(time, **di_states,
+                                               inputs=u_values)
 
         if 'temp' in self.states_uo:
-            energy_bce = self.energy_balances(time, conc, vol, temp, temp_ht,
-                                              u_values)
+            energy_bce = self.energy_balances(time, **di_states,
+                                              inputs=u_values)
 
             balances = np.append(material_bces, energy_bce)
         else:
@@ -398,102 +428,26 @@ class _BaseReactor:
             return c_prof
 
 
-    def plot_profiles(self, fig_size=None, title=None, time_div=1, q_div=1,
-                      pick_idx=None, black_white=False):
+    def plot_profiles(self, pick_comp=None, **fig_kwargs):
 
-        self.flatten_states()
-
-        if pick_idx is None:
-            conc_plot = self.concProf
-            if self.__class__.__name__ == 'BatchReactor':
-                leg_conc = self.partic_species
-            else:
-                leg_conc = self.name_species
+        if pick_comp is None:
+            states_plot = ('mole_conc', 'temp', 'q_rxn', 'q_ht')
         else:
-            pick_idx = list(pick_idx)
-            conc_plot = self.concProf[:, pick_idx]
-            leg_conc = [self.name_species[ind] for ind in pick_idx]
+            states_plot = (['mole_conc', pick_comp], 'temp', 'q_rxn', 'q_ht')
 
-        time_plot = self.timeProf / time_div
-        names_q = [r'$Q_{rxn}$', r'$Q_{ht}$', r'$Q_{flow}$']
-        q_plot = self.heat_prof / q_div
+        figmap = (0, 1, 2, 2)
+        ylabels = ('$C_j$', '$T$', '$Q_{rxn}$', '$Q_{ht}$')
+        fig, ax = plot_function(self, states_plot, fig_map=figmap,
+                                ncols=3, ylabels=ylabels, **fig_kwargs)
 
-        if 'temp' in self.states_uo:
-            fig, axis = plt.subplots(2, 2, figsize=fig_size)
+        ax[1].plot(self.dynamic_profiles['time'],
+                   self.dynamic_profiles['temp_ht'], '--')
 
-            # Concentration
-            ax_conc = axis[0, 0]
-            ax_temp = axis[0, 1]
-            ax_heat = axis[1, 0]
+        ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 
-            ax_temp.plot(time_plot, self.tempProf, 'k')
-            ax_temp.set_ylabel('$T$ (K)')
-
-            if 'temp_ht' in self.states_uo:
-                ax_temp.plot(time_plot, self.tempHtProf, '--k', alpha=0.5)
-                ax_temp.legend((r'$T_{reactor}$', r'$T_{ht}$'))
-
-            fig.delaxes(axis[1, 1])
-
-        elif 'temp' in self.controls.keys():
-            fig, axis = plt.subplots(2, 2, figsize=fig_size)
-
-            ax_conc = axis[0, 0]
-            ax_temp = axis[0, 1]
-            ax_heat = axis[1, 0]
-
-            ax_temp.plot(time_plot, self.tempProf, 'k')
-            ax_temp.set_ylabel('$T$ (K)')
-
-        else:
-            fig, axis = plt.subplots(1, 2, figsize=fig_size)
-
-            ax_conc = axis[0]
-            ax_heat = axis[1]
-
-        if q_div == 1:
-            ax_heat.set_ylabel('$Q$ (W)')
-        else:
-            ax_heat.set_ylabel('$Q$')
-
-        ax_heat.legend([names_q[ind]
-                        for ind in range(self.heat_prof.shape[1])])
-
-        # Concentration
-        if black_white:
-            for conc in conc_plot.T:
-                ax_conc.plot(time_plot, conc, linestyle=next(linestyles))
-
-        else:
-            ax_conc.plot(time_plot, conc_plot)
-
-        ax_conc.set_ylabel(r'$C_j$ (mol/L)')
-        ax_conc.legend(leg_conc)
-
-        # Heat profile
-        ax_heat.plot(time_plot, q_plot)
-        ax_heat.legend(names_q)
-
-        ax_conc.spines['bottom'].set_position('zero')
-        # ax_heat.spines['bottom'].set_position('zero')
-
-        if 'vol' in self.states_uo:
-            pass  # create an insert for V vs t
-
-        for ax in axis.flatten():
-            ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-            ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
-            # ax.grid()
-
-        if time_div == 1:
-            fig.text(0.5, 0, 'time (s)', ha='center')
-
-        fig.suptitle(title, y=1.04)
         fig.tight_layout()
 
-        return fig, axis
+        return fig, ax
 
     def plot_sens(self, fig_size=None, mode='per_parameter',
                   black_white=False, time_div=1):
@@ -587,38 +541,38 @@ class BatchReactor(_BaseReactor):
         self.names_states_in = self.names_states_out + ['temp', 'vol']
         self.names_states_out = self.names_states_in
 
-    def material_balances(self, time, conc, vol, temp, inputs):
+    def material_balances(self, time, mole_conc, vol, temp, temp_ht, inputs):
 
         if self.Kinetics.keq_params is None:
-            rate = self.Kinetics.get_rxn_rates(conc, temp)
+            rate = self.Kinetics.get_rxn_rates(mole_conc, temp)
         else:
             concentr = np.zeros(len(self.name_species))
-            concentr[self.mask_species] = conc
+            concentr[self.mask_species] = mole_conc
             concentr[~self.mask_species] = self.conc_inert
             deltah_rxn = self.Liquid_1.getHeatOfRxn(
                 self.Kinetics.stoich_matrix, temp, self.mask_species,
                 self.Kinetics.delta_hrxn, self.Kinetics.tref_hrxn)
 
-            rate = self.Kinetics.get_rxn_rates(conc, temp,
+            rate = self.Kinetics.get_rxn_rates(mole_conc, temp,
                                                delta_hrxn=deltah_rxn)
 
         dmaterial_dt = rate
 
         return dmaterial_dt
 
-    def energy_balances(self, time, conc, vol, temp, temp_ht, inputs,
+    def energy_balances(self, time, mole_conc, vol, temp, temp_ht, inputs,
                         heat_prof=False):
 
         temp = np.atleast_1d(temp)
-        conc = np.atleast_2d(conc)
+        mole_conc = np.atleast_2d(mole_conc)
 
-        conc_all = np.ones((len(conc), len(self.Liquid_1.mole_conc)))
+        conc_all = np.ones((len(mole_conc), len(self.Liquid_1.mole_conc)))
 
-        if conc.ndim == 1:
-            conc_all[self.mask_species] = conc
+        if mole_conc.ndim == 1:
+            conc_all[self.mask_species] = mole_conc
             conc_all[~self.mask_species] *= self.conc_inert
         else:
-            conc_all[:, self.mask_species] = conc
+            conc_all[:, self.mask_species] = mole_conc
             conc_all[:, ~self.mask_species] *= self.conc_inert
 
         # Enthalpy calculations
@@ -631,7 +585,7 @@ class BatchReactor(_BaseReactor):
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rates = self.Kinetics.get_rxn_rates(conc, temp, overall_rates=False,
+        rates = self.Kinetics.get_rxn_rates(mole_conc, temp, overall_rates=False,
                                             delta_hrxn=deltah_rxn)
 
         # Balance terms (W)
@@ -803,6 +757,20 @@ class BatchReactor(_BaseReactor):
             return time, states
 
     def retrieve_results(self, time, states):
+        # Prepare dict of results
+        dp = unravel_states(states, self.dim_states, self.name_states)
+        dp['time'] = time
+
+        dp = complete_dict_states(time, dp, ('vol', 'temp', 'temp_ht'),
+                                  self.Liquid_1, self.controls)
+
+        self.heat_prof = self.energy_balances(**dp, inputs=None,
+                                              heat_prof=True)
+
+        dp['q_rxn'] = self.heat_prof[:, 0]
+        dp['q_ht'] = self.heat_prof[:, 1]
+        self.dynamic_profiles = dp
+
         vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
         if 'temp' in self.controls.keys():

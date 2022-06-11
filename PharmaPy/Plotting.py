@@ -67,12 +67,12 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if fig_map is None:
         fig_map = range(len(data))
 
-    fig, axes = plt.subplots(**fig_kwargs)
+    fig, ax_orig = plt.subplots(**fig_kwargs)
 
-    if isinstance(axes, np.ndarray):
-        axes = axes.flatten()
+    if isinstance(ax_orig, np.ndarray):
+        axes = ax_orig.flatten()
     else:
-        axes = (axes, )
+        axes = (ax_orig, )
 
     count = 0
     linestyles = ('-', '--', '-.', ':')
@@ -82,10 +82,11 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         twin = False
 
         index_y = False
-        if isinstance(state_names[ind], (tuple, list, range)):
-            y_ind = state_names[ind][1]
-            if hasattr(uo, 'states_di'):
-                index_y = uo.states_di[name].get('index', False)
+        if hasattr(uo, 'states_di'):
+            states_and_fstates = uo.states_di | uo.fstates_di
+            index_y = states_and_fstates[name].get('index', False)
+            if isinstance(state_names[ind], (tuple, list, range)):
+                y_ind = state_names[ind][1]
                 index_y = [index_y[a] for a in y_ind]
 
         if len(axes[idx].lines) > 0:
@@ -113,13 +114,13 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
             ylabel = ylabels[ind]
 
         if hasattr(uo, 'states_di') and include_units:
-            if name in uo.states_di:
-                units = uo.states_di[name]['units']
-            else:
-                units = ''
-
+            states_and_fstates = uo.states_di | uo.fstates_di
+            # if name in uo.states_di:
+            units = states_and_fstates[name].get('units', '')
+            # else:
+                # units = ''
             if len(units) > 0:
-                ylabel = ylabel + ' (' + uo.states_di[name]['units'] + ')'
+                ylabel = ylabel + ' (' + states_and_fstates[name]['units'] + ')'
 
         if index_y:
             ax.legend(index_y, loc='best')
@@ -131,4 +132,4 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if len(axes) == 1:
         axes = axes[0]
 
-    return fig, axes
+    return fig, ax_orig
