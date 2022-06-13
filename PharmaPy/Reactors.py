@@ -783,8 +783,6 @@ class BatchReactor(_BaseReactor):
         dp['q_rxn'] = self.heat_prof[:, 0]
         dp['q_ht'] = self.heat_prof[:, 1]
 
-        di_complete = self.states_di | self.fstates_di
-
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
