@@ -440,8 +440,29 @@ class _BaseReactor:
 
             return c_prof
 
-
     def plot_profiles(self, pick_comp=None, **fig_kwargs):
+        """
+        Plot representative profiles for tank reactors. For a more flexible
+        plotting interface, see plot_function in th PharmaPy.Plotting module
+
+        Parameters
+        ----------
+        pick_comp : list of str/int, optional
+            list of components to be plotted. Each element of the list
+            can be either an integer or a string with the species name.
+            The default is None.
+        **fig_kwargs : keyword arguments to plt.subplots()
+            named arguments passed to the plotting functions. A yypical field
+            is 'figsize', passed as a (width, height) tuple.
+
+        Returns
+        -------
+        fig : TYPE
+            fig object.
+        ax : numpy array or array
+            ax object or array of objects.
+
+        """
 
         if pick_comp is None:
             states_plot = ('mole_conc', 'temp', 'q_rxn', 'q_ht')
@@ -453,8 +474,7 @@ class _BaseReactor:
         fig, ax = plot_function(self, states_plot, fig_map=figmap,
                                 ncols=3, ylabels=ylabels, **fig_kwargs)
 
-        ax[1].plot(self.dynamic_profiles['time'],
-                   self.dynamic_profiles['temp_ht'], '--')
+        ax[1].plot(self.dynamic_result.time, self.dynamic_result.temp_ht, '--')
 
         ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 

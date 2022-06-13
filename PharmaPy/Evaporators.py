@@ -1215,11 +1215,6 @@ class Evaporator:
 
         """
 
-        if pick_comp is None:
-            pick_comp = np.arange(self.num_species)
-        else:
-            pick_comp = pick_comp
-
         # Fractions
         if pick_comp is None:
             states_plot = ('x_liq', 'y_vap', 'temp', 'pres', 'mol_liq',
@@ -1877,8 +1872,8 @@ class ContinuousEvaporator:
         dynamic_profiles['flow_liq'] = flow_liq
         dynamic_profiles['flow_vap'] = flow_vap
 
-        di_complete = self.states_di | self.fstates_in
-        self.dynamic_result = DynamicResult(di_complete, **dynamic_profiles)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dynamic_profiles)
 
         n_comp = self.num_species
 

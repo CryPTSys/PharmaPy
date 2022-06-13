@@ -67,11 +67,11 @@ class DynamicResult:
             head = {'f(states)': 's', 'dim': '', 'units': 's'}
             str_fstates = pprint(self.di_fstates, head)
 
-            out_str = str_states + '\n' + str_fstates
+            out_str = str_states + '\n\n' + str_fstates
 
         else:
             out_str = str_states
 
-        out_str += '\nTime vector can be accessed as result.time\n'
+        out_str += '\n\nTime vector can be accessed as result.time\n'
 
         return out_str

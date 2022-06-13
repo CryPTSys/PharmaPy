@@ -57,21 +57,20 @@ def get_state_data(uo, *state_names):
     return time, di
 
 
-def get_states_di(uo, *state_names):
-    data = uo.dynamic_profiles.copy()
-    time = data.pop('time')
+def get_states_result(result, *state_names):
+    time = result.time
 
     out = {}
     for key in state_names:
         idx = None
         if isinstance(key, (list, tuple, range)):
             state, idx = key
-            indexes = uo.states_di[state]['index']
+            indexes = result.di_states[state]['index']
             idx = get_indexes(indexes, idx)
         else:
             state = key
 
-        y = data[state]
+        y = getattr(result, state)
 
         if idx is not None:
             y = y[:, idx]
@@ -83,8 +82,8 @@ def get_states_di(uo, *state_names):
 
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    if hasattr(uo, 'dynamic_profiles'):
-        time, data = get_states_di(uo, *state_names)
+    if hasattr(uo, 'dynamic_result'):
+        time, data = get_states_result(uo.dynamic_result, *state_names)
     else:
         time, data = get_state_data(uo, *state_names)
 
