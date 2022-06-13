@@ -54,7 +54,7 @@ class _BaseCryst:
 
     def __init__(self, mask_params,
                  method, target_comp, scale, vol_tank,
-                 isothermal, controls, args_control, cfun_solub,
+                 controls, args_control, cfun_solub,
                  adiabatic, rad_zero,
                  reset_states,
                  h_conv, vol_ht, basis, jac_type,
@@ -75,9 +75,6 @@ class _BaseCryst:
             Scaling factor by which crystal size distribution will be
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balace is considered
-            (i.e dT/dt = 0)
         controls : dict of dicts(funcs) (optional, default = None)
             Dictionary with keys representing the state(e.g.'Temp') which is
             controlled and the value indicating the function to use
@@ -160,10 +157,6 @@ class _BaseCryst:
                     raise RuntimeError(
                         "'%s' control is not a callable. Provide a function "
                         "to be evaluated" % key)
-
-        self.isothermal = isothermal
-        if 'temp' in self.controls.keys():
-            self.isothermal = False
 
         self.method = method
         self.rad = rad_zero
@@ -286,6 +279,11 @@ class _BaseCryst:
                             in range(self.Solid_1.num_mom)]
                 name_mom.append('C')
 
+                self.num_distr = len(self.Solid_1.moments)
+
+            else:
+                self.num_distr = len(self.Solid_1.distrib)
+
             # Species
             if self.name_species is None:
                 num_sp = len(self.Liquid_1.mass_frac)
@@ -294,6 +292,8 @@ class _BaseCryst:
             self.states_in_dict = {
                 'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
                 'Inlet': {'vol_flow': 1, 'temp': 1}}
+
+            self.nomenclature()
 
     @property
     def Kinetics(self):
@@ -329,6 +329,67 @@ class _BaseCryst:
     def Utility(self, utility):
         self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
         self._Utility = utility
+
+    def nomenclature(self):
+        name_class = self.__class__.__name__
+
+        states_di = {
+            'mass_conc': {'dim': len(self.name_species),
+                          'index': self.name_species, 'units': 'kg/m**3'},
+            }
+
+        di_distr = {'dim': self.num_distr,
+                    'index': list(range(self.num_distr))}
+
+        if name_class != 'BatchCryst':
+            self.names_states_in += ['vol_flow', 'temp']
+
+        if self.method == 'moments':
+            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
+
+            # for mom in mom_names[::-1]:
+            self.names_states_in.insert(0, 'moments')
+
+            # self.states_in_dict['solid']['moments']
+
+            if name_class == 'MSMPR':
+                self.states_uo.append('moments')
+
+                di_distr['units'] = 'm**n/m**3'
+                states_di['mu_n'] = di_distr
+            else:
+                self.states_uo.append('total_moments')
+
+                di_distr['units'] = 'm**n'
+                states_di['mu_tilde_n'] = di_distr
+
+        elif self.method == '1D-FVM':
+            self.names_states_in.insert(0, 'distrib')
+
+            if name_class == 'MSMPR':
+                self.states_uo.insert(0, 'distrib')
+
+                di_distr['units'] = '#/m**3/um'
+                states_di['distrib'] = di_distr
+
+            else:
+                self.states_uo.insert(0, 'total_distrib')
+
+                di_distr['units'] = '#/um'
+                states_di['distrib_tilde'] = di_distr
+
+        if name_class == 'SemibatchCryst':
+            self.states_uo.append('vol')
+
+        if self.adiabatic:
+            self.states_uo.append('temp')
+        elif 'temp' not in self.controls:
+            self.states_uo += ['temp', 'temp_ht']
+
+        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
+        self.names_states_out = self.names_states_in
+
+        self.states_di = states_di
 
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
@@ -1492,7 +1553,7 @@ class _BaseCryst:
 class BatchCryst(_BaseCryst):
     def __init__(self, target_comp, mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
-                 isothermal=False, controls=None, params_control=None,
+                 controls=None, params_control=None,
                  cfun_solub=None,
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
@@ -1512,9 +1573,6 @@ class BatchCryst(_BaseCryst):
             Scaling factor by which crystal size distribution will be
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
             which is controlled and the value indicating the function
@@ -1546,7 +1604,7 @@ class BatchCryst(_BaseCryst):
         """
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
-                         isothermal, controls, params_control, cfun_solub,
+                         controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero, reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events)
@@ -1557,31 +1615,31 @@ class BatchCryst(_BaseCryst):
 
         self.oper_mode = 'Batch'
 
-        self.nomenclature()
+        # self.nomenclature()
 
         self.vol_offset = 0.75
 
-    def nomenclature(self):
-        if not self.isothermal:
-            if 'temp' not in self.controls.keys():
-                self.states_uo.append('temp')
+    # def nomenclature(self):
+    #     if not self.isothermal:
+    #         if 'temp' not in self.controls.keys():
+    #             self.states_uo.append('temp')
 
-        self.names_states_out = ['mass_conc']
+    #     self.names_states_out = ['mass_conc']
 
-        if self.method == 'moments':
-            self.names_states_in.insert(0, 'moments')
-            self.names_states_out.insert(0, 'moments')
+    #     if self.method == 'moments':
+    #         self.names_states_in.insert(0, 'moments')
+    #         self.names_states_out.insert(0, 'moments')
 
-            self.states_uo.insert(0, 'moments')
+    #         self.states_uo.insert(0, 'moments')
 
-        elif self.method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-            self.names_states_out.insert(0, 'total_distrib')
+    #     elif self.method == '1D-FVM':
+    #         self.names_states_in.insert(0, 'distrib')
+    #         self.names_states_out.insert(0, 'total_distrib')
 
-            self.states_uo.append('total_distrib')
+    #         self.states_uo.append('total_distrib')
 
-        self.names_states_out = self.names_states_out + ['vol', 'temp']
-        self.names_states_in += ['vol_liq', 'temp']
+    #     self.names_states_out = self.names_states_out + ['vol', 'temp']
+    #     self.names_states_in += ['vol_liq', 'temp']
 
     def jac_states(self, time, states, params, return_only=True):
 
@@ -1985,14 +2043,14 @@ class MSMPR(_BaseCryst):
     def __init__(self, target_comp,
                  mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
-                 isothermal=False, controls=None, params_control=None,
+                 controls=None, params_control=None,
                  cfun_solub=None, adiabatic=False, rad_zero=0,
                  reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None, num_interp_points=3, state_events=None):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
-                         isothermal, controls, params_control,
+                         controls, params_control,
                          cfun_solub, adiabatic, rad_zero,
                          reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events)
@@ -2011,9 +2069,6 @@ class MSMPR(_BaseCryst):
             Scaling factor by which crystal size distribution will be
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
             which is controlled and the value indicating the function
@@ -2448,7 +2503,7 @@ class MSMPR(_BaseCryst):
 
 class SemibatchCryst(MSMPR):
     def __init__(self, target_comp, vol_tank=None, mask_params=None,
-                 method='1D-FVM', scale=1, isothermal=False, controls=None,
+                 method='1D-FVM', scale=1, controls=None,
                  params_control=None, cfun_solub=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
@@ -2468,9 +2523,6 @@ class SemibatchCryst(MSMPR):
             Scaling factor by which crystal size distribution will be
             multiplied.
         vol_tank : TODO - Remove, it comes from Phases module.
-        isothermal : bool (optional, default = None)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e dT/dt = 0)
         controls : dict of dicts (funcs) (optional, default = None)
             Dictionary with keys representing the state (e.g.'Temp')
             which is controlled and the value indicating the function
