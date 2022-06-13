@@ -7,12 +7,12 @@ Created on Mon Jun 13 11:38:23 2022
 
 
 class DynamicResult:
-    def __init__(self, uo, **results):
+    def __init__(self, di_states, **results):
         self.__dict__.update(**results)
-        self.uo = uo
+        self.di_states = di_states
 
     def __repr__(self):
-        di_states = self.uo.states_di
+        di_states = self.di_states
 
         out = []
 

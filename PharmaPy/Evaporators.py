@@ -13,6 +13,8 @@ from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
+
+from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_function
 
 from scipy.optimize import fsolve
@@ -1085,7 +1087,7 @@ class Evaporator:
 
         dynamic_profiles['time'] = np.asarray(time)
 
-        self.dynamic_profiles = dynamic_profiles
+        self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
 
         self.time_runs.append(np.asarray(time))
         self.elapsed_time += time[-1]
@@ -1392,6 +1394,13 @@ class ContinuousEvaporator:
             'pres': {'units': 'Pa', 'dim': 1},
             'u_int': {'units': 'J', 'dim': 1},
             'temp': {'units': 'K', 'dim': 1},
+            }
+
+        self.fstates_di = {
+            'flow_liq': {'units': 'mol/s', 'dim': 1},
+            'flow_vap': {'units': 'mol/s', 'dim': 1},
+            'vol_liq': {'units': 'm**3', 'dim': 1},
+            'vol_vap': {'units': 'm**3', 'dim': 1},
             }
 
         self.name_states = list(self.states_di.keys())
@@ -1868,7 +1877,8 @@ class ContinuousEvaporator:
         dynamic_profiles['flow_liq'] = flow_liq
         dynamic_profiles['flow_vap'] = flow_vap
 
-        self.dynamic_profiles = dynamic_profiles
+        di_complete = self.states_di | self.fstates_in
+        self.dynamic_result = DynamicResult(di_complete, **dynamic_profiles)
 
         n_comp = self.num_species
 

@@ -13,7 +13,9 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events, unravel_states)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
+
 from PharmaPy.Plotting import plot_function
+from PharmaPy.Results import DynamicResult
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -780,7 +782,11 @@ class BatchReactor(_BaseReactor):
 
         dp['q_rxn'] = self.heat_prof[:, 0]
         dp['q_ht'] = self.heat_prof[:, 1]
-        self.dynamic_profiles = dp
+
+        di_complete = self.states_di | self.fstates_di
+
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
         vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
