@@ -8,11 +8,33 @@ Created on Thu Jun  9 18:02:01 2022
 import matplotlib.pyplot as plt
 import numpy as np
 
+from PharmaPy.Errors import PharmaPyValueError
+
 
 def color_axis(ax, color):
     ax.spines['right'].set_color(color)
     ax.tick_params(axis='y', colors=color, which='both')
     ax.yaxis.label.set_color(color)
+
+
+def get_indexes(names, picks):
+    out = []
+
+    lower_names = [a.lower() for a in names]
+
+    for pick in picks:
+        if isinstance(pick, str):
+            low_pick = pick.lower()
+            if low_pick in lower_names:
+                out.append(lower_names.index(low_pick))
+            else:
+                mess = "Name '%s' not in the set of compound names listed in the pure-component json file" % low_pick
+                raise PharmaPyValueError(mess)
+
+        elif isinstance(pick, int):
+            out.append(pick)
+
+    return out
 
 
 def get_state_data(uo, *state_names):
@@ -44,6 +66,8 @@ def get_states_di(uo, *state_names):
         idx = None
         if isinstance(key, (list, tuple, range)):
             state, idx = key
+            indexes = uo.states_di[state]['index']
+            idx = get_indexes(indexes, idx)
         else:
             state = key
 
@@ -87,6 +111,8 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
             index_y = states_and_fstates[name].get('index', False)
             if isinstance(state_names[ind], (tuple, list, range)):
                 y_ind = state_names[ind][1]
+                y_ind = get_indexes(index_y, y_ind)
+
                 index_y = [index_y[a] for a in y_ind]
 
         if len(axes[idx].lines) > 0:
@@ -115,10 +141,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
 
         if hasattr(uo, 'states_di') and include_units:
             states_and_fstates = uo.states_di | uo.fstates_di
-            # if name in uo.states_di:
             units = states_and_fstates[name].get('units', '')
-            # else:
-                # units = ''
             if len(units) > 0:
                 ylabel = ylabel + ' (' + states_and_fstates[name]['units'] + ')'
 
