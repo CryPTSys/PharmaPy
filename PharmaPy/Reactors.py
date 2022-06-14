@@ -1481,12 +1481,23 @@ class PlugFlowReactor(_BaseReactor):
         else:
             self.states_out_dict['Liquid_1'] = {'vol_flow': 1}
 
+        num_comp = len(self.Inlet.name_species)
+        len_in = [num_comp, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
+
     def nomenclature(self):
         if not self.isothermal:
             self.states_uo.append('temp')
 
         self.names_states_out += ['temp', 'vol_flow']
         self.names_states_in = self.names_states_out
+
+    def get_inputs(self, time):
+        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return inputs
 
     def material_steady(self, conc, temp):
         if self.Kinetics.keq_params is None:
@@ -1727,7 +1738,7 @@ class PlugFlowReactor(_BaseReactor):
         if time_upstream is None:
             time_upstream = [0]
 
-        inputs = get_inputs(time_upstream[-1], self, self.num_species)
+        inputs = self.get_inputs(time_upstream[-1])['Inlet']
         tau = vol_rxn / inputs['vol_flow']
 
         self.tau = tau
@@ -1745,12 +1756,6 @@ class PlugFlowReactor(_BaseReactor):
         :param sundials_opts:
         :return:
         """
-
-        num_comp = len(self.Liquid_1.name_species)
-        len_in = [num_comp, 1, 1]
-        states_in_dict = dict(zip(self.names_states_in, len_in))
-
-        self.states_in_dict = {'Inlet': states_in_dict}
 
         if runtime is not None:
             final_time = runtime + self.elapsed_time
@@ -1846,7 +1851,7 @@ class PlugFlowReactor(_BaseReactor):
 
         self.dynamic_result = DynamicResult(self.states_di, **dynamic_result)
 
-        inputs = get_inputs(self.timeProf, *self.args_inputs)
+        inputs = self.get_inputs(self.timeProf)['Inlet']
 
         outlet_states = retrieve_pde_result(dynamic_result,
                                             vol=self.vol_discr[-1])

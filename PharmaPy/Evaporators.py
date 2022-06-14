@@ -1412,6 +1412,12 @@ class ContinuousEvaporator:
         self._Inlet = inlet
         self._Inlet.num_interpolation_points = self.num_interp_points
 
+        num_comp = len(self.Inlet.name_species)
+        len_in = [num_comp, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
+
     @property
     def Utility(self):
         return self._Utility
@@ -1711,7 +1717,7 @@ class ContinuousEvaporator:
         if time_upstream is None:
             time_upstream = [0]
 
-        inputs = get_inputs(time_upstream[-1], self, self.num_species)
+        inputs = self.get_inputs(time_upstream[-1])['Inlet']
 
         dens_inlet = self.Liquid_1.getDensity(mole_frac=inputs['mole_frac'],
                                               temp=inputs['temp'],
@@ -1763,12 +1769,6 @@ class ContinuousEvaporator:
         integrator and an array of solved states is returned.
 
         """
-
-        num_comp = len(self.Liquid_1.name_species)
-        len_in = [num_comp, 1, 1]
-        states_in_dict = dict(zip(self.names_states_in, len_in))
-
-        self.states_in_dict = {'Inlet': states_in_dict}
 
         self.args_inputs = (self, self.num_species)
 
@@ -1872,6 +1872,12 @@ class ContinuousEvaporator:
         dynamic_profiles['flow_liq'] = flow_liq
         dynamic_profiles['flow_vap'] = flow_vap
 
+        # For connectivity purposes (what if the desired stream is vapor?)
+        dynamic_profiles['mole_frac'] = dynamic_profiles['x_liq']
+        dynamic_profiles['mole_flow'] = dynamic_profiles['flow_liq']
+
+        self.outputs = dynamic_profiles
+
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dynamic_profiles)
 
@@ -1912,8 +1918,8 @@ class ContinuousEvaporator:
                                    mole_frac=self.xliq_runs[-1][-1],
                                    mole_flow=flow_liq[-1])
 
-        self.outputs = np.column_stack((self.xliq_runs[-1],
-                                        self.flowLiqProf, self.temp_runs[-1]))
+        # self.outputs = np.column_stack((self.xliq_runs[-1],
+        #                                 self.flowLiqProf, self.temp_runs[-1]))
 
         # Heat duties
         self.get_heat_duty(time, states)

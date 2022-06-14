@@ -345,6 +345,11 @@ class _BaseCryst:
         if name_class != 'BatchCryst':
             self.names_states_in += ['vol_flow', 'temp']
 
+            if self.method == 'moments':
+                self.states_in_dict['Inlet']['mu_n'] = self.num_distr
+            else:
+                self.states_in_dict['Inlet']['distrib'] = self.num_distr
+
         if self.method == 'moments':
             # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
 
@@ -355,6 +360,7 @@ class _BaseCryst:
 
             if name_class == 'MSMPR':
                 self.states_uo.append('moments')
+                # self.states_in_dict['Inlet']['distrib'] = self.num_distr
 
                 di_distr['units'] = 'm**n/m**3'
                 states_di['mu_n'] = di_distr
@@ -363,6 +369,9 @@ class _BaseCryst:
 
                 di_distr['units'] = 'm**n'
                 states_di['mu_tilde_n'] = di_distr
+
+                # if name_class == 'SemibatchCryst':
+                    # self.states_in_dict['Inlet']['distrib'] = self.num_distr
 
         elif self.method == '1D-FVM':
             self.names_states_in.insert(0, 'distrib')
@@ -874,7 +883,7 @@ class _BaseCryst:
         if self.vol_tank is None:
             if isinstance(self, SemibatchCryst):
                 time_vec = np.linspace(self.elapsed_time, final_time)
-                vol_flow = get_inputs(time_vec, *self.args_inputs)['vol_flow']
+                vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
 
                 self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
 
@@ -2070,45 +2079,6 @@ class MSMPR(_BaseCryst):
         self._Inlet = inlet_object
         self._Inlet.num_interpolation_points = self.num_interp_points
 
-    # def nomenclature(self):
-    #     self.names_states_in += ['vol_flow', 'temp']
-
-    #     name_class = self.__class__.__name__
-
-    #     if self.method == 'moments':
-    #         # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
-
-    #         # for mom in mom_names[::-1]:
-    #         self.names_states_in.insert(0, 'moments')
-
-    #         # self.states_in_dict['solid']['moments']
-
-    #         if name_class == 'SemibatchCryst':
-    #             self.states_uo.append('total_moments')
-    #         else:
-    #             self.states_uo.append('moments')
-
-    #     elif self.method == '1D-FVM':
-    #         self.names_states_in.insert(0, 'distrib')
-
-    #         if name_class == 'SemibatchCryst':
-    #             self.states_uo.insert(0, 'total_distrib')
-    #         else:
-    #             self.states_uo.insert(0, 'distrib')
-
-    #     if name_class == 'SemibatchCryst':
-    #         self.states_uo.append('vol')
-
-    #     if self.adiabatic:
-    #         self.states_uo.append('temp')
-    #     elif not self.isothermal:
-    #         self.states_uo += ['temp', 'temp_ht']
-    #     # elif self.adiabatic:
-    #     #     self.states_uo.append('temp')
-
-    #     self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
-    #     self.names_states_out = self.names_states_in
-
     def _get_tau(self):
         time_upstream = getattr(self.Inlet, 'time_upstream')
         if time_upstream is None:
@@ -2277,6 +2247,8 @@ class MSMPR(_BaseCryst):
         dynamic_profiles['time'] = time_profile
         dynamic_profiles['vol_flow'] = volflow
 
+        self.outputs = dynamic_profiles
+
         self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
 
         self.time_runs.append(time_profile)
@@ -2432,7 +2404,7 @@ class MSMPR(_BaseCryst):
 
             self.Outlet = Slurry(vol_slurry=self.vol_mult)
 
-        self.outputs = y_outputs
+        # self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
 
     def get_heat_duty(self, time, states):

@@ -18,22 +18,26 @@ def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
         # Assume steady state for extrapolation
         time = min(time, t_inlet[-1])
 
-        y_interpol = local_newton_interpolation(time, t_inlet, y_inlet,
-                                                **kwargs_interp_fn)
+        y_interp = local_newton_interpolation(time, t_inlet, y_inlet,
+                                              **kwargs_interp_fn)
     else:
         interpol = CubicSpline(t_inlet, y_inlet, **kwargs_interp_fn)
-        flags_interpol = time > t_inlet[-1]
+        flags_extrapol = time > t_inlet[-1]
 
-        if any(flags_interpol):
-            time_interpol = time[~flags_interpol]
+        if any(flags_extrapol):
+            time_interpol = time[~flags_extrapol]
             y_interp = interpol(time_interpol)
 
-            y_extrapol = np.tile(y_interp[-1], (sum(flags_interpol), 1))
-            y_interpol = np.vstack((y_interp, y_extrapol))
+            if y_inlet.ndim == 1:
+                y_extrap = np.tile(y_interp[-1], sum(flags_extrapol))
+                y_interp = np.concatenate((y_interp, y_extrap))
+            else:
+                y_extrap = np.tile(y_interp[-1], (sum(flags_extrapol), 1))
+                y_interp = np.vstack((y_interp, y_extrap))
         else:
-            y_interpol = interpol(time)
+            y_interp = interpol(time)
 
-    return y_interpol
+    return y_interp
 
 
 def get_input_dict(input_data, name_dict):
@@ -69,41 +73,35 @@ def get_input_dict(input_data, name_dict):
     return dict_out
 
 
-def get_missing_field(obj, name, di):
-    dim = di[list(di.keys())[0]]
-
-    n_state = di[name]
-    n_times = 1
-    if isinstance(dim, np.ndarray):
-        if dim.ndim > 1:
-            n_times = dim.shape[0]
-
+def get_missing_field(dim_state, n_times):
     if n_times == 1:
-        if n_state == 1:
+        if dim_state == 1:
             out = 0
         else:
-            out = np.zeros(n_state)
+            out = np.zeros(dim_state)
     elif n_times > 1:
-        if n_state == 1:
+        if dim_state == 1:
             out = np.zeros(n_times)
 
         else:
-            out = np.zeros((n_times, n_state))
+            out = np.zeros((n_times, dim_state))
 
     return out
 
 
-def get_remaining_states(dict_states_in, stream, inlets):
+def get_remaining_states(dict_states_in, stream, inlets, time):
     di_out = {}
+    time = np.atleast_1d(time)
     for phase, di in dict_states_in.items():
         di_out[phase] = {}
         if 'inlet' in phase.lower():
             for state in di:
                 if state not in inlets[phase]:
-                    field = getattr(stream, state)
+                    field = getattr(stream, state, None)
 
                     if field is None:
-                        field = get_missing_field(stream, state, di_out)
+                        field = get_missing_field(
+                            dict_states_in[phase][state], len(time))
 
                     di_out[phase][state] = field
         else:
@@ -113,7 +111,9 @@ def get_remaining_states(dict_states_in, stream, inlets):
                     field = getattr(sub_phase, state)
 
                     if field is None:
-                        field = get_missing_field(sub_phase, state, di_out)
+                        field = get_missing_field(
+                            dict_states_in[phase][state], len(time))
+
                         di_out[sub_phase][state] = getattr(sub_phase, state)
     return di_out
 
@@ -149,17 +149,21 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
 
-        inputs = {}
+        ins = {}
         for key, val in y_inlet.items():
-            inputs[key] = interpolate_inputs(time, t_inlet, val,
-                                             **kwargs_interp)
+            ins[key] = interpolate_inputs(time, t_inlet, val, **kwargs_interp)
+
+        inputs = {}
+        for phase, names in dict_states_in.items():
+            inputs[phase] = {}
+            for key, vals in ins.items():
+                if key in names:
+                    inputs[phase][key] = vals
 
     else:
         inputs = {obj: {} for obj in dict_states_in.keys()}
-        # for name in dict_states_in:
-        #     inputs[name] = getattr(stream, name)
 
-    remaining = get_remaining_states(dict_states_in, stream, inputs)
+    remaining = get_remaining_states(dict_states_in, stream, inputs, time)
 
     for key in dict_states_in:
         inputs[key] = inputs[key] | remaining[key]

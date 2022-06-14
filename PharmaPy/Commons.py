@@ -62,8 +62,7 @@ def unpack_discretized(states, num_states, name_states, indexes=None,
     return dict_states
 
 
-def unpack_states(states, num_states, name_states, indexes=None,
-                  state_map=None):
+def unpack_states(states, num_states, name_states, state_map=None):
     acum_len = np.cumsum(num_states)[:-1]
 
     if states.ndim == 1:
