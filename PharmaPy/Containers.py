@@ -709,7 +709,9 @@ class DynamicCollector:
                 setattr(self, name, getattr(SemiCryst, name))
 
             self.CrystInst = SemiCryst
-            self.Outlet = SemiCryst.Outlet
+
+            self.retrieve_results(time, states)
+            # self.Outlet = SemiCryst.Outlet
 
             vol_phase = self.Outlet.vol_slurry
             if isinstance(vol_phase, np.ndarray):
@@ -777,16 +779,12 @@ class DynamicCollector:
         self.massProf = states[:, self.num_species]
         self.tempProf = states[:, self.num_species + 1]
 
-        self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
-                                  mass=self.massProf[-1])
+        if self.CrystInst is None:
+            self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
+                                      mass=self.massProf[-1])
 
-        self.Liquid_1.temp = self.tempProf[-1]
+            self.Liquid_1.temp = self.tempProf[-1]
 
-        if self.is_cryst:
-            self.Outlet = self.CrystInst.Outlet
-            self.outputs = self.CrystInst.outputs
-            self.dynamic_result = self.outputs.dynamic_result
-        else:
             self.Outlet = self.Liquid_1
             dynamic_result = unpack_states(states, self.dim_states,
                                            self.name_states)
@@ -797,6 +795,11 @@ class DynamicCollector:
                                                 **dynamic_result)
 
             self.outputs = dynamic_result
+
+        else:
+            self.Outlet = self.CrystInst.Outlet
+            self.outputs = self.CrystInst.outputs
+            self.dynamic_result = self.CrystInst.dynamic_result
 
     def plot_profiles(self, fig_size=None, time_div=1, pick_comp=None,
                       kwargs=None):
