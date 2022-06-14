@@ -10,7 +10,8 @@ from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
-                              eval_state_events, handle_events, unravel_states)
+                              eval_state_events, handle_events,
+                              unravel_states, complete_dict_states)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
@@ -41,28 +42,6 @@ def check_stoichiometry(stoich, mws):
               "provided stoichiometric matrix. "
               "Check 'stoich_matrix' argument passed to the "
               "aggregated Kinetic instance.")
-
-
-def complete_dict_states(time, di, opt_keys, phase, controls, u_inputs=None):
-    for key in opt_keys:
-        if key not in di:
-            if key in controls.keys():
-                di[key] = controls[key](time)
-            else:
-                val = getattr(phase, key, None)
-
-                if isinstance(time, (list, np.ndarray)) and len(time) > 1:
-                    val = val * np.ones_like(time)
-
-                di[key] = val
-
-        if u_inputs is not None:
-            if di[key].ndim == 1:
-                di[key] = np.hstack((u_inputs[key], di[key]))
-            else:
-                di[key] = np.vstack((u_inputs[key], di[key]))
-
-    return di
 
 
 class _BaseReactor:
@@ -1818,8 +1797,16 @@ class PlugFlowReactor(_BaseReactor):
         return time, states_solver
 
     def retrieve_results(self, time, states):
-        self.timeProf = np.asarray(time)
+        time = np.asarray(time)
+        self.timeProf = time
         num_times = len(time)
+
+        indexes = {key: self.states_di[key].get('index', None)
+                   for key in self.name_states}
+
+        broken_states = unravel_states(states, self.dim_states,
+                                       self.name_states, discretized=True,
+                                       indexes=indexes)
 
         self.elapsed_time = time[-1]
 

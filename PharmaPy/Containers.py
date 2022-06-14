@@ -525,16 +525,19 @@ class DynamicCollector:
             names_states_in = self.names_states_in['crystallizer']
             self.model_type = 'crystallizer'
 
+            states_in_dict = dict.fromkeys(names_states_in)
+
         else:
             self.name_species = inlet_object.name_species
 
             names_states_in = self.names_states_in['liquid_mixer']
             self.model_type = 'liquid_mixer'
 
-        self.num_species = len(self.name_species)
-        len_in = [self.num_species, 1, 1]
+            len_in = [self.num_species, 1, 1]
 
-        states_in_dict = dict(zip(names_states_in, len_in))
+            states_in_dict = dict(zip(names_states_in, len_in))
+
+        self.num_species = len(self.name_species)
 
         self.states_in_dict = {'Inlet': states_in_dict}
 
@@ -542,7 +545,7 @@ class DynamicCollector:
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
-        names_solids = ['distrib', 'mass_conc', 'vol_flow', 'temp']
+        names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
 
         self.names_states_in = {'liquid_mixer': names_liquid,
                                 'crystallizer': names_solids}
@@ -614,8 +617,16 @@ class DynamicCollector:
 
         if self.model_type == 'crystallizer':
             self.names_states_in = self.names_states_in['crystallizer']
-            init_dict = get_inputs(self.elapsed_time, self, self.num_species,
-                                   len(self.Inlet.x_distrib))
+            # init_dict = get_inputs(self.elapsed_time, self, self.num_species,
+            #                        len(self.Inlet.x_distrib))
+
+            self.states_in_dict['Inlet']['distrib'] = len(self.Inlet.x_distrib)
+            self.states_in_dict['Inlet']['mass_conc'] = len(self.Inlet.Liquid_1.mass_conc)
+            self.states_in_dict['Inlet']['vol_flow'] = 1
+            self.states_in_dict['Inlet']['temp'] = 1
+
+            init_dict = get_inputs_new(self.elapsed_time, self.Inlet,
+                                       self.states_in_dict)['Inlet']
 
             path = self.Inlet.Liquid_1.path_data
 

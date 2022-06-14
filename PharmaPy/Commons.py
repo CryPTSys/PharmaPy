@@ -19,14 +19,43 @@ eps = np.finfo(float).eps
 
 
 def unravel_states(states, num_states, name_states, discretized=False,
-                   state_map=None):
+                   indexes=None, state_map=None):
     acum_len = np.cumsum(num_states)[:-1]
 
     if discretized:
-        states_reord = states.reshape(-1, sum(num_states))
+        if states.ndim == 1:
+            states_reord = states.reshape(-1, sum(num_states))
 
-        states_split = np.split(states_reord, acum_len, axis=1)
-        states_split = [a[:, 0] if a.shape[1] == 1 else a for a in states_split]
+            states_split = np.split(states_reord, acum_len, axis=1)
+            states_split = [a[:, 0] if a.shape[1] == 1 else a
+                            for a in states_split]
+
+        elif states.ndim > 1:
+            dim_tot = sum(num_states)
+            num_fv = states.shape[1] // dim_tot
+            num_times = states.shape[0]
+
+            nums = list(num_states) * num_fv
+            acum_len = np.cumsum(nums)[:-1]
+
+            states_fv = np.split(states, acum_len, axis=1)
+
+            count_states = len(name_states)
+            states_split = []
+            for idx_state, name in enumerate(name_states):
+                state = np.vstack(states_fv[idx_state::count_states])
+
+                di_key = indexes[name]
+
+                if di_key is None:
+                    state_data = state.reshape(-1, num_times).T
+                else:
+                    state_data = {}
+                    for idx_col in range(state.shape[1]):
+                        state_data[di_key[idx_col]] = state[:, idx_col].reshape(-1, num_times).T
+
+                states_split.append(state_data)
+
     elif states.ndim == 1:
         states_split = np.split(states, acum_len)
         states_split = [a[0] if len(a) == 1 else a for a in states_split]
@@ -44,6 +73,29 @@ def unravel_states(states, num_states, name_states, discretized=False,
     dict_states = dict(zip(name_states, states_split))
 
     return dict_states
+
+
+def complete_dict_states(time, di, target_keys, phase, controls,
+                         u_inputs=None):
+    for key in target_keys:
+        if key not in di:
+            if key in controls.keys():
+                di[key] = controls[key](time)
+            else:
+                val = getattr(phase, key, None)
+
+                if isinstance(time, (list, np.ndarray)) and len(time) > 1:
+                    val = val * np.ones_like(time)
+
+                di[key] = val
+
+        if u_inputs is not None:
+            if di[key].ndim == 1:
+                di[key] = np.hstack((u_inputs[key], di[key]))
+            else:
+                di[key] = np.vstack((u_inputs[key], di[key]))
+
+    return di
 
 
 # def model_decorator(params=None, switches=None):
