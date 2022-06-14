@@ -11,7 +11,9 @@ from assimulo.problem import Explicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events,
-                              unravel_states, complete_dict_states)
+                              unpack_states, unpack_discretized,
+                              complete_dict_states)
+
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
@@ -42,6 +44,37 @@ def check_stoichiometry(stoich, mws):
               "provided stoichiometric matrix. "
               "Check 'stoich_matrix' argument passed to the "
               "aggregated Kinetic instance.")
+
+
+def retrieve_pde_result(di, time=None, vol=None, idx_time=None, idx_vol=None):
+    final_state = {}
+
+    if idx_time is None:
+        if time is None:
+            idx_time = np.arange(len(di['time']))
+        else:
+            idx_time = np.argmin(abs(time - di['time']))
+            final_state['time'] = di['time'][idx_time]
+
+    if idx_vol is None:
+        if vol is None:
+            idx_vol = np.arange(len(di['vol']) - 1)
+        else:
+            idx_vol = np.argmin(abs(vol - di['vol'])) - 1
+            final_state['vol'] = di['vol'][idx_vol]
+
+    di_filtered = {key: di[key] for key in di
+                   if key != 'time' and key != 'vol'}
+
+    for key, val in di_filtered.items():
+        if isinstance(val, dict):
+            final_state[key] = retrieve_pde_result(val,
+                                                   idx_time=idx_time,
+                                                   idx_vol=idx_vol)
+        elif isinstance(val, np.ndarray):
+            final_state[key] = val[idx_time, idx_vol]
+
+    return final_state
 
 
 class _BaseReactor:
@@ -308,7 +341,7 @@ class _BaseReactor:
         u_values = self.get_inputs(time)
 
         # Decompose states
-        di_states = unravel_states(states, self.dim_states, self.name_states)
+        di_states = unpack_states(states, self.dim_states, self.name_states)
 
         di_states = complete_dict_states(time, di_states,
                                          ('vol', 'temp', 'temp_ht'),
@@ -770,7 +803,7 @@ class BatchReactor(_BaseReactor):
 
     def retrieve_results(self, time, states):
         # Prepare dict of results
-        dp = unravel_states(states, self.dim_states, self.name_states)
+        dp = unpack_states(states, self.dim_states, self.name_states)
         dp['time'] = time
 
         dp = complete_dict_states(time, dp, ('vol', 'temp', 'temp_ht'),
@@ -1625,14 +1658,14 @@ class PlugFlowReactor(_BaseReactor):
 
     def unit_model(self, time, states, sw=None, enrgy_bce=False):
 
-        di_states = unravel_states(states, self.len_states, self.name_states,
-                                   discretized=True)
+        di_states = unpack_discretized(states, self.len_states,
+                                       self.name_states)
 
         inputs = self.get_inputs(time)['Inlet']
 
-        di_states = complete_dict_states(time, di_states, ('mole_conc', 'temp'),
-                                         self.Liquid_1, self.controls,
-                                         inputs)
+        di_states = complete_dict_states(
+            time, di_states, ('mole_conc', 'temp'), self.Liquid_1,
+            self.controls, inputs)
 
         flow_in = inputs['vol_flow']  # m**3/s
 
@@ -1804,9 +1837,26 @@ class PlugFlowReactor(_BaseReactor):
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        broken_states = unravel_states(states, self.dim_states,
-                                       self.name_states, discretized=True,
-                                       indexes=indexes)
+        dynamic_result = unpack_discretized(states, self.dim_states,
+                                            self.name_states,
+                                            indexes=indexes)
+
+        dynamic_result['time'] = time
+        dynamic_result['vol'] = self.vol_discr
+
+        self.dynamic_result = DynamicResult(self.states_di, **dynamic_result)
+
+        inputs = get_inputs(self.timeProf, *self.args_inputs)
+
+        outlet_states = retrieve_pde_result(dynamic_result,
+                                            vol=self.vol_discr[-1])
+
+        outlet_states['mole_conc'] = np.column_stack(
+            outlet_states['mole_conc'].values())
+
+        outlet_states['vol_flow'] = np.ones_like(time) * inputs['vol_flow']
+
+        self.outputs = outlet_states
 
         self.elapsed_time = time[-1]
 
@@ -1823,7 +1873,7 @@ class PlugFlowReactor(_BaseReactor):
                                ) * self.Liquid_1.temp
 
         # Inputs
-        inputs = get_inputs(self.timeProf, *self.args_inputs)
+
 
         conc_inlet = np.ones((len(states), self.num_species)
                              ) * inputs['mole_conc']
@@ -1869,7 +1919,7 @@ class PlugFlowReactor(_BaseReactor):
         # vol_flow = self.get_inputs(time)['vol_flow']  # TODO: it should be this
         vol_flow = np.repeat(self.Inlet.vol_flow, len(tempProf))
 
-        self.outputs = np.column_stack((conc_out, temp_out, vol_flow))
+        # self.outputs = np.column_stack((conc_out, temp_out, vol_flow))
 
         # Adjust discretization
         self.vol_centers = vol_centers

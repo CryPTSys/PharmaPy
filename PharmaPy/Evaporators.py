@@ -9,7 +9,7 @@ import numpy as np
 # from autograd import numpy as np
 # from autograd import jacobian as jacauto
 from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
-                              handle_events, unravel_states)
+                              handle_events, unpack_states)
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
@@ -729,15 +729,15 @@ class Evaporator:
     def unit_model(self, time, states, states_dot, sw, params=None):
 
         # Decompose states
-        di_states = unravel_states(states, self.dim_states, self.name_states)
+        di_states = unpack_states(states, self.dim_states, self.name_states)
 
         # Decompose derivatives
         if states_dot is None:
             dmoli_dt = None
             du_dt = None
         else:
-            di_dot = unravel_states(states_dot, self.dim_states,
-                                    self.name_states)
+            di_dot = unpack_states(states_dot, self.dim_states,
+                                   self.name_states)
             # dmoli_dt = states_dot[:n_comp]
             dmoli_dt = di_dot['mol_i']
             du_dt = di_dot['u_int']
@@ -1082,8 +1082,8 @@ class Evaporator:
     def retrieve_results(self, time, states):
         n_comp = self.num_species + self.include_nitrogen
 
-        dynamic_profiles = unravel_states(states, self.dim_states,
-                                          self.name_states)
+        dynamic_profiles = unpack_states(states, self.dim_states,
+                                         self.name_states)
 
         dynamic_profiles['time'] = np.asarray(time)
 
@@ -1573,7 +1573,7 @@ class ContinuousEvaporator:
                    enrgy_bce=False):
 
         # Decompose states
-        di_states = unravel_states(states, self.dim_states, self.name_states)
+        di_states = unpack_states(states, self.dim_states, self.name_states)
 
         # Inputs
         u_inputs = self.get_inputs(time)['Inlet']
@@ -1602,8 +1602,8 @@ class ContinuousEvaporator:
 
             if states_dot is not None:
                 # Decompose derivatives
-                di_dot = unravel_states(states_dot, self.dim_states,
-                                        self.name_states)
+                di_dot = unpack_states(states_dot, self.dim_states,
+                                       self.name_states)
 
                 dmolesi_dt = di_dot['mol_i']
                 duint_dt = di_dot['u_int']
@@ -1853,8 +1853,8 @@ class ContinuousEvaporator:
 
         time = np.asarray(time)
 
-        dynamic_profiles = unravel_states(states, self.dim_states,
-                                          self.name_states)
+        dynamic_profiles = unpack_states(states, self.dim_states,
+                                         self.name_states)
 
         dynamic_profiles['time'] = time
 

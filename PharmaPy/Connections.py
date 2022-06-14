@@ -148,10 +148,11 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
     elif stream.y_upstream is not None:
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
-        input_array = interpolate_inputs(time, t_inlet, y_inlet,
-                                         **kwargs_interp)
 
-        inputs = get_input_dict(input_array, dict_states_in)
+        inputs = {}
+        for key, val in y_inlet.items():
+            inputs[key] = interpolate_inputs(time, t_inlet, val,
+                                             **kwargs_interp)
 
     else:
         inputs = {obj: {} for obj in dict_states_in.keys()}

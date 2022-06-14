@@ -16,7 +16,7 @@ from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               upwind_fvm, high_resolution_fvm,
                               eval_state_events, handle_events,
-                              unravel_states, complete_dict_states)
+                              unpack_states, complete_dict_states)
 
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs, get_inputs_new
@@ -517,7 +517,7 @@ class _BaseCryst:
 
         self.Kinetics.set_params(params_all)
 
-        di_states = unravel_states(states, self.dim_states, self.name_states)
+        di_states = unpack_states(states, self.dim_states, self.name_states)
 
         # Inputs
         u_input = self.get_inputs(time)
@@ -1860,8 +1860,8 @@ class BatchCryst(_BaseCryst):
         self.statesProf = states
         time_profile = np.array(time)
 
-        dynamic_profiles = unravel_states(states, self.dim_states,
-                                          self.name_states)
+        dynamic_profiles = unpack_states(states, self.dim_states,
+                                         self.name_states)
 
         dynamic_profiles['time'] = time_profile
 
@@ -2271,8 +2271,8 @@ class MSMPR(_BaseCryst):
         inputs = self.get_inputs(time_profile)
         volflow = inputs['Inlet']['vol_flow']
 
-        dynamic_profiles = unravel_states(states, self.dim_states,
-                                          self.name_states)
+        dynamic_profiles = unpack_states(states, self.dim_states,
+                                         self.name_states)
 
         dynamic_profiles['time'] = time_profile
         dynamic_profiles['vol_flow'] = volflow

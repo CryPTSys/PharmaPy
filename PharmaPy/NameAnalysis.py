@@ -245,10 +245,7 @@ class NameAnalyzer:
         return dict_states
 
     def convertUnitsNew(self, matter_transf):
-        y_upstr = matter_transf.y_upstream
-
-        dict_in = get_dict_states(self.names_up, self.num_species,
-                                  self.num_distr, y_upstr)
+        dict_in = matter_transf.y_upstream
 
         dict_out = {}
         comp = self.conv_types['composition']
@@ -276,9 +273,9 @@ class NameAnalyzer:
                 else:
                     dict_out[target] = dict_in[source]
 
-        y_inlet = np.column_stack(list(dict_out.values()))
+        # y_inlet = np.column_stack(list(dict_out.values()))
 
-        matter_transf.y_inlet = y_inlet
+        matter_transf.y_inlet = dict_out
 
         return dict_out
 
