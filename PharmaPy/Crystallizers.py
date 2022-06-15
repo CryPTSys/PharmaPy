@@ -548,7 +548,6 @@ class _BaseCryst:
             mu_n = di_states['mu_n']
             moms = mu_n * (1e-6)**np.arange(len(mu_n))
             di_states['distrib'] = moms
-            # moms = distr
         else:
             moms = self.Solid_1.getMoments(
                 distrib=di_states['distrib']/self.scale)
@@ -562,8 +561,7 @@ class _BaseCryst:
             inlet_temp = u_input['Inlet']['temp']
 
             if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
-                # self.Inlet.Liquid_1.updatePhase(mass_frac=massfrac_in)
-                rhos_in = self.Inlet.getDensity(di_states['temp'])
+                rhos_in = self.Inlet.getDensity(temp=di_states['temp'])
 
                 inlet_distr = u_input['Inlet']['distrib']
 
@@ -575,7 +573,6 @@ class _BaseCryst:
 
                 h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in, rhos_in)
             else:
-                # self.Inlet.updatePhase(mass_frac=massfrac_in)
                 rho_liq_in = self.Inlet.getDensity(temp=inlet_temp)
                 rho_sol_in = None
 
@@ -903,16 +900,13 @@ class _BaseCryst:
             states_init = np.append(states_init, self.Liquid_1.temp)
             self.len_states += [1]
 
-        # if self.params_iter is None:
         merged_params = self.Kinetics.concat_params()[self.mask_params]
-        # else:
-        #     merged_params = self.params_iter
 
         # ---------- Create problem
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
-        self.derivatives = problem.rhs(0, states_init)
+        self.derivatives = problem.rhs(self.elapsed_time, states_init)
 
         if self.state_event_list is not None:
             def new_handle(solver, info):
@@ -2246,6 +2240,9 @@ class MSMPR(_BaseCryst):
 
         dynamic_profiles['time'] = time_profile
         dynamic_profiles['vol_flow'] = volflow
+
+        if self.__class__.__name__ == 'SemibatchCryst':
+            dynamic_profiles['total_distrib'] = dynamic_profiles['distrib']
 
         self.outputs = dynamic_profiles
 

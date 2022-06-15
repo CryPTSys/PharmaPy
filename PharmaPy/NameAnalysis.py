@@ -245,6 +245,9 @@ class NameAnalyzer:
         return dict_states
 
     def convertUnitsNew(self, matter_transf):
+        # if matter_transf.__module__ == 'PharmaPy.MixedPhases':  # TODO: not general
+        #     matter_transf = matter_transf.Liquid_1
+
         dict_in = matter_transf.y_upstream
 
         dict_out = {}
@@ -253,8 +256,9 @@ class NameAnalyzer:
         for target, source in self.bipartite.items():
             if source is not None:
 
-                y_j = dict_in[source]
                 if target != source:
+                    y_j = dict_in[source]
+
                     if 'conc' in target or 'frac' in target:
                         converted_state = self.__convertComposition(
                             source, target, y_j, matter_transf)
@@ -284,14 +288,14 @@ class NameAnalyzer:
         up, down = prefix_up, prefix_down
 
         if 'frac' in up and 'frac' in down:
-            method = getattr(matter_object, 'frac_to_frac')
+            method_name = 'frac_to_frac'
             if 'mole' in up:
                 fun_kwargs = {'mole_frac': composition}
             elif 'mass' in up:
                 fun_kwargs = {'mass_frac': composition}
 
         elif 'frac' in up and 'conc' in down:
-            method = getattr(matter_object, 'frac_to_conc')
+            method_name = 'frac_to_conc'
 
             if 'mole' in up:
                 fun_kwargs = {'mole_frac': composition}
@@ -302,26 +306,34 @@ class NameAnalyzer:
                 fun_kwargs['basis'] = 'mass'
 
         elif 'mole_conc' in up and 'frac' in down:
-            method = getattr(matter_object, 'conc_to_frac')
+            method_name = 'conc_to_frac'
             fun_kwargs = {'conc': composition}
 
             if 'mass' in down:
                 fun_kwargs['basis'] = 'mass'
 
         elif 'mass_conc' in up and 'frac' in down:
-            method = getattr(matter_object, 'mass_conc_to_frac')
+            method_name = 'mass_conc_to_frac'
             fun_kwargs = {'conc': composition}
 
             if 'mole' in down:
                 fun_kwargs['basis'] = 'mole'
 
         elif 'conc' in up and 'conc' in down:
-            method = getattr(matter_object, 'conc_to_conc')
+            method_name = 'conc_to_conc'
 
             if 'mole' in up:
                 fun_kwargs = {'mole_conc': composition}
             else:
                 fun_kwargs = {'mass_conc': composition}
+
+        method = getattr(matter_object, method_name, None)
+        if method is None:
+            for phase in matter_object.Phases:
+                if hasattr(phase, method_name):
+                    method = getattr(phase, method_name)
+
+                    break
 
         output_composition = method(**fun_kwargs)
 

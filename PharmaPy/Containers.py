@@ -585,7 +585,10 @@ class DynamicCollector:
         self.names_states_in = {'liquid_mixer': names_liquid,
                                 'crystallizer': names_solids}
 
-        self.names_states_out = ['mass_frac', 'mass', 'temp']
+        names_out_liquid = ['mass_frac', 'mass', 'temp']
+        names_out_solids = ['mass_conc', 'vol', 'temp', 'total_distrib']
+        self.names_states_out = {'liquid_mixer': names_out_liquid,
+                                 'crystallizer': names_out_solids}
 
     def get_inputs(self, time):
         all_inputs = self.Inlet.InterpolateInputs(time)
@@ -648,12 +651,10 @@ class DynamicCollector:
         return dtemp_dt
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
-        # Initial values
+        self.names_states_in = self.names_states_in[self.model_type]
+        self.names_states_out = self.names_states_out[self.model_type]
 
         if self.model_type == 'crystallizer':
-            self.names_states_in = self.names_states_in['crystallizer']
-            # init_dict = get_inputs(self.elapsed_time, self, self.num_species,
-            #                        len(self.Inlet.x_distrib))
 
             self.states_in_dict['Inlet']['distrib'] = len(self.Inlet.x_distrib)
             self.states_in_dict['Inlet']['mass_conc'] = len(self.Inlet.Liquid_1.mass_conc)
@@ -720,6 +721,7 @@ class DynamicCollector:
             self.vol_phase = vol_phase
 
             self.Phases = phases
+
         elif self.model_type == 'liquid_mixer':
             self.states_di = {
                 'mass': {'units': 'kg', 'dim': 1},
