@@ -218,7 +218,7 @@ class Drying:
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
-        inputs = self.get_inputs(time)
+        inputs = self.get_inputs(time)['Inlet']
 
         material_eqns = self.material_balance(
             time, satur, temp_gas, temp_sol, y_gas, x_liq,
@@ -365,7 +365,9 @@ class Drying:
         num_comp = self.Liquid_1.num_species
 
         len_states_in = [1, num_y_gas]
-        self.states_in_dict = dict(zip(self.names_states_in, len_states_in))
+        states_in_dict = dict(zip(self.names_states_in, len_states_in))
+        
+        self.states_in_dict = {'Inlet': states_in_dict}
 
         # Molar fractions
         # y_gas_init = np.tile(self.Vapor_1.mole_frac, (self.num_nodes,1))
