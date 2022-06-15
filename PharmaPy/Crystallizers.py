@@ -1088,8 +1088,8 @@ class _BaseCryst:
             self.momProf = self.Solid_1.getMoments(
                 distrib=self.distribProf, mom_num=[0, 1, 2, 3, 4])
 
-    def plot_profiles(self, fig_size=None, relative_mu0=False,
-                      title=None, time_div=1, plot_solub=True):
+    def plot_profiles(self, relative_mu0=False, title=None, time_div=1,
+                      plot_solub=True, **fig_kwargs):
         """
 
         Parameters
@@ -1156,7 +1156,7 @@ class _BaseCryst:
         num_cols = bool(num_plots // 2) + 1
         num_rows = num_plots // 2 + num_plots % 2
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=fig_size)
+        fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
 
         # ---------- Moments
         for ind, col in enumerate(mu_plot.T):
