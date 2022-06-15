@@ -19,6 +19,7 @@ def latexify_name(name, units=False):
     parts = name.split('/')
 
     out = []
+    count = 0
     for part in parts:
         sep = None
         if '**' in part:
@@ -34,10 +35,20 @@ def latexify_name(name, units=False):
             if s in special:
                 segm[ind] = '\\' + s
 
-        if sep is not None:
-            part = segm[0] + sep + '{' + segm[1] + '}'
+        if sep is None:
+            if count > 0:
+                part = part + '^{-1}'
+            else:
+                part = segm[0]
+        else:
+            inv = ''
+            if count > 0:
+                inv = '-'
+
+            part = segm[0] + sep + '{' + inv + segm[1] + '}'
 
         out.append(part)
+        count += 1
 
     if len(out) > 1:
         out = ' \ '.join(out)
@@ -181,9 +192,9 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
             count += 1
 
         if ylabels is None:
-            ylabel = latexify_name(name)
+            ylabel = name
         else:
-            ylabel = ylabels[ind]
+            ylabel = latexify_name(ylabels[ind])
 
         units = states_and_fstates[name].get('units', '')
         if len(units) > 0:

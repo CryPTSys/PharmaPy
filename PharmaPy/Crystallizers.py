@@ -416,6 +416,9 @@ class _BaseCryst:
             'supersat': {'dim': 1, 'units': 'kg/m**3'}
             }
 
+        if 'temp' in self.controls:
+            self.fstates_di['temp'] = {'dim': 1, 'units': 'K'}
+
         if self.method != 'moments':
             self.fstates_di['mu_n'] = {'dim': 4, 'index': list(range(4)),
                                        'units': 'm**n'}
@@ -1098,31 +1101,19 @@ class _BaseCryst:
             self.momProf = self.Solid_1.getMoments(
                 distrib=self.distribProf, mom_num=[0, 1, 2, 3, 4])
 
-    def plot_profiles(self, relative_mu0=False, title=None, time_div=1,
-                      plot_solub=True, **fig_kwargs):
+    def plot_profiles(self, **fig_kwargs):
         """
 
         Parameters
         ----------
-        fig_size : tuple (optional, default = None)
-            Size of the figure to be populated. The default is None.
-        relative_mu0 : bool (optional, default = None)
-            TODO. The default is False.
-        title : string (optional, default = None)
-            DESCRIPTION. The default is None.
-        time_div : int (optional, default = 1)
-            TODO. The default is 1.
-        plot_solub : bool (optional, default = True)
-            Boolean value indicating whether the solubility is ploted.
-            The default is True.
+        fig_kwargs : keyword arguments
+            keyword arguments to be passed to the plot.subplots() method
 
         Returns
         -------
         fig : TYPE
             DESCRIPTION.
-        axes : TYPE
-            DESCRIPTION.
-        ax_supsat : TYPE
+        ax : TYPE
             DESCRIPTION.
 
         """
@@ -1131,12 +1122,12 @@ class _BaseCryst:
                   'supersat']
 
         figmap = [0, 4, 5, 5]
-        ylabels = ['$\mu_0$', '$T$', '$C_j$', '$\sigma$']
+        ylabels = ['mu_0', 'T', 'C_j', 'sigma']
 
         if hasattr(self.dynamic_result, 'temp_ht'):
             states.append('temp_ht')
             figmap.append(4)
-            ylabels.append('$T_{ht}$')
+            ylabels.append('T_{ht}')
 
         fig, ax = plot_function(self, states, fig_map=figmap,
                                 nrows=3, ncols=2, ylabels=ylabels,
@@ -1149,153 +1140,7 @@ class _BaseCryst:
             ax.flatten()[ind + 1].plot(time, row)
             ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
 
-        # # if self.method == 'moments':
-        # mu = self.momProf
-        # num_mu = mu.shape[1]
-        # idx_mom = np.arange(mu.shape[1])
-
-        # # Sauter diameter
-        # if mu.shape[1] > 4:
-        #     mu_4 = mu[:, 4]
-        # else:
-        #     mu_4 = None
-
-        # if relative_mu0:
-        #     # plot if there is at least one particle
-        #     ind_part = np.argmax(mu[:, 0] > 1)
-        #     num_mu -= 1
-
-        #     div = mu[ind_part:, 0]
-        #     mu_plot = mu[ind_part:, 1:4]
-        #     if self.method == '1D-FVM':
-        #         mu_plot[:, 0] *= 1e6  # express mean diam in um
-
-        #     time_plot = self.timeProf[ind_part:]
-
-        #     if mu_4 is not None:
-        #         mu_4 = mu_4[ind_part:]
-        #         num_mu -= 1
-
-        # else:
-        #     div = 1
-        #     mu_plot = mu
-        #     time_plot = self.timeProf
-
-        # if 'vol' in self.states_uo:
-        #     num_plots = num_mu + 3
-        # else:
-        #     num_plots = num_mu + 2
-
-        # num_cols = bool(num_plots // 2) + 1
-        # num_rows = num_plots // 2 + num_plots % 2
-
-        # fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
-
-        # # ---------- Moments
-        # for ind, col in enumerate(mu_plot.T):
-        #     axes.flatten()[ind].plot(time_plot/time_div,
-        #                              col/div)
-
-        #     if relative_mu0:
-        #         denom = '/\mu_{0}$'
-        #         units = ['($\mu m$)'] + ['($m^%i$)' % i for i in idx_mom[2:]]
-        #     else:
-        #         denom = '$'
-        #         if 'vol' in self.states_uo:
-        #             per = ''
-        #         else:
-        #             per = ' m^{-3}'
-        #         # exp = int(np.log10(self.scale))
-        #         units = ['$(\mathregular{\# \: %s)}$' % per,
-        #                  ' $\mathregular{(m \: %s)}$' % per] + \
-        #             [' $\mathregular{(m^%i \: %s)}$' % (i, per)
-        #              for i in idx_mom[2:]]
-
-        #     axes.flatten()[ind].set_ylabel(r'$\mu_{}'.format(
-        #         ind + relative_mu0) + denom + units[ind])
-
-        # # ---------- Sauter diameter
-        # if mu_4 is not None:
-        #     if relative_mu0:
-        #         ax_sauter = axes[0, 0].twinx()
-        #         ax_sauter.plot(time_plot/time_div, mu_4 / mu_plot[:, 2] * 1e6,
-        #                        '--')
-        #         ax_sauter.set_ylabel('$\mu_4/\mu_3$ ($\mu m$)')
-
-        #         ax_sauter.spines['top'].set_visible(False)
-
-        #         ax_sauter.set_title('Mean diameter')
-
-        #         # axes[0, 0].legend(('$\mu_1/\mu_0$', '$\mu_4/\mu_3$'))
-
-        # # ---------- Temperature
-        # ax_temp = axes.flatten()[ind + 1]
-        # ax_temp.plot(self.timeProf/time_div, self.Liquid_1.tempProf)
-
-        # if len(self.tempHT_runs) > 0:
-        #     ax_temp.plot(self.timeProf/time_div, self.tempProfHt, '--')
-
-        # ax_temp.set_ylabel(r'$T$ (K)')
-
-        # ax_temp.legend(('tank', 'jacket'), fontsize=7, loc='best')
-
-        # # ---------- Concentration
-        # c_target = self.wConcProf[:, self.target_ind]
-        # ax_conc = axes.flatten()[ind + 2]
-        # ax_conc.plot(self.timeProf/time_div, c_target, 'k')
-
-        # target_id = self.name_species[self.target_ind]
-
-        # if self.basis == 'mass_frac':
-        #     ax_conc.set_ylabel('$w_{%s, liq}$ ($kg/kg$)' % target_id)
-        # else:
-        #     ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
-
-        # if plot_solub:
-        #     sat_conc = self.satConcProf
-        #     ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
-
-        # # Supersaturation
-        # supersat = self.supsatProf
-        # ax_supsat = ax_conc.twinx()
-        # ax_supsat.plot(self.timeProf / time_div, supersat)
-        # color = ax_supsat.lines[0].get_color()
-
-        # if self.Kinetics.rel_super:
-        #     ax_supsat.set_ylabel(
-        #         'Supersaturation\n' + r'$\left( \frac{C - C_{sat}}{C_{sat}} \right)$')
-        # else:
-        #     ax_supsat.set_ylabel('Supersaturation\n($kg/kg_{liq}$)')
-
-        # ax_supsat.spines['right'].set_color(color)
-        # ax_supsat.tick_params(colors=color)
-        # ax_supsat.yaxis.label.set_color(color)
-        # ax_supsat.spines['top'].set_visible(False)
-
-        # # ---------- Volume
-        # if 'vol' in self.states_uo:
-        #     ax_vol = axes.flatten()[num_mu + 2]
-        #     ax_vol.plot(self.timeProf/time_div, self.volProf)
-        #     ax_vol.set_ylabel('$V_L$ ($m^3$)')
-
-        # # ---------- Final touches
-        # if len(axes.flatten()) > num_plots:
-        #     fig.delaxes(axes.flatten()[-1])
-
-        # for ind, ax in enumerate(axes.flatten()):
-        #     ax.spines['right'].set_visible(False)
-        #     ax.spines['top'].set_visible(False)
-
-        #     ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-        #     ax.yaxis.set_minor_locator(AutoMinorLocator(2))
-
-        # fig.suptitle(title)
-        # fig.tight_layout()
-
-        # if time_div == 1:
-        #     fig.text(0.5, 0, 'time (s)', ha='center')
-
-        # return fig, axes, ax_supsat
+        fig.tight_layout()
         return fig, ax
 
     def plot_csd(self, view_angles=(20, -20), fig_size=None, time_eval=None,
@@ -1897,12 +1742,28 @@ class BatchCryst(_BaseCryst):
         self.statesProf = states
         time_profile = np.array(time)
 
-        dynamic_profiles = unpack_states(states, self.dim_states,
-                                         self.name_states)
+        dp = unpack_states(states, self.dim_states, self.name_states)
 
-        dynamic_profiles['time'] = time_profile
+        dp['time'] = time_profile
 
-        self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
+        if self.method == '1D-FVM':
+            moms = self.Solid_1.getMoments(distrib=dp['distrib'])
+            dp['mu_n'] = moms
+
+            self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
+                                      'index': list(range(moms.shape[1]))}
+
+        if 'temp' in self.controls:
+            dp['temp'] = self.controls['temp'](time)
+
+        sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
+
+        supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
+
+        dp['conc_sat'] = sat_conc
+        dp['supersat'] = supersat
+
+        self.dynamic_result = DynamicResult(self.states_di, **dp)
 
         # Decompose states
         self.time_runs.append(time_profile)
@@ -1930,7 +1791,7 @@ class BatchCryst(_BaseCryst):
         y_outputs = np.delete(states, num_material, axis=1)
 
         y_outputs = np.column_stack(
-            [dynamic_profiles[name] for name in self.names_states_out])
+            [dp[name] for name in self.names_states_out])
 
         if self.method == '1D-FVM':
             self.distribVolPercProf = self.Solid_1.convert_distribution(

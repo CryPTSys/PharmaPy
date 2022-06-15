@@ -482,7 +482,7 @@ class _BaseReactor:
             states_plot = (['mole_conc', pick_comp], 'temp', 'q_rxn', 'q_ht')
 
         figmap = (0, 1, 2, 2)
-        ylabels = ('$C_j$', '$T$', '$Q_{rxn}$', '$Q_{ht}$')
+        ylabels = ('C_j', 'T', 'Q_rxn', 'Q_ht')
         fig, ax = plot_function(self, states_plot, fig_map=figmap,
                                 ncols=3, ylabels=ylabels, **fig_kwargs)
 
