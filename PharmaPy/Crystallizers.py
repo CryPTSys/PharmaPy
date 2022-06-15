@@ -297,10 +297,6 @@ class _BaseCryst:
                 'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
                 'Inlet': {'vol_flow': 1, 'temp': 1}}
 
-            self.fstates_di = {
-
-                }
-
             self.nomenclature()
 
     @property
@@ -415,6 +411,14 @@ class _BaseCryst:
         self.states_di = states_di
         self.dim_states = [di['dim'] for di in self.states_di.values()]
         self.name_states = list(self.states_di.keys())
+
+        self.fstates_di = {
+            'supersat': {'dim': 1, 'units': 'kg/m**3'}
+            }
+
+        if self.method != 'moments':
+            self.fstates_di['mu_n'] = {'dim': 4, 'index': list(range(4)),
+                                       'units': 'm**n'}
 
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
@@ -1126,8 +1130,24 @@ class _BaseCryst:
         states = [('mu_n', (0, )), 'temp', ('mass_conc', (self.target_ind,)),
                   'supersat']
 
-        fig, ax = plot_function(self, states, fig_map=(0, 4, 4),
-                                nrows=3, ncols=2, **fig_kwargs)
+        figmap = [0, 4, 5, 5]
+        ylabels = ['$\mu_0$', '$T$', '$C_j$', '$\sigma$']
+
+        if hasattr(self.dynamic_result, 'temp_ht'):
+            states.append('temp_ht')
+            figmap.append(4)
+            ylabels.append('$T_{ht}$')
+
+        fig, ax = plot_function(self, states, fig_map=figmap,
+                                nrows=3, ncols=2, ylabels=ylabels,
+                                **fig_kwargs)
+
+        time = self.dynamic_result.time
+        moms = self.dynamic_result.mu_n
+
+        for ind, row in enumerate(moms[:, 1:].T):
+            ax.flatten()[ind + 1].plot(time, row)
+            ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
 
         # # if self.method == 'moments':
         # mu = self.momProf

@@ -11,6 +11,47 @@ import numpy as np
 from PharmaPy.Errors import PharmaPyValueError
 
 
+special = ('alpha', 'beta', 'gamma', 'phi', 'rho', 'epsilon', 'sigma', 'mu',
+           'nu', 'psi', 'pi')
+
+
+def latexify_name(name, units=False):
+    parts = name.split('/')
+
+    out = []
+    for part in parts:
+        sep = None
+        if '**' in part:
+            segm = part.split('**')
+            sep = '^'
+        elif '_' in part:
+            segm = part.split('_')
+            sep = '_'
+        else:
+            segm = [part]
+
+        for ind, s in enumerate(segm):
+            if s in special:
+                segm[ind] = '\\' + s
+
+        if sep is not None:
+            part = segm[0] + sep + '{' + segm[1] + '}'
+
+        out.append(part)
+
+    if len(out) > 1:
+        out = ' \ '.join(out)
+    else:
+        out = out[0]
+
+    if units:
+        out = '$\mathregular{' + out + '}$'
+    else:
+        out = '$' + out + '$'
+
+    return out
+
+
 def color_axis(ax, color):
     ax.spines['right'].set_color(color)
     ax.tick_params(axis='y', colors=color, which='both')
@@ -29,10 +70,11 @@ def get_indexes(names, picks):
             if low_pick in lower_names:
                 out.append(lower_names.index(low_pick))
             else:
-                mess = "Name '%s' not in the set of compound names listed in the pure-component json file" % low_pick
+                mess = "Name '%s' not in the set of compound names "
+                "listed in the pure-component json file" % low_pick
                 raise PharmaPyValueError(mess)
 
-        elif isinstance(pick, int):
+        elif isinstance(pick, (int, np.int32, np.int64)):
             out.append(pick)
 
     return out
@@ -107,12 +149,9 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     for ind, idx in enumerate(fig_map):
         name = names[ind]
         y = data[name]
-    # for ind, (name, y) in enumerate(data.items()):
-        # idx = fig_map[ind]
         twin = False
 
         index_y = False
-        # if hasattr(uo, 'states_di'):
         states_and_fstates = uo.states_di | uo.fstates_di
         index_y = states_and_fstates[name].get('index', False)
 
@@ -142,15 +181,15 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
             count += 1
 
         if ylabels is None:
-            ylabel = name
+            ylabel = latexify_name(name)
         else:
             ylabel = ylabels[ind]
 
-        # if hasattr(uo, 'states_di') and include_units:
-        # states_and_fstates = uo.states_di | uo.fstates_di
         units = states_and_fstates[name].get('units', '')
         if len(units) > 0:
-            ylabel = ylabel + ' (' + states_and_fstates[name]['units'] + ')'
+            unit_name = latexify_name(states_and_fstates[name]['units'],
+                                      units=True)
+            ylabel = ylabel + ' (' + unit_name + ')'
 
         if index_y:
             ax.legend(index_y, loc='best')
