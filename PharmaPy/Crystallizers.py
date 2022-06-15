@@ -389,6 +389,11 @@ class _BaseCryst:
         states_di['mass_conc'] = {'dim': len(self.name_species),
                                   'index': self.name_species,
                                   'units': 'kg/m**3'}
+
+        if name_class != 'MSMPR':
+            states_di['vol'] = {'dim': 1, 'units': 'm**3'}
+            self.states_uo.append('vol')
+
         if self.adiabatic:
             self.states_uo.append('temp')
 
@@ -398,10 +403,6 @@ class _BaseCryst:
 
             states_di['temp'] = {'dim': 1, 'units': 'K'}
             states_di['temp_ht'] = {'dim': 1, 'units': 'K'}
-
-        if name_class != 'MSMPR':
-            states_di['vol'] = {'dim': 1, 'units': 'm**3'}
-            self.states_uo.append('vol')
 
         self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in
