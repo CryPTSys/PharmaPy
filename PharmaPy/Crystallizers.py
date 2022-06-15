@@ -22,6 +22,7 @@ from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
 from PharmaPy.Results import DynamicResult
+from PharmaPy.Plotting import plot_function
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -295,6 +296,10 @@ class _BaseCryst:
             self.states_in_dict = {
                 'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
                 'Inlet': {'vol_flow': 1, 'temp': 1}}
+
+            self.fstates_di = {
+
+                }
 
             self.nomenclature()
 
@@ -1117,153 +1122,161 @@ class _BaseCryst:
             DESCRIPTION.
 
         """
-        # if self.method == 'moments':
-        mu = self.momProf
-        num_mu = mu.shape[1]
-        idx_mom = np.arange(mu.shape[1])
 
-        # Sauter diameter
-        if mu.shape[1] > 4:
-            mu_4 = mu[:, 4]
-        else:
-            mu_4 = None
+        states = [('mu_n', (0, )), 'temp', ('mass_conc', (self.target_ind,)),
+                  'supersat']
 
-        if relative_mu0:
-            # plot if there is at least one particle
-            ind_part = np.argmax(mu[:, 0] > 1)
-            num_mu -= 1
+        fig, ax = plot_function(self, states, fig_map=(0, 4, 4),
+                                nrows=3, ncols=2, **fig_kwargs)
 
-            div = mu[ind_part:, 0]
-            mu_plot = mu[ind_part:, 1:4]
-            if self.method == '1D-FVM':
-                mu_plot[:, 0] *= 1e6  # express mean diam in um
+        # # if self.method == 'moments':
+        # mu = self.momProf
+        # num_mu = mu.shape[1]
+        # idx_mom = np.arange(mu.shape[1])
 
-            time_plot = self.timeProf[ind_part:]
+        # # Sauter diameter
+        # if mu.shape[1] > 4:
+        #     mu_4 = mu[:, 4]
+        # else:
+        #     mu_4 = None
 
-            if mu_4 is not None:
-                mu_4 = mu_4[ind_part:]
-                num_mu -= 1
+        # if relative_mu0:
+        #     # plot if there is at least one particle
+        #     ind_part = np.argmax(mu[:, 0] > 1)
+        #     num_mu -= 1
 
-        else:
-            div = 1
-            mu_plot = mu
-            time_plot = self.timeProf
+        #     div = mu[ind_part:, 0]
+        #     mu_plot = mu[ind_part:, 1:4]
+        #     if self.method == '1D-FVM':
+        #         mu_plot[:, 0] *= 1e6  # express mean diam in um
 
-        if 'vol' in self.states_uo:
-            num_plots = num_mu + 3
-        else:
-            num_plots = num_mu + 2
+        #     time_plot = self.timeProf[ind_part:]
 
-        num_cols = bool(num_plots // 2) + 1
-        num_rows = num_plots // 2 + num_plots % 2
+        #     if mu_4 is not None:
+        #         mu_4 = mu_4[ind_part:]
+        #         num_mu -= 1
 
-        fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
+        # else:
+        #     div = 1
+        #     mu_plot = mu
+        #     time_plot = self.timeProf
 
-        # ---------- Moments
-        for ind, col in enumerate(mu_plot.T):
-            axes.flatten()[ind].plot(time_plot/time_div,
-                                     col/div)
+        # if 'vol' in self.states_uo:
+        #     num_plots = num_mu + 3
+        # else:
+        #     num_plots = num_mu + 2
 
-            if relative_mu0:
-                denom = '/\mu_{0}$'
-                units = ['($\mu m$)'] + ['($m^%i$)' % i for i in idx_mom[2:]]
-            else:
-                denom = '$'
-                if 'vol' in self.states_uo:
-                    per = ''
-                else:
-                    per = ' m^{-3}'
-                # exp = int(np.log10(self.scale))
-                units = ['$(\mathregular{\# \: %s)}$' % per,
-                         ' $\mathregular{(m \: %s)}$' % per] + \
-                    [' $\mathregular{(m^%i \: %s)}$' % (i, per)
-                     for i in idx_mom[2:]]
+        # num_cols = bool(num_plots // 2) + 1
+        # num_rows = num_plots // 2 + num_plots % 2
 
-            axes.flatten()[ind].set_ylabel(r'$\mu_{}'.format(
-                ind + relative_mu0) + denom + units[ind])
+        # fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
 
-        # ---------- Sauter diameter
-        if mu_4 is not None:
-            if relative_mu0:
-                ax_sauter = axes[0, 0].twinx()
-                ax_sauter.plot(time_plot/time_div, mu_4 / mu_plot[:, 2] * 1e6,
-                               '--')
-                ax_sauter.set_ylabel('$\mu_4/\mu_3$ ($\mu m$)')
+        # # ---------- Moments
+        # for ind, col in enumerate(mu_plot.T):
+        #     axes.flatten()[ind].plot(time_plot/time_div,
+        #                              col/div)
 
-                ax_sauter.spines['top'].set_visible(False)
+        #     if relative_mu0:
+        #         denom = '/\mu_{0}$'
+        #         units = ['($\mu m$)'] + ['($m^%i$)' % i for i in idx_mom[2:]]
+        #     else:
+        #         denom = '$'
+        #         if 'vol' in self.states_uo:
+        #             per = ''
+        #         else:
+        #             per = ' m^{-3}'
+        #         # exp = int(np.log10(self.scale))
+        #         units = ['$(\mathregular{\# \: %s)}$' % per,
+        #                  ' $\mathregular{(m \: %s)}$' % per] + \
+        #             [' $\mathregular{(m^%i \: %s)}$' % (i, per)
+        #              for i in idx_mom[2:]]
 
-                ax_sauter.set_title('Mean diameter')
+        #     axes.flatten()[ind].set_ylabel(r'$\mu_{}'.format(
+        #         ind + relative_mu0) + denom + units[ind])
 
-                # axes[0, 0].legend(('$\mu_1/\mu_0$', '$\mu_4/\mu_3$'))
+        # # ---------- Sauter diameter
+        # if mu_4 is not None:
+        #     if relative_mu0:
+        #         ax_sauter = axes[0, 0].twinx()
+        #         ax_sauter.plot(time_plot/time_div, mu_4 / mu_plot[:, 2] * 1e6,
+        #                        '--')
+        #         ax_sauter.set_ylabel('$\mu_4/\mu_3$ ($\mu m$)')
 
-        # ---------- Temperature
-        ax_temp = axes.flatten()[ind + 1]
-        ax_temp.plot(self.timeProf/time_div, self.Liquid_1.tempProf)
+        #         ax_sauter.spines['top'].set_visible(False)
 
-        if len(self.tempHT_runs) > 0:
-            ax_temp.plot(self.timeProf/time_div, self.tempProfHt, '--')
+        #         ax_sauter.set_title('Mean diameter')
 
-        ax_temp.set_ylabel(r'$T$ (K)')
+        #         # axes[0, 0].legend(('$\mu_1/\mu_0$', '$\mu_4/\mu_3$'))
 
-        ax_temp.legend(('tank', 'jacket'), fontsize=7, loc='best')
+        # # ---------- Temperature
+        # ax_temp = axes.flatten()[ind + 1]
+        # ax_temp.plot(self.timeProf/time_div, self.Liquid_1.tempProf)
 
-        # ---------- Concentration
-        c_target = self.wConcProf[:, self.target_ind]
-        ax_conc = axes.flatten()[ind + 2]
-        ax_conc.plot(self.timeProf/time_div, c_target, 'k')
+        # if len(self.tempHT_runs) > 0:
+        #     ax_temp.plot(self.timeProf/time_div, self.tempProfHt, '--')
 
-        target_id = self.name_species[self.target_ind]
+        # ax_temp.set_ylabel(r'$T$ (K)')
 
-        if self.basis == 'mass_frac':
-            ax_conc.set_ylabel('$w_{%s, liq}$ ($kg/kg$)' % target_id)
-        else:
-            ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
+        # ax_temp.legend(('tank', 'jacket'), fontsize=7, loc='best')
 
-        if plot_solub:
-            sat_conc = self.satConcProf
-            ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
+        # # ---------- Concentration
+        # c_target = self.wConcProf[:, self.target_ind]
+        # ax_conc = axes.flatten()[ind + 2]
+        # ax_conc.plot(self.timeProf/time_div, c_target, 'k')
 
-        # Supersaturation
-        supersat = self.supsatProf
-        ax_supsat = ax_conc.twinx()
-        ax_supsat.plot(self.timeProf / time_div, supersat)
-        color = ax_supsat.lines[0].get_color()
+        # target_id = self.name_species[self.target_ind]
 
-        if self.Kinetics.rel_super:
-            ax_supsat.set_ylabel(
-                'Supersaturation\n' + r'$\left( \frac{C - C_{sat}}{C_{sat}} \right)$')
-        else:
-            ax_supsat.set_ylabel('Supersaturation\n($kg/kg_{liq}$)')
+        # if self.basis == 'mass_frac':
+        #     ax_conc.set_ylabel('$w_{%s, liq}$ ($kg/kg$)' % target_id)
+        # else:
+        #     ax_conc.set_ylabel('$C_{%s, liq}$ ($kg/m^3$)' % target_id)
 
-        ax_supsat.spines['right'].set_color(color)
-        ax_supsat.tick_params(colors=color)
-        ax_supsat.yaxis.label.set_color(color)
-        ax_supsat.spines['top'].set_visible(False)
+        # if plot_solub:
+        #     sat_conc = self.satConcProf
+        #     ax_conc.plot(self.timeProf/time_div, sat_conc, '--k', alpha=0.4)
 
-        # ---------- Volume
-        if 'vol' in self.states_uo:
-            ax_vol = axes.flatten()[num_mu + 2]
-            ax_vol.plot(self.timeProf/time_div, self.volProf)
-            ax_vol.set_ylabel('$V_L$ ($m^3$)')
+        # # Supersaturation
+        # supersat = self.supsatProf
+        # ax_supsat = ax_conc.twinx()
+        # ax_supsat.plot(self.timeProf / time_div, supersat)
+        # color = ax_supsat.lines[0].get_color()
 
-        # ---------- Final touches
-        if len(axes.flatten()) > num_plots:
-            fig.delaxes(axes.flatten()[-1])
+        # if self.Kinetics.rel_super:
+        #     ax_supsat.set_ylabel(
+        #         'Supersaturation\n' + r'$\left( \frac{C - C_{sat}}{C_{sat}} \right)$')
+        # else:
+        #     ax_supsat.set_ylabel('Supersaturation\n($kg/kg_{liq}$)')
 
-        for ind, ax in enumerate(axes.flatten()):
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
+        # ax_supsat.spines['right'].set_color(color)
+        # ax_supsat.tick_params(colors=color)
+        # ax_supsat.yaxis.label.set_color(color)
+        # ax_supsat.spines['top'].set_visible(False)
 
-            ax.xaxis.set_minor_locator(AutoMinorLocator(2))
-            ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+        # # ---------- Volume
+        # if 'vol' in self.states_uo:
+        #     ax_vol = axes.flatten()[num_mu + 2]
+        #     ax_vol.plot(self.timeProf/time_div, self.volProf)
+        #     ax_vol.set_ylabel('$V_L$ ($m^3$)')
 
-        fig.suptitle(title)
-        fig.tight_layout()
+        # # ---------- Final touches
+        # if len(axes.flatten()) > num_plots:
+        #     fig.delaxes(axes.flatten()[-1])
 
-        if time_div == 1:
-            fig.text(0.5, 0, 'time (s)', ha='center')
+        # for ind, ax in enumerate(axes.flatten()):
+        #     ax.spines['right'].set_visible(False)
+        #     ax.spines['top'].set_visible(False)
 
-        return fig, axes, ax_supsat
+        #     ax.xaxis.set_minor_locator(AutoMinorLocator(2))
+        #     ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+        # fig.suptitle(title)
+        # fig.tight_layout()
+
+        # if time_div == 1:
+        #     fig.text(0.5, 0, 'time (s)', ha='center')
+
+        # return fig, axes, ax_supsat
+        return fig, ax
 
     def plot_csd(self, view_angles=(20, -20), fig_size=None, time_eval=None,
                  vol_based=False, time_div=1, logx=True):
@@ -2236,18 +2249,31 @@ class MSMPR(_BaseCryst):
         inputs = self.get_inputs(time_profile)
         volflow = inputs['Inlet']['vol_flow']
 
-        dynamic_profiles = unpack_states(states, self.dim_states,
-                                         self.name_states)
+        dp = unpack_states(states, self.dim_states, self.name_states)
 
-        dynamic_profiles['time'] = time_profile
-        dynamic_profiles['vol_flow'] = volflow
+        dp['time'] = time_profile
+        dp['vol_flow'] = volflow
+
+        sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
+
+        supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
+
+        dp['conc_sat'] = sat_conc
+        dp['supersat'] = supersat
+
+        if self.method == '1D-FVM':
+            moms = self.Solid_1.getMoments(distrib=dp['distrib'])
+            dp['mu_n'] = moms
+
+            self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
+                                      'index': list(range(moms.shape[1]))}
 
         if self.__class__.__name__ == 'SemibatchCryst':
-            dynamic_profiles['total_distrib'] = dynamic_profiles['distrib']
+            dp['total_distrib'] = dp['distrib']
 
-        self.outputs = dynamic_profiles
+        self.outputs = dp
 
-        self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
+        self.dynamic_result = DynamicResult(self.states_di, **dp)
 
         self.time_runs.append(time_profile)
 
@@ -2347,8 +2373,7 @@ class MSMPR(_BaseCryst):
 
         y_outputs = y_outputs[:, reordered_idx]
 
-        y_out = np.column_stack(
-            [dynamic_profiles[name] for name in target_order])
+        y_outputs = np.column_stack([dp[name] for name in target_order])
 
         wConcProf = states[:, self.num_distr:num_material]
 

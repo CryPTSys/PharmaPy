@@ -18,9 +18,10 @@ def color_axis(ax, color):
 
 
 def get_indexes(names, picks):
+    names = [a for a in names]
     out = []
 
-    lower_names = [a.lower() for a in names]
+    lower_names = [str(a).lower() if isinstance(a, str) else a for a in names]
 
     for pick in picks:
         if isinstance(pick, str):
@@ -100,19 +101,26 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     count = 0
     linestyles = ('-', '--', '-.', ':')
     colors = plt.cm.tab10
-    for ind, (name, y) in enumerate(data.items()):
-        idx = fig_map[ind]
+
+    names = list(data.keys())
+
+    for ind, idx in enumerate(fig_map):
+        name = names[ind]
+        y = data[name]
+    # for ind, (name, y) in enumerate(data.items()):
+        # idx = fig_map[ind]
         twin = False
 
         index_y = False
-        if hasattr(uo, 'states_di'):
-            states_and_fstates = uo.states_di | uo.fstates_di
-            index_y = states_and_fstates[name].get('index', False)
-            if isinstance(state_names[ind], (tuple, list, range)):
-                y_ind = state_names[ind][1]
-                y_ind = get_indexes(index_y, y_ind)
+        # if hasattr(uo, 'states_di'):
+        states_and_fstates = uo.states_di | uo.fstates_di
+        index_y = states_and_fstates[name].get('index', False)
 
-                index_y = [index_y[a] for a in y_ind]
+        if isinstance(state_names[ind], (tuple, list, range)):
+            y_ind = state_names[ind][1]
+            y_ind = get_indexes(index_y, y_ind)
+
+            index_y = [index_y[a] for a in y_ind]
 
         if len(axes[idx].lines) > 0:
             ax = axes[idx].twinx()
@@ -138,11 +146,11 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         else:
             ylabel = ylabels[ind]
 
-        if hasattr(uo, 'states_di') and include_units:
-            states_and_fstates = uo.states_di | uo.fstates_di
-            units = states_and_fstates[name].get('units', '')
-            if len(units) > 0:
-                ylabel = ylabel + ' (' + states_and_fstates[name]['units'] + ')'
+        # if hasattr(uo, 'states_di') and include_units:
+        # states_and_fstates = uo.states_di | uo.fstates_di
+        units = states_and_fstates[name].get('units', '')
+        if len(units) > 0:
+            ylabel = ylabel + ' (' + states_and_fstates[name]['units'] + ')'
 
         if index_y:
             ax.legend(index_y, loc='best')
