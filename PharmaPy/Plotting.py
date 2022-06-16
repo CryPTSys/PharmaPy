@@ -113,13 +113,14 @@ def get_state_data(uo, *state_names):
 
 def get_states_result(result, *state_names):
     time = result.time
+    states_fstates = result.di_states | result.di_fstates
 
     out = {}
     for key in state_names:
         idx = None
         if isinstance(key, (list, tuple, range)):
             state, idx = key
-            indexes = result.di_states[state]['index']
+            indexes = states_fstates[state]['index']
             idx = get_indexes(indexes, idx)
         else:
             state = key

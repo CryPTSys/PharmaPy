@@ -453,8 +453,8 @@ class _BaseReactor:
         ----------
         pick_comp : list of str/int, optional
             list of components to be plotted. Each element of the list
-            can be either an integer or a string with the species name.
-            The default is None.
+            can be either the name of a species (str) or the index of the
+            species (int). The default is None.
         **fig_kwargs : keyword arguments to plt.subplots()
             named arguments passed to the plotting functions. A yypical field
             is 'figsize', passed as a (width, height) tuple.

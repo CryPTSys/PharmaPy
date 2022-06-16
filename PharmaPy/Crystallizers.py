@@ -413,7 +413,8 @@ class _BaseCryst:
         self.name_states = list(self.states_di.keys())
 
         self.fstates_di = {
-            'supersat': {'dim': 1, 'units': 'kg/m**3'}
+            'supersat': {'dim': 1, 'units': 'kg/m**3'},
+            'solubility': {'dim': 1, 'units': 'kg/m**3'}
             }
 
         if 'temp' in self.controls:
@@ -1140,6 +1141,13 @@ class _BaseCryst:
             ax.flatten()[ind + 1].plot(time, row)
             ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
 
+        # Solubility
+        ax[2, 1].plot(time, self.dynamic_result.solubility)
+        ax[2, 1].lines[1].set_color('k')
+        ax[2, 1].lines[1].set_alpha(0.4)
+
+        ax[2, 1].legend([self.target_comp[0], 'solubility'])
+
         fig.tight_layout()
         return fig, ax
 
@@ -1747,11 +1755,11 @@ class BatchCryst(_BaseCryst):
         dp['time'] = time_profile
 
         if self.method == '1D-FVM':
-            moms = self.Solid_1.getMoments(distrib=dp['distrib'])
+            moms = self.Solid_1.getMoments(distrib=dp['distrib']/self.scale)
             dp['mu_n'] = moms
 
-            self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
-                                      'index': list(range(moms.shape[1]))}
+            # self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
+            #                           'index': list(range(moms.shape[1]))}
 
         if 'temp' in self.controls:
             dp['temp'] = self.controls['temp'](time)
@@ -1760,10 +1768,11 @@ class BatchCryst(_BaseCryst):
 
         supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
 
-        dp['conc_sat'] = sat_conc
+        dp['solubility'] = sat_conc
         dp['supersat'] = supersat
 
-        self.dynamic_result = DynamicResult(self.states_di, **dp)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
         # Decompose states
         self.time_runs.append(time_profile)
@@ -2139,7 +2148,7 @@ class MSMPR(_BaseCryst):
 
         supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
 
-        dp['conc_sat'] = sat_conc
+        dp['solubility'] = sat_conc
         dp['supersat'] = supersat
 
         if self.method == '1D-FVM':

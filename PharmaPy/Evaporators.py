@@ -1225,7 +1225,7 @@ class Evaporator:
             states_plot = (['x_liq', pick_comp], ['y_vap', pick_comp], 'temp',
                            'pres', 'mol_liq', 'mol_vap')
 
-        ylabels = ('$x_{liq}$', '$y_{vap}$', '$T$', '$P$', '$N_L$', '$N_V$')
+        ylabels = ('x_liq', 'y_vap', 'T', 'P', 'N_L', 'N_V')
         fig, ax = plot_function(self, states_plot, fig_map=(0, 1, 2, 2, 3, 3),
                                 ylabels=ylabels,
                                 nrows=2, ncols=2, **fig_kwargs)
@@ -1984,8 +1984,7 @@ class ContinuousEvaporator:
             # self.Phases.concProf = self.concProf
             # self.Phases.timeProf = self.timeProf
 
-    def plot_profiles(self, pick_comp=None, time_div=1, vol_plot=False,
-                      **fig_kwargs):
+    def plot_profiles(self, pick_comp=None, vol_plot=False, **fig_kwargs):
         """
         Convenience function to plot model solution. Dynamic profiles displayed
         by this funcion are x_liq vs t, y_vap vs t, T/P vs t and
@@ -2026,15 +2025,15 @@ class ContinuousEvaporator:
             states_plot = ['x_liq', 'y_vap', 'temp', 'pres']
         else:
             states_plot = [['x_liq', pick_comp], ['y_vap', pick_comp], 'temp',
-                            'pres']
+                           'pres']
 
-        ylabels = ['$x_{liq}$', '$y_{vap}$', '$T$', '$P$']
+        ylabels = ['x_liq', 'y_vap', 'T', 'P']
         if vol_plot:
             states_plot += ['vol_liq', 'vol_vap']
-            ylabels += ['$V_L$', '$V_V$']
+            ylabels += ['V_L', 'V_V']
         else:
             states_plot += ['mol_liq', 'mol_vap']
-            ylabels += ['$N_L$', '$N_V$']
+            ylabels += ['N_L', 'N_V']
 
         fig, ax = plot_function(self, states_plot, fig_map=(0, 1, 2, 2, 3, 3),
                                 ylabels=ylabels,
