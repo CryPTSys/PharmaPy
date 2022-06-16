@@ -293,10 +293,15 @@ class Connection:
 
             self.Matter.y_upstream = self.source_uo.outputs
 
-            if self.source_uo.is_continuous:
-                self.Matter.time_upstream = self.source_uo.timeProf
+            if hasattr(self.source_uo, 'dynamic_result'):
+                time_prof = self.source_uo.dynamic_result.time
             else:
-                self.Matter.time_upstream = self.source_uo.timeProf[-1]
+                time_prof = self.source_uo.timeProf
+
+            if self.source_uo.is_continuous:
+                self.Matter.time_upstream = time_prof
+            else:
+                self.Matter.time_upstream = time_prof[-1]
 
             self.y_list.append(self.source_uo.outputs)
 

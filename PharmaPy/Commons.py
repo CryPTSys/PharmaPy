@@ -18,6 +18,18 @@ linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
 
 
+def flatten_states(state_list, name_states):
+    out = {}
+    for name in name_states:
+        ar = [di[name] for di in state_list]
+        if ar[0].ndim == 1:
+            out[name] = np.concatenate(ar)
+        else:
+            out[name] = np.vstack(ar)
+
+    return out
+
+
 def unpack_discretized(states, num_states, name_states, indexes=None,
                        state_map=None):
 

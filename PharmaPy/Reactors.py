@@ -12,7 +12,7 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events,
                               unpack_states, unpack_discretized,
-                              complete_dict_states)
+                              complete_dict_states, flatten_states)
 
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
@@ -176,6 +176,8 @@ class _BaseReactor:
         self.conc_runs = []
         self.vol_runs = []
         self.tempHt_runs = []
+
+        self.profiles_runs = []
 
     @property
     def Phases(self):
@@ -401,19 +403,23 @@ class _BaseReactor:
             return dsens_dt
 
     def flatten_states(self):
-        self.timeProf = np.concatenate(self.time_runs)
-        self.concProf = np.vstack(self.conc_runs)
+        names = list(self.profiles_runs[0].keys())
+        di_out = flatten_states(self.profiles_runs, names)
+        # self.timeProf = np.concatenate(self.time_runs)
+        # self.concProf = np.vstack(self.conc_runs)
 
-        self.volProf = np.concatenate(self.vol_runs)
-        self.tempProf = np.concatenate(self.temp_runs)
-        self.timeProf = np.concatenate(self.time_runs)
+        # self.volProf = np.concatenate(self.vol_runs)
+        # self.tempProf = np.concatenate(self.temp_runs)
+        # self.timeProf = np.concatenate(self.time_runs)
 
-        if 'temp_ht' in self.states_uo:
-            self.tempHtProf = np.concatenate(self.tempHt_runs)
+        # if 'temp_ht' in self.states_uo:
+        #     self.tempHtProf = np.concatenate(self.tempHt_runs)
 
-        self.Liquid_1.tempProf = self.tempProf
-        self.Liquid_1.concProf = self.concProf
-        self.Liquid_1.timeProf = self.timeProf
+        # self.Liquid_1.tempProf = self.tempProf
+        # self.Liquid_1.concProf = self.concProf
+        # self.Liquid_1.timeProf = self.timeProf
+
+        return di_out
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
                          modify_controls=None, reorder=True, run_args={}):
@@ -786,7 +792,6 @@ class BatchReactor(_BaseReactor):
         self.states = states[-1]
 
         self.retrieve_results(time, states)
-        self.flatten_states()
 
         if eval_sens:
             sensit = []
@@ -804,7 +809,7 @@ class BatchReactor(_BaseReactor):
     def retrieve_results(self, time, states):
         # Prepare dict of results
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['time'] = time
+        dp['time'] = np.asarray(time)
 
         dp = complete_dict_states(time, dp, ('vol', 'temp', 'temp_ht'),
                                   self.Liquid_1, self.controls)
@@ -815,63 +820,69 @@ class BatchReactor(_BaseReactor):
         dp['q_rxn'] = self.heat_prof[:, 0]
         dp['q_ht'] = self.heat_prof[:, 1]
 
+        self.profiles_runs.append(dp)
+        dp = self.flatten_states()
+
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
         vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
-        if 'temp' in self.controls.keys():
-            conc_prof = states.copy()
-            temp_prof = self.controls['temp'](time)
-            tht_prof = None
-        elif self.isothermal:
-            conc_prof = states
-            temp_prof = np.ones_like(time) * self.Liquid_1.temp
-            tht_prof = None
-        else:
-            conc_prof = states[:, :self.num_concentr]
-            temp_prof = states[:, self.num_concentr]
+        # if 'temp' in self.controls.keys():
+        #     conc_prof = states.copy()
+        #     temp_prof = self.controls['temp'](time)
+        #     tht_prof = None
+        # elif self.isothermal:
+        #     conc_prof = states
+        #     temp_prof = np.ones_like(time) * self.Liquid_1.temp
+        #     tht_prof = None
+        # else:
+        #     conc_prof = states[:, :self.num_concentr]
+        #     temp_prof = states[:, self.num_concentr]
 
-            if 'temp_ht' in self.states_uo:
-                tht_prof = states[:, -1]
-            else:
-                tht_prof = None
+        #     if 'temp_ht' in self.states_uo:
+        #         tht_prof = states[:, -1]
+        #     else:
+        #         tht_prof = None
 
-        # Heat profile
-        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
-                                              temp_prof, tht_prof, None,
-                                              heat_prof=True)
+        # # Heat profile
+        # self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
+        #                                       temp_prof, tht_prof, None,
+        #                                       heat_prof=True)
 
-        if 'temp_ht' in self.states_uo:
-            q_ht = self.heat_prof[:, 1]
-        else:
-            q_ht = self.heat_prof[:, 0]
+        # if 'temp_ht' in self.states_uo:
+        #     q_ht = self.heat_prof[:, 1]
+        # else:
+        #     q_ht = self.heat_prof[:, 0]
 
         # Heat duty
-        self.heat_duty = np.array([trapezoidal_rule(time, q_ht), 0])  # J
+        self.heat_duty = np.array([trapezoidal_rule(time, dp['q_ht']), 0])  # J
         self.duty_type = [0, 0]
 
-        self.time_runs.append(np.array(time))
-        self.temp_runs.append(temp_prof)
-        self.conc_runs.append(conc_prof)
-        self.vol_runs.append(vol_prof)
+        # self.time_runs.append(np.array(time))
+        # self.temp_runs.append(temp_prof)
+        # self.conc_runs.append(conc_prof)
+        # self.vol_runs.append(vol_prof)
 
-        if tht_prof is not None:
-            self.tempHt_runs.append(tht_prof)
+        # if tht_prof is not None:
+        #     self.tempHt_runs.append(tht_prof)
 
         # Final state
         self.elapsed_time = time[-1]
-        self.concentr = self.conc_runs[-1][-1]
-        self.temp = self.temp_runs[-1][-1]
-        self.vol = self.vol_runs[-1][-1]
+        # self.concentr = self.conc_runs[-1][-1]
+        # self.temp = self.temp_runs[-1][-1]
+        # self.vol = self.vol_runs[-1][-1]
 
-        self.Liquid_1.temp = self.temp
+        # self.Liquid_1.temp = self.temp
+        self.Liquid_1.temp = dp['temp'][-1]
         # self.Liquid_1.vol = self.vol
         # self.Liquid_1.calcComposition()
 
         concentr_final = self.Liquid_1.mole_conc.copy()
-        concentr_final[self.mask_species] = self.concentr
-        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=concentr_final)
+        # concentr_final[self.mask_species] = self.concentr
+        concentr_final[self.mask_species] = dp['mole_conc'][-1]
+        self.Liquid_1.updatePhase(vol=self.Liquid_1.vol,
+                                  mole_conc=concentr_final)
 
         self.Outlet = self.Liquid_1
         self.outputs = states
