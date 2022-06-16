@@ -337,7 +337,7 @@ class Connection:
         if states_up is None:
             bipartite = None
             names_upstream = None
-        elif self.source_uo.oper_mode == 'Batch':
+        elif self.source_uo.oper_mode == 'Batch' or self.source_uo.oper_mode =='Semibatch':
             bipartite = None
             names_upstream = None
         else:
@@ -374,7 +374,18 @@ class Connection:
             self.destination_uo.material_from_upstream = True
 
         elif mode == 'Semibatch':
-            if self.destination_uo.Phases is None:
+            if class_destination == 'DynamicCollector':
+                self.destination_uo.Inlet = transfered_matter
+                self.destination_uo.material_from_upstream = True
+
+                if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
+                    self.destination_uo.KinCryst = self.source_uo.Kinetics
+                    self.destination_uo.kwargs_cryst = {
+                        'target_ind': self.source_uo.target_ind,
+                        'target_comp': self.source_uo.target_comp,
+                        'scale': self.source_uo.scale}
+
+            elif self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
@@ -411,10 +422,10 @@ class Connection:
             #     self.destination_uo.Inlets = transfered_matter
             #     self.destination_uo.material_from_upstream = True
 
-            if class_destination == 'DynamicCollector':
-                if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
-                    self.destination_uo.KinCryst = self.source_uo.Kinetics
-                    self.destination_uo.kwargs_cryst = {
-                        'target_ind': self.source_uo.target_ind,
-                        'target_comp': self.source_uo.target_comp,
-                        'scale': self.source_uo.scale}
+            # if class_destination == 'DynamicCollector':
+            #     if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
+            #         self.destination_uo.KinCryst = self.source_uo.Kinetics
+            #         self.destination_uo.kwargs_cryst = {
+            #             'target_ind': self.source_uo.target_ind,
+            #             'target_comp': self.source_uo.target_comp,
+            #             'scale': self.source_uo.scale}

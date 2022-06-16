@@ -1087,6 +1087,8 @@ class Evaporator:
 
         dynamic_profiles['time'] = np.asarray(time)
 
+        self.outputs = dynamic_profiles
+
         self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
 
         self.time_runs.append(np.asarray(time))
@@ -1132,9 +1134,9 @@ class Evaporator:
             # Output info
             self.Outlet = self.Liquid_1
 
-        self.outputs = np.column_stack((xliq_update,
-                                        self.molLiq_runs[-1],
-                                        self.temp_runs[-1]))
+        # self.outputs = np.column_stack((xliq_update,
+        #                                 self.molLiq_runs[-1],
+        #                                 self.temp_runs[-1]))
 
     def flatten_states(self):
         self.timeProf = np.concatenate(self.time_runs)

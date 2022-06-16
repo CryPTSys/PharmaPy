@@ -529,6 +529,7 @@ class DynamicCollector:
 
         self.elapsed_time = 0
         self.oper_mode = 'Continuous'
+        self.oper_mode = 'Semibatch'
 
     @property
     def Phases(self):
@@ -568,7 +569,7 @@ class DynamicCollector:
             names_states_in = self.names_states_in['liquid_mixer']
             self.model_type = 'liquid_mixer'
 
-            len_in = [self.num_species, 1, 1]
+            len_in = [len(self.name_species), 1, 1]
 
             states_in_dict = dict(zip(names_states_in, len_in))
 
@@ -723,16 +724,6 @@ class DynamicCollector:
             self.Phases = phases
 
         elif self.model_type == 'liquid_mixer':
-            self.states_di = {
-                'mass': {'units': 'kg', 'dim': 1},
-                'mass_frac': {'units': '', 'dim': self.num_species,
-                              'index': self.Liquid_1.name_species},
-                'temp': {'units': 'K', 'dim': 1}
-                }
-
-            self.dim_states = [a['dim'] for a in self.states_di.values()]
-            self.name_states = list(self.states_di.keys())
-
             path = self.Inlet.path_data
 
             init_dict = self.get_inputs_new(self.elapsed_time)['Inlet']
@@ -746,7 +737,16 @@ class DynamicCollector:
             states_init = np.hstack((frac_init, mass_init, temp_init))
 
             self.Phases = (liquid,)
-            # classify_phases(self)
+
+            self.states_di = {
+                'mass': {'units': 'kg', 'dim': 1},
+                'mass_frac': {'units': '', 'dim': self.num_species,
+                              'index': self.Liquid_1.name_species},
+                'temp': {'units': 'K', 'dim': 1}
+                }
+
+            self.dim_states = [a['dim'] for a in self.states_di.values()]
+            self.name_states = list(self.states_di.keys())
 
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time)
