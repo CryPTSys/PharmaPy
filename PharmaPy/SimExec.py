@@ -197,7 +197,10 @@ class SimulationExec:
 
         time_processing = np.zeros(len(execution_order))
         for ind, uo in enumerate(execution_order):
-            if hasattr(uo, 'timeProf'):
+            if hasattr(uo, 'dynamic_result'):
+                time_prof = uo.dynamic_result.time
+                time_processing[ind] = time_prof[-1] - time_prof[0]
+            elif hasattr(uo, 'timeProf'):
                 time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
 
         self.time_processing = time_processing

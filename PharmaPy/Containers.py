@@ -391,6 +391,8 @@ class Mixer:
 
         states_in_dict = dict(zip(self.names_states_in, len_in))
 
+        time_prof = None
+
         if any(solids_flag):
             self.states_in_dict = {'Inlet': states_in_dict}  # TODO (solids?)
             u_input, ind_solids = self.get_inputs_solids()
@@ -413,7 +415,7 @@ class Mixer:
                         break
 
             u_input = self.get_inputs_new(time_prof)
-            self.timeProf = time_prof
+            # self.timeProf = time_prof
 
             # ---------- Create output phase
             path = self.Inlets[0].path_data
@@ -429,11 +431,11 @@ class Mixer:
                 states = self.balances(u_input)
 
         # ---------- Retrieve results
-        self.retrieve_results(states)
+        self.retrieve_results(time_prof, states)
 
         return states
 
-    def retrieve_results(self, states):
+    def retrieve_results(self, time, states):
         solids_flag = [inlet.__module__ == 'PharmaPy.MixedPhases'
                        for inlet in self.Inlets]
 
@@ -473,6 +475,7 @@ class Mixer:
                 last_mass = mass[-1]
 
                 dynamic_result = dict(zip(self.name_states['flow'], states))
+                dynamic_result['time'] = time
 
                 self.dynamic_result = DynamicResult(self.states_di['flow'],
                                                     **dynamic_result)

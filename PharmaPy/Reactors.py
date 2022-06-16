@@ -405,20 +405,6 @@ class _BaseReactor:
     def flatten_states(self):
         names = list(self.profiles_runs[0].keys())
         di_out = flatten_states(self.profiles_runs, names)
-        # self.timeProf = np.concatenate(self.time_runs)
-        # self.concProf = np.vstack(self.conc_runs)
-
-        # self.volProf = np.concatenate(self.vol_runs)
-        # self.tempProf = np.concatenate(self.temp_runs)
-        # self.timeProf = np.concatenate(self.time_runs)
-
-        # if 'temp_ht' in self.states_uo:
-        #     self.tempHtProf = np.concatenate(self.tempHt_runs)
-
-        # self.Liquid_1.tempProf = self.tempProf
-        # self.Liquid_1.concProf = self.concProf
-        # self.Liquid_1.timeProf = self.timeProf
-
         return di_out
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
@@ -821,65 +807,23 @@ class BatchReactor(_BaseReactor):
         dp['q_ht'] = self.heat_prof[:, 1]
 
         self.profiles_runs.append(dp)
-        dp = self.flatten_states()
+        dp = self.flatten_states()  # In case the UO has been run before
 
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
         vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
-        # if 'temp' in self.controls.keys():
-        #     conc_prof = states.copy()
-        #     temp_prof = self.controls['temp'](time)
-        #     tht_prof = None
-        # elif self.isothermal:
-        #     conc_prof = states
-        #     temp_prof = np.ones_like(time) * self.Liquid_1.temp
-        #     tht_prof = None
-        # else:
-        #     conc_prof = states[:, :self.num_concentr]
-        #     temp_prof = states[:, self.num_concentr]
-
-        #     if 'temp_ht' in self.states_uo:
-        #         tht_prof = states[:, -1]
-        #     else:
-        #         tht_prof = None
-
-        # # Heat profile
-        # self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
-        #                                       temp_prof, tht_prof, None,
-        #                                       heat_prof=True)
-
-        # if 'temp_ht' in self.states_uo:
-        #     q_ht = self.heat_prof[:, 1]
-        # else:
-        #     q_ht = self.heat_prof[:, 0]
-
         # Heat duty
         self.heat_duty = np.array([trapezoidal_rule(time, dp['q_ht']), 0])  # J
         self.duty_type = [0, 0]
 
-        # self.time_runs.append(np.array(time))
-        # self.temp_runs.append(temp_prof)
-        # self.conc_runs.append(conc_prof)
-        # self.vol_runs.append(vol_prof)
-
-        # if tht_prof is not None:
-        #     self.tempHt_runs.append(tht_prof)
-
         # Final state
         self.elapsed_time = time[-1]
-        # self.concentr = self.conc_runs[-1][-1]
-        # self.temp = self.temp_runs[-1][-1]
-        # self.vol = self.vol_runs[-1][-1]
 
-        # self.Liquid_1.temp = self.temp
         self.Liquid_1.temp = dp['temp'][-1]
-        # self.Liquid_1.vol = self.vol
-        # self.Liquid_1.calcComposition()
 
         concentr_final = self.Liquid_1.mole_conc.copy()
-        # concentr_final[self.mask_species] = self.concentr
         concentr_final[self.mask_species] = dp['mole_conc'][-1]
         self.Liquid_1.updatePhase(vol=self.Liquid_1.vol,
                                   mole_conc=concentr_final)
