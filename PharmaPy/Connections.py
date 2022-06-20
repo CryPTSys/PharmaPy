@@ -103,6 +103,11 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
                         field = get_missing_field(
                             dict_states_in[phase][state], len(time))
 
+                    if len(time) > 1:
+                        field = np.outer(np.ones_like(time), field)
+                        if field.shape[1] == 1:
+                            field = field.flatten()
+
                     di_out[phase][state] = field
         else:
             for state in di:

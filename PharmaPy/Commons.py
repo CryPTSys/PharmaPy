@@ -34,7 +34,7 @@ def flatten_states(state_list, name_states):
 
 
 def unpack_discretized(states, num_states, name_states, indexes=None,
-                       state_map=None):
+                       state_map=None, inputs=None):
 
     acum_len = np.cumsum(num_states)[:-1]
 
@@ -64,11 +64,19 @@ def unpack_discretized(states, num_states, name_states, indexes=None,
 
             if di_key is None:
                 state_data = state.reshape(-1, num_times).T
+
+                if inputs is not None:
+                    state_data = np.column_stack((inputs[name], state_data))
             else:
                 state_data = {}
                 for idx_col in range(state.shape[1]):
-                    state_data[di_key[idx_col]] = state[:, idx_col].reshape(
-                        -1, num_times).T
+                    di_data = state[:, idx_col].reshape(-1, num_times).T
+
+                    if inputs is not None:
+                        inpt = inputs[name]
+                        di_data = np.column_stack((inpt[:, idx_col], di_data))
+
+                    state_data[di_key[idx_col]] = di_data
 
             states_split.append(state_data)
 

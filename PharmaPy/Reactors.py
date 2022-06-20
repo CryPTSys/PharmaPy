@@ -58,9 +58,9 @@ def retrieve_pde_result(di, time=None, vol=None, idx_time=None, idx_vol=None):
 
     if idx_vol is None:
         if vol is None:
-            idx_vol = np.arange(len(di['vol']) - 1)
+            idx_vol = np.arange(len(di['vol']))
         else:
-            idx_vol = np.argmin(abs(vol - di['vol'])) - 1
+            idx_vol = np.argmin(abs(vol - di['vol']))
             final_state['vol'] = di['vol'][idx_vol]
 
     di_filtered = {key: di[key] for key in di
@@ -812,7 +812,7 @@ class BatchReactor(_BaseReactor):
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        vol_prof = np.ones_like(time) * self.Liquid_1.vol
+        # vol_prof = np.ones_like(time) * self.Liquid_1.vol
 
         # Heat duty
         self.heat_duty = np.array([trapezoidal_rule(time, dp['q_ht']), 0])  # J
@@ -1613,7 +1613,7 @@ class PlugFlowReactor(_BaseReactor):
             heat_transfer = self.u_ht * a_prime * (temp - temp_ht)  # W/m**3
 
         if heat_profile:
-            ht_total = trapezoidal_rule(self.vol_centers, heat_transfer)  # W
+            ht_total = trapezoidal_rule(self.dynamic_result.vol, heat_transfer)  # W
             return ht_total
 
         else:
@@ -1721,14 +1721,13 @@ class PlugFlowReactor(_BaseReactor):
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
-        # self.num_species = len(c_inlet)
         self.num_discr = num_discr
 
         vol_rxn = self.Liquid_1.vol
         self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
 
-        c_init = np.ones((num_discr,
-                          self.num_species)) * self.Liquid_1.mole_conc
+        c_init = np.ones((num_discr, self.num_species)) * \
+            self.Liquid_1.mole_conc
 
         self.num_states = self.num_species
 
@@ -1768,7 +1767,7 @@ class PlugFlowReactor(_BaseReactor):
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
 
-        self.derivatives = model(0, states_init)
+        self.derivatives = model(self.elapsed_time, states_init)
 
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
@@ -1797,19 +1796,17 @@ class PlugFlowReactor(_BaseReactor):
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        dynamic_result = unpack_discretized(states, self.dim_states,
-                                            self.name_states,
-                                            indexes=indexes)
-
-        dynamic_result['time'] = time
-        dynamic_result['vol'] = self.vol_discr
-
-        self.dynamic_result = DynamicResult(self.states_di, **dynamic_result)
-
         inputs = self.get_inputs(self.timeProf)['Inlet']
 
-        outlet_states = retrieve_pde_result(dynamic_result,
-                                            vol=self.vol_discr[-1])
+        dp = unpack_discretized(states, self.dim_states, self.name_states,
+                                indexes=indexes, inputs=inputs)
+
+        dp['time'] = time
+        dp['vol'] = self.vol_discr
+
+        self.dynamic_result = DynamicResult(self.states_di, **dp)
+
+        outlet_states = retrieve_pde_result(dp, vol=self.vol_discr[-1])
 
         outlet_states['mole_conc'] = np.column_stack(
             outlet_states['mole_conc'].values())
@@ -1818,71 +1815,11 @@ class PlugFlowReactor(_BaseReactor):
 
         self.outputs = outlet_states
 
-        self.elapsed_time = time[-1]
-
-        if 'temp' in self.states_uo:
-            tempProf = states[:, self.num_species::self.num_species + 1]
-            conc = np.delete(
-                states,
-                range(self.num_species, states.shape[1], self.num_species + 1),
-                axis=1)
-
-        else:
-            conc = states
-            tempProf = np.ones((num_times, self.num_discr)
-                               ) * self.Liquid_1.temp
-
-        # Inputs
-
-
-        conc_inlet = np.ones((len(states), self.num_species)
-                             ) * inputs['mole_conc']
-
-        temp_inlet = np.ones(len(states)) * inputs['temp']
-
-        conc = np.hstack((conc_inlet, conc))
-        tempProf = np.insert(tempProf, 0, temp_inlet, axis=1)
-
-        vol_centers = (self.vol_discr[1:] + self.vol_discr[:-1]) / 2
-        vol_centers = np.insert(vol_centers, 0, 0)
-
-        concPerSpecies = []
-        for ind in range(self.num_species):
-            profile = conc[:, ind::self.num_species]
-            concPerSpecies.append(profile)
-
-        concPerVolElem = np.split(conc, len(vol_centers), axis=1)
-
-        self.concPerSpecies = concPerSpecies
-        self.concPerVolElem = concPerVolElem
-        self.concProf = concPerVolElem[-1]
-
-        self.tempProf = tempProf
-
-        self.temp = tempProf[-1, -1]
-        self.concentr = concPerVolElem[-1][-1]
-
         # Outlet stream
         path = self.Inlet.path_data
-        self.Outlet = LiquidStream(path, temp=self.temp,
-                                   mole_conc=self.concentr,
-                                   vol_flow=self.Inlet.vol_flow)
-
-        self.Outlet.concProf = self.concProf  # TODO
-        self.Outlet.timeProf = self.timeProf
-        self.Outlet.tempProf = tempProf[:, -1]
-
-        # Outputs at all times
-        conc_out = concPerVolElem[-1]
-        temp_out = tempProf[:, -1]
-
-        # vol_flow = self.get_inputs(time)['vol_flow']  # TODO: it should be this
-        vol_flow = np.repeat(self.Inlet.vol_flow, len(tempProf))
-
-        # self.outputs = np.column_stack((conc_out, temp_out, vol_flow))
-
-        # Adjust discretization
-        self.vol_centers = vol_centers
+        self.Outlet = LiquidStream(path, temp=outlet_states['temp'][-1],
+                                   mole_conc=outlet_states['mole_conc'][-1],
+                                   vol_flow=outlet_states['vol_flow'][-1])
 
         # Energy balance
         ht_time = np.zeros_like(time)
