@@ -12,6 +12,9 @@ from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
 
+from PharmaPy.Commons import unpack_states
+from PharmaPy.Results import DynamicResult
+
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib.animation import FuncAnimation
@@ -580,6 +583,14 @@ class Filter:
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
 
+        self.states_di = {
+            'mass_filtrate': {'dim': 1, 'units': 'kg'},
+            'mass_liquid': {'dim': 1, 'units': 'kg'},
+            }
+
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+
     def nomenclature(self):
         self.names_states_in = ['mass', 'temp', 'mass_frac', 'total_distrib']
         self.names_states_out = self.names_states_in
@@ -732,6 +743,11 @@ class Filter:
     def retrieve_results(self, time, states):
         self.timeProf = np.array(time)
         self.massProf = states
+
+        dp = unpack_states(states, self.dim_states, self.name_states)
+        dp['time'] = np.asarray(time)
+
+        self.dynamic_result = DynamicResult(self.states_di, **dp)
 
         solid_cake = copy.deepcopy(self.Solid_1)
         solid_cake.updatePhase(

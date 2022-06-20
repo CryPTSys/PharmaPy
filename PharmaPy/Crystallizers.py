@@ -2155,15 +2155,13 @@ class MSMPR(_BaseCryst):
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
-            self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
-                                      'index': list(range(moms.shape[1]))}
-
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']
 
         self.outputs = dp
 
-        self.dynamic_result = DynamicResult(self.states_di, **dp)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
         self.time_runs.append(time_profile)
 
