@@ -522,7 +522,12 @@ class SimulationExec:
                         elif inlet.DynamicInlet is not None:
                             time_inlets.append(uo.timeProf)
                         else:
-                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
+                            if hasattr(uo, 'dynamic_result'):
+                                time_prof = uo.dynamic_result.time
+                            else:
+                                time_prof = uo.timeProf
+
+                            elapsed = time_prof[-1] - time_prof[0]
                             time_inlets.append(elapsed)
 
                         inlets_ids.append(uo.id_uo)
