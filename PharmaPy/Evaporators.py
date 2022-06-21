@@ -9,7 +9,7 @@ import numpy as np
 # from autograd import numpy as np
 # from autograd import jacobian as jacauto
 from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
-                              handle_events, unpack_states)
+                              handle_events, unpack_states, flatten_states)
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
@@ -511,15 +511,7 @@ class Evaporator:
 
         self.is_continuous = False
 
-        self.time_runs = []
-        self.temp_runs = []
-        self.pres_runs = []
-
-        self.xliq_runs = []
-        self.yvap_runs = []
-
-        self.molLiq_runs = []
-        self.molVap_runs = []
+        self.profiles_runs = []
 
         self.activity_model = activity_model
 
@@ -1082,35 +1074,24 @@ class Evaporator:
     def retrieve_results(self, time, states):
         n_comp = self.num_species + self.include_nitrogen
 
-        dynamic_profiles = unpack_states(states, self.dim_states,
-                                         self.name_states)
+        dp = unpack_states(states, self.dim_states, self.name_states)
 
-        dynamic_profiles['time'] = np.asarray(time)
+        dp['time'] = np.asarray(time)
 
-        self.outputs = dynamic_profiles
+        self.outputs = dp
+        self.profiles_runs.append(dp)
 
-        self.dynamic_result = DynamicResult(self.states_di, **dynamic_profiles)
+        dp = self.flatten_states()
 
-        self.time_runs.append(np.asarray(time))
+        self.dynamic_result = DynamicResult(self.states_di, **dp)
+
         self.elapsed_time += time[-1]
 
-        fracs = states[:, n_comp:3*n_comp]
-        self.xliq_runs.append(fracs[:, :n_comp])
-        self.yvap_runs.append(fracs[:, n_comp:])
-
-        self.molLiq_runs.append(states[:, 3*n_comp])
-        self.molVap_runs.append(states[:, 3*n_comp + 1])
-
-        self.pres_runs.append(states[:, 3*n_comp + 2])
-
-        self.uIntProf = states[:, -2]
-        self.temp_runs.append(states[:, -1])
-
         # Update phases
-        self.Liquid_1.temp = self.temp_runs[-1][-1]
-        self.Liquid_1.pres = self.pres_runs[-1][-1]
+        self.Liquid_1.temp = dp['temp'][-1]
+        self.Liquid_1.pres = dp['pres'][-1]
 
-        xliq_update = self.xliq_runs[-1]
+        xliq_update = dp['x_liq']
         if self.include_nitrogen:
             xliq_update = xliq_update[:, :-1]
             Liquid_1 = LiquidPhase(self.paths[0],
@@ -1120,14 +1101,13 @@ class Evaporator:
                                    mole_frac=xliq_update[-1])
 
             # Output info
-            # self.Phases = Liquid_1
             self.Outlet = Liquid_1
 
         else:
             self.Liquid_1.updatePhase(mole_frac=xliq_update[-1],
-                                      moles=self.molLiq_runs[-1][-1],
-                                      temp=self.temp_runs[-1][-1],
-                                      pres=self.pres_runs[-1][-1])
+                                      moles=dp['mol_liq'][-1],
+                                      temp=dp['temp'][-1],
+                                      pres=dp['pres'][-1])
 
             self.Phases = self.Liquid_1
 
@@ -1139,17 +1119,9 @@ class Evaporator:
         #                                 self.temp_runs[-1]))
 
     def flatten_states(self):
-        self.timeProf = np.concatenate(self.time_runs)
+        out = flatten_states(self.profiles_runs)
 
-        self.xliqProf = np.vstack(self.xliq_runs)
-        self.yvapProf = np.vstack(self.yvap_runs)
-
-        self.molLiqProf = np.concatenate(self.molLiq_runs)
-        self.molVapProf = np.concatenate(self.molVap_runs)
-
-        self.presProf = np.concatenate(self.pres_runs)
-
-        self.tempProf = np.concatenate(self.temp_runs)
+        return out
 
     def get_heat_duty(self, time, states):
         # ---------- Heat balance
@@ -1165,22 +1137,22 @@ class Evaporator:
             heat_bce[ind] = q_ht
             flow_vap[ind] = mass_bce[0]
 
-            x_liq = self.xliqProf[ind]
-            y_vap = self.yvapProf[ind]
+            x_liq = self.dynamic_result.x_liq[ind]
+            y_vap = self.dynamic_result.y_vap[ind]
 
             # if self.include_nitrogen:
             #     x_liq = x_liq[:-1]
             #     y_vap = y_vap[:-1]
 
             temp_bubble = self.Liquid_1.getBubblePoint(
-                pres=self.presProf[ind], mole_frac=x_liq)
+                pres=self.dynamic_result.pres[ind], mole_frac=x_liq)
 
             h_liq[ind] = self.Liquid_1.getEnthalpy(
                 temp=temp_bubble, mole_frac=x_liq,
                 basis='mole')
 
             h_vap[ind] = self.Vapor_1.getEnthalpy(
-                temp=self.tempProf[ind], mole_frac=y_vap,
+                temp=self.dynamic_result.temp[ind], mole_frac=y_vap,
                 basis='mole')
 
         # Condensation duty
@@ -1341,14 +1313,7 @@ class ContinuousEvaporator:
 
         self.tau = None
 
-        self.time_runs = []
-        self.temp_runs = []
-        self.pres_runs = []
-
-        self.xliq_runs = []
-        self.yvap_runs = []
-        self.molLiq_runs = []
-        self.molVap_runs = []
+        self.profiles_runs = []
 
         self.activity_model = activity_model
         self.num_interp_points = num_interp_points
@@ -1855,33 +1820,34 @@ class ContinuousEvaporator:
 
         time = np.asarray(time)
 
-        dynamic_profiles = unpack_states(states, self.dim_states,
-                                         self.name_states)
+        dp = unpack_states(states, self.dim_states, self.name_states)
 
-        dynamic_profiles['time'] = time
+        dp['time'] = time
 
         inputs_all = self.get_inputs(time)['Inlet']
 
         vol_liq, vol_vap, flow_liq, flow_vap = self.get_mole_flows(
-            dynamic_profiles['temp'], dynamic_profiles['pres'],
-            dynamic_profiles['x_liq'], dynamic_profiles['y_vap'],
-            dynamic_profiles['mol_liq'], dynamic_profiles['mol_vap'],
-            inputs_all['mole_flow'])
+            dp['temp'], dp['pres'], dp['x_liq'], dp['y_vap'], dp['mol_liq'],
+            dp['mol_vap'], inputs_all['mole_flow'])
 
-        dynamic_profiles['vol_liq'] = vol_liq
-        dynamic_profiles['vol_vap'] = vol_vap
+        dp['vol_liq'] = vol_liq
+        dp['vol_vap'] = vol_vap
 
-        dynamic_profiles['flow_liq'] = flow_liq
-        dynamic_profiles['flow_vap'] = flow_vap
+        dp['flow_liq'] = flow_liq
+        dp['flow_vap'] = flow_vap
 
         # For connectivity purposes (what if the desired stream is vapor?)
-        dynamic_profiles['mole_frac'] = dynamic_profiles['x_liq']
-        dynamic_profiles['mole_flow'] = dynamic_profiles['flow_liq']
+        dp['mole_frac'] = dp['x_liq']
+        dp['mole_flow'] = dp['flow_liq']
 
-        self.outputs = dynamic_profiles
+        self.profiles_runs.append(dp)
+
+        dp = self.flatten_states()
+
+        self.outputs = dp
 
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dynamic_profiles)
+                                            **dp)
 
         n_comp = self.num_species
 
@@ -1966,23 +1932,8 @@ class ContinuousEvaporator:
         self.vapFlowProf = flow_vap
 
     def flatten_states(self):
-        self.xliqProf = np.vstack(self.xliq_runs)
-        self.yvapProf = np.vstack(self.yvap_runs)
-
-        # self.volProf = np.concatenate(self.volProf)
-        self.tempProf = np.concatenate(self.temp_runs)
-        self.presProf = np.concatenate(self.pres_runs)
-        self.timeProf = np.concatenate(self.time_runs)
-
-        self.molLiqProf = np.concatenate(self.molLiq_runs)
-        self.molVapProf = np.concatenate(self.molVap_runs)
-
-            # if 'temp_ht' in self.states_uo:
-            #     self.tempHtProf = np.concatenate(self.tempHtProf)
-
-            # self.Phases.tempProf = self.tempProf
-            # self.Phases.concProf = self.concProf
-            # self.Phases.timeProf = self.timeProf
+        out = flatten_states(self.profiles_runs)
+        return out
 
     def plot_profiles(self, pick_comp=None, vol_plot=False, **fig_kwargs):
         """

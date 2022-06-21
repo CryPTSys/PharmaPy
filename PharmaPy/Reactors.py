@@ -403,8 +403,7 @@ class _BaseReactor:
             return dsens_dt
 
     def flatten_states(self):
-        names = list(self.profiles_runs[0].keys())
-        di_out = flatten_states(self.profiles_runs, names)
+        di_out = flatten_states(self.profiles_runs)
         return di_out
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
@@ -1833,8 +1832,6 @@ class PlugFlowReactor(_BaseReactor):
     def flatten_states(self):
         if type(self.timeProf) is list:
             self.concProf = np.vstack(self.concProf)
-
-            # self.timeProf = np.concatenate(self.timeProf)
 
     def plot_steady(self, fig_size=None, title=None):
         fig, axes = plt.subplots(1, 2, figsize=fig_size)

@@ -18,7 +18,9 @@ linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
 
 
-def flatten_states(state_list, name_states):
+def flatten_states(state_list):
+    name_states = list(state_list[0].keys())
+
     if len(state_list) == 1:
         return state_list[0]
     else:

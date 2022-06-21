@@ -504,7 +504,8 @@ class SimulationExec:
                         if uo.oper_mode == 'Batch':
                             time_inlets.append(1)
                         elif uo.Inlet.DynamicInlet is not None:
-                            time_inlets.append(uo.timeProf)
+                            # time_inlets.append(uo.timeProf)
+                            time_inlets.append(uo.dynamic_result.time)
                         else:
                             elapsed = uo.timeProf[-1] - uo.timeProf[0]
                             time_inlets.append(elapsed)
