@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from PharmaPy.Errors import PharmaPyValueError
+from PharmaPy.Commons import retrieve_pde_result
 
 
 special = ('alpha', 'beta', 'gamma', 'phi', 'rho', 'epsilon', 'sigma', 'mu',
@@ -109,6 +110,28 @@ def get_state_data(uo, *state_names):
         di[state] = y
 
     return time, di
+
+
+def get_state_distrib(result, *state_names, **kwargs_retrieve):
+    di = retrieve_pde_result(result, **kwargs_retrieve)
+    out = {}
+    for name in state_names:
+        idx = None
+        if isinstance(name, (tuple, list, range)):
+            state, idx = name
+        else:
+            state = name
+
+        y = di[state]
+        if idx is None:
+            if isinstance(y, dict):
+                y = list(y.values())
+        else:
+            y = [y[i] for i in idx]
+
+        out[state] = y
+
+    return out
 
 
 def get_states_result(result, *state_names):
@@ -214,3 +237,42 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         axes = axes[0]
 
     return fig, ax_orig
+
+
+def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
+                 cm=None, **fig_kwargs):
+    if times is None and x_vals is None:
+        raise ValueError("Both 'times' and 'x_vals' arguments are None. "
+                         "Please specify one of them")
+
+    if cm is None:
+        cm = plt.cm.Blues
+
+    fig, ax = plt.subplots(**fig_kwargs)
+    if not isinstance(ax, np.ndarray):
+        ax = [ax]
+    else:
+        ax = ax.flatten()
+
+    if times is not None:
+        colors = cm(np.linspace(0.2, 1, len(times)))
+        y = get_state_distrib(uo.dynamic_result, *state_names,
+                              time=times, x_name=x_name)
+
+        names = list(y.keys())
+        x_vals = getattr(uo.dynamic_result, x_name)
+
+        for t, time in enumerate(times):
+            for ind, axis in enumerate(ax):
+                y_plot = y[names[ind]]
+                if isinstance(y_plot, list):
+                    for ar in y_plot:
+                        axis.plot(x_vals, ar[t], color=colors[t])
+                else:
+                    axis.plot(x_vals, y_plot[t], color=colors[t])
+
+                axis.set_ylabel(names[ind])
+
+        fig.text(0.5, 0, x_name)
+
+    return fig, ax

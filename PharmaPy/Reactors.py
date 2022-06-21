@@ -12,7 +12,8 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               eval_state_events, handle_events,
                               unpack_states, unpack_discretized,
-                              complete_dict_states, flatten_states)
+                              complete_dict_states, flatten_states,
+                              retrieve_pde_result)
 
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
@@ -44,37 +45,6 @@ def check_stoichiometry(stoich, mws):
               "provided stoichiometric matrix. "
               "Check 'stoich_matrix' argument passed to the "
               "aggregated Kinetic instance.")
-
-
-def retrieve_pde_result(di, time=None, vol=None, idx_time=None, idx_vol=None):
-    final_state = {}
-
-    if idx_time is None:
-        if time is None:
-            idx_time = np.arange(len(di['time']))
-        else:
-            idx_time = np.argmin(abs(time - di['time']))
-            final_state['time'] = di['time'][idx_time]
-
-    if idx_vol is None:
-        if vol is None:
-            idx_vol = np.arange(len(di['vol']))
-        else:
-            idx_vol = np.argmin(abs(vol - di['vol']))
-            final_state['vol'] = di['vol'][idx_vol]
-
-    di_filtered = {key: di[key] for key in di
-                   if key != 'time' and key != 'vol'}
-
-    for key, val in di_filtered.items():
-        if isinstance(val, dict):
-            final_state[key] = retrieve_pde_result(val,
-                                                   idx_time=idx_time,
-                                                   idx_vol=idx_vol)
-        elif isinstance(val, np.ndarray):
-            final_state[key] = val[idx_time, idx_vol]
-
-    return final_state
 
 
 class _BaseReactor:
@@ -1803,9 +1773,11 @@ class PlugFlowReactor(_BaseReactor):
         dp['time'] = time
         dp['vol'] = self.vol_discr
 
-        self.dynamic_result = DynamicResult(self.states_di, **dp)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
-        outlet_states = retrieve_pde_result(dp, vol=self.vol_discr[-1])
+        outlet_states = retrieve_pde_result(dp, x_name='vol',
+                                            x=self.vol_discr[-1])
 
         outlet_states['mole_conc'] = np.column_stack(
             outlet_states['mole_conc'].values())

@@ -14,6 +14,8 @@ from itertools import cycle
 
 from assimulo.exception import TerminateSimulation
 
+from PharmaPy.Results import DynamicResult
+
 linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
 
@@ -108,6 +110,46 @@ def unpack_states(states, num_states, name_states, state_map=None):
     dict_states = dict(zip(name_states, states_split))
 
     return dict_states
+
+
+def retrieve_pde_result(data, x_name, time=None, x=None, idx_time=None,
+                        idx_vol=None):
+
+    if isinstance(data, dict):
+        di = data
+    elif data.__class__.__name__ == 'DynamicResult':
+        di = data.__dict__
+
+    out = {}
+
+    if idx_time is None:
+        if time is None:
+            idx_time = np.arange(len(di['time']))
+        elif isinstance(time, (list, tuple, np.ndarray)):
+            # TODO: Should we interpolate instead?
+            idx_time = [np.argmin(abs(t - di['time'])) for t in time]
+        else:
+            idx_time = np.argmin(abs(time - di['time']))
+            out['time'] = di['time'][idx_time]
+
+    if idx_vol is None:
+        if x is None:
+            idx_vol = np.arange(len(di[x_name]))
+        else:
+            idx_vol = np.argmin(abs(x - di[x_name]))
+            out[x_name] = di[x_name][idx_vol]
+
+    di_filtered = {key: di[key] for key in di
+                   if key != 'time' and key != x_name}
+
+    for key, val in di_filtered.items():
+        if isinstance(val, dict):
+            out[key] = retrieve_pde_result(val, x_name, idx_time=idx_time,
+                                           idx_vol=idx_vol)
+        elif isinstance(val, np.ndarray):
+            out[key] = val[idx_time][:, idx_vol]
+
+    return out
 
 
 def complete_dict_states(time, di, target_keys, phase, controls,

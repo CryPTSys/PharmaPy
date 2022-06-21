@@ -1760,6 +1760,7 @@ class BatchCryst(_BaseCryst):
         dp = unpack_states(states, self.dim_states, self.name_states)
         dp['distrib'] *= 1 / self.scale
         dp['time'] = time_profile
+        dp['x_cryst'] = self.x_grid
 
         if self.method == '1D-FVM':
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
@@ -2086,6 +2087,7 @@ class MSMPR(_BaseCryst):
 
         dp['time'] = time
         dp['vol_flow'] = volflow
+        dp['x_cryst'] = self.x_grid
 
         sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
 

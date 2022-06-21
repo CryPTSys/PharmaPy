@@ -1810,7 +1810,7 @@ class ContinuousEvaporator:
             return time, states
 
     def retrieve_results(self, time, states):
-        self.elapsed_time += time[-1]
+        # self.elapsed_time += time[-1]
 
         # ---------- Create result object
         time = np.asarray(time)
