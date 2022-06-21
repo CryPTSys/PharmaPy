@@ -1751,11 +1751,11 @@ class BatchCryst(_BaseCryst):
         time_profile = np.array(time)
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-
+        dp['distrib'] *= 1 / self.scale
         dp['time'] = time_profile
 
         if self.method == '1D-FVM':
-            moms = self.Solid_1.getMoments(distrib=dp['distrib']/self.scale)
+            moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
             # self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
