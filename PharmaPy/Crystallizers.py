@@ -2144,6 +2144,7 @@ class MSMPR(_BaseCryst):
         volflow = inputs['Inlet']['vol_flow']
 
         dp = unpack_states(states, self.dim_states, self.name_states)
+        dp['distrib'] *= 1 / self.scale
 
         dp['time'] = time_profile
         dp['vol_flow'] = volflow
@@ -2159,130 +2160,138 @@ class MSMPR(_BaseCryst):
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
+            # self.distribVolPercProf = self.Solid_1.convert_distribution(
+            #     num_distr=distProf)
+
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']
+
+        self.profiles_runs.append(dp)
+        dp = self.flatten_states()
 
         self.outputs = dp
 
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        self.time_runs.append(time_profile)
+        # self.time_runs.append(time_profile)
 
-        states[:, :self.num_distr] *= 1 / self.scale
+        # states[:, :self.num_distr] *= 1 / self.scale
 
-        # Reordering output states
-        state_reordering = {'distrib': self.num_distr,
-                            'mass_conc': self.num_species}
+        # # Reordering output states
+        # state_reordering = {'distrib': self.num_distr,
+        #                     'mass_conc': self.num_species}
 
-        distProf = states[:, :self.num_distr]
-        self.distrib_runs.append(distProf)
+        # distProf = states[:, :self.num_distr]
+        # self.distrib_runs.append(distProf)
 
-        if self.method == '1D-FVM':
-            self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
+        # if self.method == '1D-FVM':
+        #     self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
 
-            self.distribVolPercProf = self.Solid_1.convert_distribution(
-                num_distr=distProf)
+        #     self.distribVolPercProf = self.Solid_1.convert_distribution(
+        #         num_distr=distProf)
 
-        num_material = self.num_distr + self.num_species
+        # num_material = self.num_distr + self.num_species
 
-        rho_solid = self.Solid_1.getDensity()
-        if 'vol' in self.states_uo:
-            self.volProf = states[:, num_material]
-            y_outputs = np.delete(states, num_material, axis=1)
+        # rho_solid = self.Solid_1.getDensity()
+        # if 'vol' in self.states_uo:
+        #     self.volProf = states[:, num_material]
+        #     y_outputs = np.delete(states, num_material, axis=1)
 
-            vol_liq = self.volProf[-1]
-            vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
-                                              mom_num=3) * self.Solid_1.kv
+        #     vol_liq = self.volProf[-1]
+        #     vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
+        #                                       mom_num=3) * self.Solid_1.kv
 
-            mass_sol = rho_solid * vol_sol
+        #     mass_sol = rho_solid * vol_sol
 
-            state_reordering['vol'] = 1
+        #     state_reordering['vol'] = 1
 
-        else:
-            y_outputs = states
-            vol_liq = self.Liquid_1.vol
+        # else:
+        #     y_outputs = states
+        #     vol_liq = self.Liquid_1.vol
 
-            mom_3 = self.Solid_1.getMoments(distrib=distProf[-1], mom_num=3)
-            vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
+        #     mom_3 = self.Solid_1.getMoments(distrib=dp['distrib'][-1],
+        #                                     mom_num=3)
 
-            self.vol_mult = self.vol_slurry
+        #     vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
 
-            mass_sol = rho_solid * vol_sol
-            massflow_sol = mom_3 * self.Solid_1.kv * volflow * rho_solid
+        #     self.vol_mult = self.vol_slurry
 
-        if 'temp_ht' in self.states_uo:
-            self.temp_runs.append(states[:, -2])
-            self.tempHT_runs.append(states[:, -1])
+        #     mass_sol = rho_solid * vol_sol
+        #     massflow_sol = mom_3 * self.Solid_1.kv * volflow * rho_solid
 
-            self.Liquid_1.temp = self.temp_runs[-1][-1]
+        # if 'temp_ht' in self.states_uo:
+        #     self.temp_runs.append(states[:, -2])
+        #     self.tempHT_runs.append(states[:, -1])
 
-            y_outputs = y_outputs[:, :-1]
-            y_outputs = np.column_stack((y_outputs, volflow))
+        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
 
-            state_reordering['temp'] = 1
+        #     y_outputs = y_outputs[:, :-1]
+        #     y_outputs = np.column_stack((y_outputs, volflow))
 
-        elif 'temp' in self.states_uo:
-            self.temp_runs.append(states[:, -1])
-            self.Liquid_1.temp = self.temp_runs[-1][-1]
+        #     state_reordering['temp'] = 1
 
-            y_outputs = y_outputs[:, :-1]
-            y_outputs = np.column_stack((y_outputs, volflow))
+        # elif 'temp' in self.states_uo:
+        #     self.temp_runs.append(states[:, -1])
+        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
 
-            state_reordering['temp'] = 1
+        #     y_outputs = y_outputs[:, :-1]
+        #     y_outputs = np.column_stack((y_outputs, volflow))
 
-        else:
-            temp_controlled = self.controls['temp'](
-                time_profile, self.temp, *self.args_control['temp'],
-                t_zero=self.elapsed_time)
+        #     state_reordering['temp'] = 1
 
-            self.temp_runs.append(temp_controlled)
+        # else:
+        #     temp_controlled = self.controls['temp'](
+        #         time_profile, self.temp, *self.args_control['temp'],
+        #         t_zero=self.elapsed_time)
 
-            state_reordering['temp'] = 1
+        #     self.temp_runs.append(temp_controlled)
 
-            # I changed the order of these two lines!
-            y_outputs = np.column_stack((y_outputs, temp_controlled))
-            y_outputs = np.column_stack((y_outputs, volflow))
+        #     state_reordering['temp'] = 1
 
-            self.Liquid_1.temp = self.temp_runs[-1][-1]
+        #     # I changed the order of these two lines!
+        #     y_outputs = np.column_stack((y_outputs, temp_controlled))
+        #     y_outputs = np.column_stack((y_outputs, volflow))
 
-        # Reorder states
-        state_reordering['vol_flow'] = 1
+        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
 
-        target_order = []
-        for di in self.states_in_dict.values():
-            target_order += list(di.keys())
+        # # Reorder states
+        # state_reordering['vol_flow'] = 1
 
-        ordered_idx = np.arange(y_outputs.shape[1])
+        # target_order = []
+        # for di in self.states_in_dict.values():
+        #     target_order += list(di.keys())
 
-        acum = np.cumsum(list(state_reordering.values()))[:-1]
-        idx_per_state = np.split(ordered_idx, acum)
+        # ordered_idx = np.arange(y_outputs.shape[1])
 
-        perm = [list(state_reordering.keys()).index(a) for a in target_order
-                if a in state_reordering.keys()]
+        # acum = np.cumsum(list(state_reordering.values()))[:-1]
+        # idx_per_state = np.split(ordered_idx, acum)
 
-        reordered_idx = np.hstack([idx_per_state[ind] for ind in perm])
+        # perm = [list(state_reordering.keys()).index(a) for a in target_order
+        #         if a in state_reordering.keys()]
 
-        y_outputs = y_outputs[:, reordered_idx]
+        # reordered_idx = np.hstack([idx_per_state[ind] for ind in perm])
 
-        y_outputs = np.column_stack([dp[name] for name in target_order])
+        # y_outputs = y_outputs[:, reordered_idx]
 
-        wConcProf = states[:, self.num_distr:num_material]
+        # y_outputs = np.column_stack([dp[name] for name in target_order])
 
-        self.wConc_runs.append(wConcProf)
+        # wConcProf = states[:, self.num_distr:num_material]
 
-        self.states = states[-1]
-        self.temp = self.Liquid_1.temp
+        # self.wConc_runs.append(wConcProf)
+
+        # self.states = states[-1]
+        # self.temp = self.Liquid_1.temp
 
         # Update phases
-        self.Solid_1.updatePhase(distrib=self.distrib_runs[-1][-1]
-                                 * self.vol_mult)
+        self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * self.vol_mult)
 
-        self.Solid_1.temp = self.temp
+        self.Solid_1.temp = dp['temp'][-1]
 
-        self.w_conc = self.wConc_runs[-1][-1]
+        self.Liquid_1.temp = dp['temp'][-1]
 
-        self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=self.w_conc)
+        vol_liq = 1 - self.Solid_1.kv * dp['mu_n'][-1, 3]
+        self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
         self.Slurry.distrib = None
         self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
@@ -2295,21 +2304,20 @@ class MSMPR(_BaseCryst):
         solid_comp[self.target_ind] = 1
 
         if type(self) == MSMPR:
-            liquid_out = LiquidStream(path, mass_conc=self.w_conc,
-                                      temp=self.temp)
+            liquid_out = LiquidStream(path, mass_conc=dp['mass_conc'][-1],
+                                      temp=dp['temp'][-1])
 
             if self.method == '1D-FVM':
-                solid_out = SolidStream(path,
-                                        mass_frac=solid_comp)
+                solid_out = SolidStream(path, mass_frac=solid_comp)
             else:
                 solid_out = SolidStream(path, x_distrib=self.x_grid,
-                                        moments=self.distrib_runs[-1][-1],
+                                        moments=dp['mu_n'][-1],
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol)
 
-            self.Outlet = SlurryStream(vol_flow=self.Inlet.vol_flow,
+            self.Outlet = SlurryStream(vol_flow=inputs['Inlet']['vol_flow'][-1],
                                        x_distrib=self.x_grid,
-                                       distrib=self.distrib_runs[-1][-1])
+                                       distrib=dp['distrib'][-1])
 
             self.get_heat_duty(time, states)
 

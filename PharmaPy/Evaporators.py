@@ -1851,39 +1851,39 @@ class ContinuousEvaporator:
 
         n_comp = self.num_species
 
-        self.time_runs.append(time)
+        # self.time_runs.append(time)
 
-        fracs = states[:, n_comp:3*n_comp]
-        self.xliq_runs.append(fracs[:, :n_comp])
-        self.yvap_runs.append(fracs[:, n_comp:])
+        # fracs = states[:, n_comp:3*n_comp]
+        # self.xliq_runs.append(fracs[:, :n_comp])
+        # self.yvap_runs.append(fracs[:, n_comp:])
 
-        self.molLiq_runs.append(states[:, 3*n_comp])
-        self.molVap_runs.append(states[:, 3*n_comp + 1])
+        # self.molLiq_runs.append(states[:, 3*n_comp])
+        # self.molVap_runs.append(states[:, 3*n_comp + 1])
 
-        self.pres_runs.append(states[:, 3*n_comp + 2])
+        # self.pres_runs.append(states[:, 3*n_comp + 2])
 
-        self.uIntProf = states[:, -2]
-        self.temp_runs.append(states[:, -1])
+        # self.uIntProf = states[:, -2]
+        # self.temp_runs.append(states[:, -1])
 
         # Update phases
-        self.Liquid_1.temp = self.temp_runs[-1][-1]
-        self.Liquid_1.pres = self.pres_runs[-1][-1]
-        self.Liquid_1.updatePhase(mole_frac=self.xliq_runs[-1][-1],
-                                  moles=self.molLiq_runs[-1][-1])
+        self.Liquid_1.temp = dp['temp'][-1]
+        self.Liquid_1.pres = dp['pres'][-1]
+        self.Liquid_1.updatePhase(mole_frac=dp['x_liq'][-1],
+                                  moles=dp['mol_liq'][-1])
 
         holder = copy.deepcopy(self.__original_phase__)
         self.Phases = self.Liquid_1
         self.__original_phase__ = holder
 
-        self.flowLiqProf = flow_liq
-        self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
-        self.volLiqProf = vol_liq
+        # self.flowLiqProf = flow_liq
+        # self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
+        # self.volLiqProf = vol_liq
 
         # Output info
         self.Outlet = LiquidStream(self.Liquid_1.path_data,
-                                   temp=self.temp_runs[-1][-1],
-                                   pres=self.pres_runs[-1][-1],
-                                   mole_frac=self.xliq_runs[-1][-1],
+                                   temp=dp['temp'][-1],
+                                   pres=dp['pres'][-1],
+                                   mole_frac=dp['x_liq'][-1],
                                    mole_flow=flow_liq[-1])
 
         # self.outputs = np.column_stack((self.xliq_runs[-1],
@@ -1907,16 +1907,16 @@ class ContinuousEvaporator:
             heat_bce[ind] = energy[1]
 
             temp_bubble = self.Liquid_1.getBubblePoint(
-                pres=self.pres_runs[-1][ind],
-                mole_frac=self.xliq_runs[-1][ind])
+                pres=self.dynamic_result.pres[ind],
+                mole_frac=self.dynamic_result.x_liq[ind])
 
             h_liq[ind] = self.Liquid_1.getEnthalpy(
                 temp=temp_bubble,
-                mole_frac=self.xliq_runs[-1][ind], basis='mole')
+                mole_frac=self.dynamic_result.x_liq[ind], basis='mole')
 
             h_vap[ind] = self.Vapor_1.getEnthalpy(
-                temp=self.temp_runs[-1][ind],
-                mole_frac=self.yvap_runs[-1][ind], basis='mole')
+                temp=self.dynamic_result.temp[ind],
+                mole_frac=self.dynamic_result.y_vap[ind], basis='mole')
 
             flow_liq[ind] = mat[0]
             flow_vap[ind] = mat[1]
