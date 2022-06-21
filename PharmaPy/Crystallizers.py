@@ -1752,7 +1752,9 @@ class BatchCryst(_BaseCryst):
                 return dtemp_dt
 
     def retrieve_results(self, time, states):
-        self.statesProf = states
+        self.elapsed_time = time[-1]
+
+        # ---------- Create result object
         time_profile = np.array(time)
 
         dp = unpack_states(states, self.dim_states, self.name_states)
@@ -1782,69 +1784,13 @@ class BatchCryst(_BaseCryst):
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        # # Decompose states
-        # self.time_runs.append(time_profile)
-
-        # distribProf = states[:, :self.num_distr] / self.scale
-        # self.distrib_runs.append(distribProf)
-
-        # self.volProf = states[:, self.num_distr + self.num_species]
-
-        # vol_liq = self.volProf[-1]
-
-        # if self.method == 'moments':
-        #     mu_3_final = distribProf[-1][3]
-        # else:
-        #     mu_3_final = self.Solid_1.getMoments(distrib=distribProf[-1],
-        #                                          mom_num=3)
-
+        # ---------- Update phases
         vol_sol = dp['mu_n'][-1, 3] * self.Solid_1.kv
 
         rho_solid = self.Solid_1.getDensity()
         mass_sol = rho_solid * vol_sol
 
         vol_slurry = dp['vol'][-1] + vol_sol
-        # num_material = self.num_distr + self.num_species
-        # y_outputs = np.delete(states, num_material, axis=1)
-
-        # y_outputs = np.column_stack(
-        #     [dp[name] for name in self.names_states_out])
-
-        # if self.method == '1D-FVM':
-        #     self.distribVolPercProf = self.Solid_1.convert_distribution(
-        #         num_distr=distribProf)
-
-        #     self.distribVolProf = distribProf * self.Solid_1.kv * \
-        #         self.x_grid**3
-
-        # if 'temp' in self.controls.keys():
-
-        #     temp_controlled = self.controls['temp'](
-        #         time_profile, *self.args_control['temp'])
-
-        #     self.temp_runs.append(temp_controlled)
-
-        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
-        #     # self.Liquid_1.tempProf = self.tempProf[-1]
-        # else:
-        #     self.temp_runs.append(states[:, -2])
-        #     self.tempHT_runs.append(states[:, -1])
-
-        #     self.Liquid_1.temp = self.tempProf[-1][-1]
-
-        # wConcProf = states[:, self.num_distr:self.num_distr + self.num_species]
-
-        # self.wConc_runs.append(wConcProf)
-
-        # self.states = states[-1]
-        # self.temp = self.Liquid_1.temp
-
-        # if self.method == 'moments':
-        #     self.Solid_1.moments = self.distrib_runs[-1][-1]
-        # else:
-        #     self.Solid_1.distrib = self.distrib_runs[-1][-1]
-
-        # self.w_conc = self.wConc_runs[-1][-1]
 
         self.Liquid_1.updatePhase(mass_conc=dp['mass_conc'][-1],
                                   vol=dp['vol'][-1])
@@ -1853,28 +1799,16 @@ class BatchCryst(_BaseCryst):
             self.Solid_1.updatePhase(distrib=dp['distrib'][-1],
                                      mass=mass_sol)
 
-        self.elapsed_time = time[-1]
-
-        # if self.name_species is None:
-        #     conc_names = ['C_{}'.format(ind) for ind in
-        #                   range(wConcProf.shape[1])]
-        # else:
-        #     conc_names = ['C_{}'.format(name) for name in self.name_species]
-
-        # self.name_states = self.name_states + conc_names
-
         # Create outlets
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
-
-        # if self.method == '1D-FVM':  # TODO: solid distrib shouldn't be per m3
-        #     solid_out.updatePhase(distrib=distribProf[-1])
 
         self.Outlet = Slurry(vol_slurry=vol_slurry)
         self.Outlet.Phases = (liquid_out, solid_out)
 
         self.outputs = dp
 
+        # ---------- Calculate heat duty
         self.get_heat_duty(time, states)
 
     def get_heat_duty(self, time, states):
@@ -2141,10 +2075,9 @@ class MSMPR(_BaseCryst):
             return dtemp_dt, dtht_dt
 
     def retrieve_results(self, time, states):
-        # self.statesProf = states
-
         time = np.array(time)
 
+        # ---------- Create result object
         inputs = self.get_inputs(time)
         volflow = inputs['Inlet']['vol_flow']
 
@@ -2179,116 +2112,7 @@ class MSMPR(_BaseCryst):
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        # self.time_runs.append(time_profile)
-
-        # states[:, :self.num_distr] *= 1 / self.scale
-
-        # # Reordering output states
-        # state_reordering = {'distrib': self.num_distr,
-        #                     'mass_conc': self.num_species}
-
-        # distProf = states[:, :self.num_distr]
-        # self.distrib_runs.append(distProf)
-
-        # if self.method == '1D-FVM':
-        #     self.distribVolProf = distProf * self.Solid_1.kv * self.x_grid**3
-
-        #     self.distribVolPercProf = self.Solid_1.convert_distribution(
-        #         num_distr=distProf)
-
-        # num_material = self.num_distr + self.num_species
-
-        # rho_solid = self.Solid_1.getDensity()
-        # if 'vol' in self.states_uo:
-        #     self.volProf = states[:, num_material]
-        #     y_outputs = np.delete(states, num_material, axis=1)
-
-        #     vol_liq = self.volProf[-1]
-        #     vol_sol = self.Solid_1.getMoments(distrib=distProf[-1],
-        #                                       mom_num=3) * self.Solid_1.kv
-
-        #     mass_sol = rho_solid * vol_sol
-
-        #     state_reordering['vol'] = 1
-
-        # else:
-        #     y_outputs = states
-        #     vol_liq = self.Liquid_1.vol
-
-        #     mom_3 = self.Solid_1.getMoments(distrib=dp['distrib'][-1],
-        #                                     mom_num=3)
-
-        #     vol_sol = mom_3 * self.Solid_1.kv * self.vol_slurry
-
-        #     self.vol_mult = self.vol_slurry
-
-        #     mass_sol = rho_solid * vol_sol
-        #     massflow_sol = mom_3 * self.Solid_1.kv * volflow * rho_solid
-
-        # if 'temp_ht' in self.states_uo:
-        #     self.temp_runs.append(states[:, -2])
-        #     self.tempHT_runs.append(states[:, -1])
-
-        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
-
-        #     y_outputs = y_outputs[:, :-1]
-        #     y_outputs = np.column_stack((y_outputs, volflow))
-
-        #     state_reordering['temp'] = 1
-
-        # elif 'temp' in self.states_uo:
-        #     self.temp_runs.append(states[:, -1])
-        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
-
-        #     y_outputs = y_outputs[:, :-1]
-        #     y_outputs = np.column_stack((y_outputs, volflow))
-
-        #     state_reordering['temp'] = 1
-
-        # else:
-        #     temp_controlled = self.controls['temp'](
-        #         time_profile, self.temp, *self.args_control['temp'],
-        #         t_zero=self.elapsed_time)
-
-        #     self.temp_runs.append(temp_controlled)
-
-        #     state_reordering['temp'] = 1
-
-        #     # I changed the order of these two lines!
-        #     y_outputs = np.column_stack((y_outputs, temp_controlled))
-        #     y_outputs = np.column_stack((y_outputs, volflow))
-
-        #     self.Liquid_1.temp = self.temp_runs[-1][-1]
-
-        # # Reorder states
-        # state_reordering['vol_flow'] = 1
-
-        # target_order = []
-        # for di in self.states_in_dict.values():
-        #     target_order += list(di.keys())
-
-        # ordered_idx = np.arange(y_outputs.shape[1])
-
-        # acum = np.cumsum(list(state_reordering.values()))[:-1]
-        # idx_per_state = np.split(ordered_idx, acum)
-
-        # perm = [list(state_reordering.keys()).index(a) for a in target_order
-        #         if a in state_reordering.keys()]
-
-        # reordered_idx = np.hstack([idx_per_state[ind] for ind in perm])
-
-        # y_outputs = y_outputs[:, reordered_idx]
-
-        # y_outputs = np.column_stack([dp[name] for name in target_order])
-
-        # wConcProf = states[:, self.num_distr:num_material]
-
-        # self.wConc_runs.append(wConcProf)
-
-        # self.states = states[-1]
-        # self.temp = self.Liquid_1.temp
-
-        # Update phases
+        # ---------- Update phases
         self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * self.vol_mult)
 
         self.Solid_1.temp = dp['temp'][-1]
@@ -2302,7 +2126,7 @@ class MSMPR(_BaseCryst):
         self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
         self.elapsed_time = time[-1]
 
-        # Create output stream
+        # ---------- Create output stream
         path = self.Liquid_1.path_data
 
         solid_comp = np.zeros(self.num_species)
@@ -2318,13 +2142,13 @@ class MSMPR(_BaseCryst):
                 solid_out = SolidStream(path, x_distrib=self.x_grid,
                                         moments=dp['mu_n'][-1],
                                         mass_frac=solid_comp,
-                                        mass_flow=massflow_sol)
+                                        mass_flow=massflow_sol)  # TODO
 
             self.Outlet = SlurryStream(vol_flow=inputs['Inlet']['vol_flow'][-1],
                                        x_distrib=self.x_grid,
                                        distrib=dp['distrib'][-1])
 
-            self.get_heat_duty(time, states)
+            self.get_heat_duty(time, states)  # TODO: allow for semi-batch
 
         else:
             liquid_out = copy.deepcopy(self.Liquid_1)

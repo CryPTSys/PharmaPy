@@ -1066,28 +1066,25 @@ class Evaporator:
         self.allow_flow = True  # Restore value for further analysis
 
         self.retrieve_results(time, states)
-        self.flatten_states()
-        self.get_heat_duty(time, states)
 
         return time, states
 
     def retrieve_results(self, time, states):
-        n_comp = self.num_species + self.include_nitrogen
+        self.elapsed_time += time[-1]
 
+        # ---------- Create result object
         dp = unpack_states(states, self.dim_states, self.name_states)
 
         dp['time'] = np.asarray(time)
 
         self.outputs = dp
-        self.profiles_runs.append(dp)
 
+        self.profiles_runs.append(dp)
         dp = self.flatten_states()
 
         self.dynamic_result = DynamicResult(self.states_di, **dp)
 
-        self.elapsed_time += time[-1]
-
-        # Update phases
+        # ---------- Update phases
         self.Liquid_1.temp = dp['temp'][-1]
         self.Liquid_1.pres = dp['pres'][-1]
 
@@ -1095,13 +1092,12 @@ class Evaporator:
         if self.include_nitrogen:
             xliq_update = xliq_update[:, :-1]
             Liquid_1 = LiquidPhase(self.paths[0],
-                                   temp=self.temp_runs[-1][-1],
-                                   pres=self.pres_runs[-1][-1],
-                                   moles=self.molLiq_runs[-1][-1],
+                                   temp=dp['temp'][-1],
+                                   pres=dp['pres'][-1],
+                                   moles=dp['mol_liq'][-1],
                                    mole_frac=xliq_update[-1])
 
-            # Output info
-            self.Outlet = Liquid_1
+            self.Phases = Liquid_1
 
         else:
             self.Liquid_1.updatePhase(mole_frac=xliq_update[-1],
@@ -1109,14 +1105,11 @@ class Evaporator:
                                       temp=dp['temp'][-1],
                                       pres=dp['pres'][-1])
 
-            self.Phases = self.Liquid_1
+        # Output info
+        self.Outlet = self.Liquid_1
 
-            # Output info
-            self.Outlet = self.Liquid_1
-
-        # self.outputs = np.column_stack((xliq_update,
-        #                                 self.molLiq_runs[-1],
-        #                                 self.temp_runs[-1]))
+        # ---------- Calculate duties
+        self.get_heat_duty(time, states)
 
     def flatten_states(self):
         out = flatten_states(self.profiles_runs)
@@ -1817,11 +1810,12 @@ class ContinuousEvaporator:
             return time, states
 
     def retrieve_results(self, time, states):
+        self.elapsed_time += time[-1]
 
+        # ---------- Create result object
         time = np.asarray(time)
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-
         dp['time'] = time
 
         inputs_all = self.get_inputs(time)['Inlet']
@@ -1849,23 +1843,7 @@ class ContinuousEvaporator:
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        n_comp = self.num_species
-
-        # self.time_runs.append(time)
-
-        # fracs = states[:, n_comp:3*n_comp]
-        # self.xliq_runs.append(fracs[:, :n_comp])
-        # self.yvap_runs.append(fracs[:, n_comp:])
-
-        # self.molLiq_runs.append(states[:, 3*n_comp])
-        # self.molVap_runs.append(states[:, 3*n_comp + 1])
-
-        # self.pres_runs.append(states[:, 3*n_comp + 2])
-
-        # self.uIntProf = states[:, -2]
-        # self.temp_runs.append(states[:, -1])
-
-        # Update phases
+        # ---------- Update phases
         self.Liquid_1.temp = dp['temp'][-1]
         self.Liquid_1.pres = dp['pres'][-1]
         self.Liquid_1.updatePhase(mole_frac=dp['x_liq'][-1],
@@ -1875,21 +1853,14 @@ class ContinuousEvaporator:
         self.Phases = self.Liquid_1
         self.__original_phase__ = holder
 
-        # self.flowLiqProf = flow_liq
-        # self.flowVapProf = flow_vap * (1 - self.reflux_ratio)
-        # self.volLiqProf = vol_liq
-
-        # Output info
+        # ---------- Output info
         self.Outlet = LiquidStream(self.Liquid_1.path_data,
                                    temp=dp['temp'][-1],
                                    pres=dp['pres'][-1],
                                    mole_frac=dp['x_liq'][-1],
                                    mole_flow=flow_liq[-1])
 
-        # self.outputs = np.column_stack((self.xliq_runs[-1],
-        #                                 self.flowLiqProf, self.temp_runs[-1]))
-
-        # Heat duties
+        # ---------- Heat duties
         self.get_heat_duty(time, states)
 
     def get_heat_duty(self, time, states):
