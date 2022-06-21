@@ -421,6 +421,11 @@ class _BaseCryst:
             self.fstates_di['mu_n'] = {'dim': 4, 'index': list(range(4)),
                                        'units': 'm**n'}
 
+            self.fstates_di['vol_distrib'] = {
+                'dim': self.num_distr,
+                'index': list(range(self.num_distr)),
+                'units': 'm**3/m**3'}
+
     def reset(self):
         copy_dict = copy.deepcopy(self.__original_prof__)
         self.__dict__.update(copy_dict)
@@ -1758,8 +1763,8 @@ class BatchCryst(_BaseCryst):
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
-            # self.states_di['mu_n'] = {'dim': moms.shape[1], 'units': 'm**n',
-            #                           'index': list(range(moms.shape[1]))}
+            dp['vol_distrib'] = self.Solid_1.convert_distribution(
+                num_distr=dp['distrib'])
 
         if 'temp' in self.controls:
             dp['temp'] = self.controls['temp'](time)
@@ -2160,8 +2165,8 @@ class MSMPR(_BaseCryst):
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
-            # self.distribVolPercProf = self.Solid_1.convert_distribution(
-            #     num_distr=distProf)
+            dp['vol_distrib'] = self.Solid_1.convert_distribution(
+                num_distr=dp['distrib'])
 
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']

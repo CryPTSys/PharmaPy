@@ -849,7 +849,8 @@ class SolidPhase(ThermoPhysicalManager):
                              "not both")
         elif num_distr is not None:  # convert to vol perc
             mom_three = self.getMoments(distrib=num_distr, mom_num=3)
-            mom_three[mom_three==0] = eps
+            mom_three[mom_three == 0] = eps
+
             distrib_out = num_distr * self.dx * x_distrib**3 * self.kv / \
                 mom_three / 1e18
         elif vol_distr is not None:
