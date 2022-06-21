@@ -707,8 +707,7 @@ class DynamicCollector:
                                                 verbose=verbose)
 
             # Retrieve crystallizer results
-            output_names = ['timeProf', 'wConcProf', 'tempProf', 'Outlet',
-                            'outputs']
+            output_names = ['Outlet', 'outputs']
 
             for name in output_names:
                 setattr(self, name, getattr(SemiCryst, name))

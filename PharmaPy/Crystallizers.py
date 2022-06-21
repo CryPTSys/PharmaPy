@@ -2136,17 +2136,17 @@ class MSMPR(_BaseCryst):
             return dtemp_dt, dtht_dt
 
     def retrieve_results(self, time, states):
-        self.statesProf = states
+        # self.statesProf = states
 
-        time_profile = np.array(time)
+        time = np.array(time)
 
-        inputs = self.get_inputs(time_profile)
+        inputs = self.get_inputs(time)
         volflow = inputs['Inlet']['vol_flow']
 
         dp = unpack_states(states, self.dim_states, self.name_states)
         dp['distrib'] *= 1 / self.scale
 
-        dp['time'] = time_profile
+        dp['time'] = time
         dp['vol_flow'] = volflow
 
         sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
