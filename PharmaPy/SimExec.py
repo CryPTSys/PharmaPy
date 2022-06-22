@@ -36,6 +36,8 @@ class SimulationExec:
         self.connection_instances = []
         self.connection_names = []
 
+        self.execution_names = None
+
         self.time_limits = time_limits
 
     def LoadUOs(self):
@@ -106,6 +108,8 @@ class SimulationExec:
         execution_order = [x for x in execution_order if x is not None]
         execution_names = self._get_ordered_uos_names(execution_order,
                                                       self.uos_instances)
+
+        self.execution_names = execution_names
 
         if pick_units is not None:
             ordered_names = []
@@ -735,3 +739,17 @@ class SimulationExec:
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)
         return statInst
+
+    def __repr__(self):  # This is just a very primitive idea
+        welcome = 'Welcome to PharmaPy'
+        len_header = len(welcome) + 2
+        lines = '-' * len_header
+        out = [lines, welcome, lines]
+        if self.execution_names is not None:
+            names = list(self.uos_instances.keys())
+
+            flow_diagram = ' --> '.join(names)
+
+            out += ['Flowsheet structure:', flow_diagram]
+
+        return '\n'.join(out)
