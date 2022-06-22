@@ -63,7 +63,7 @@ class _BaseCryst:
                  adiabatic, rad_zero,
                  reset_states,
                  h_conv, vol_ht, basis, jac_type,
-                 state_events):
+                 state_events, param_wrapper):
 
         """ Construct a Crystallizer Object
 
@@ -106,7 +106,20 @@ class _BaseCryst:
             TODO Options: 'AD'
         state_events : list of dicts
             TODO
+        param_wrapper : callable (optional, default = None)
+            function with the signature
 
+                param_wrapper(states, sens)
+
+            Useful when the parameter estimation problem is a function of the
+            states y -h(y)- rather than y itself.
+
+            'states' is a DynamicResult object and 'sens' is a dictionary
+            that contains N_y number of sensitivity arrays, representing
+            time-depending sensitivities. Each array in sens has dimensions
+            num_times x num_params. 'param_wrapper' has to return two outputs,
+            one array containing h(y) and list of arrays containing
+            sens(h(y))
         """
 
         if jac_type == 'AD':
@@ -212,6 +225,8 @@ class _BaseCryst:
         self.vol_mult = 1
 
         self.state_event_list = state_events
+
+        self.param_wrapper = param_wrapper
 
     @property
     def Phases(self):
@@ -979,69 +994,39 @@ class _BaseCryst:
         if isinstance(modify_controls, dict):
             self.args_control = modify_controls
 
-        analytical = True
-
-        if self.method == 'moments':
-
-            if analytical:
+        if self.param_wrapper is None:
+            if self.method == 'moments':
                 t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                        eval_sens=True,
                                                        verbose=False)
 
-                sens_sep = reorder_sens(sens, separate_sens=True)  # for each state
-
-                mu = states[:, :self.num_distr]
-
-                # convert to mm**n
-                factor = (scale_factor)**np.arange(self.num_distr)
-
-                sens_mom = [elem * fact
-                            for elem, fact in zip(sens_sep, factor)]
-
-                sens_sep = sens_mom + sens_sep[self.num_distr:]
-
-                mu *= factor  # mm
-
-                mu_zero = mu[:, 0][..., np.newaxis] + eps
-
-                sens_zero = sens_sep[0]
-                for ind, sens_j in enumerate(sens_sep[1:self.num_distr]):
-                    mu_j = mu[:, ind + 1][..., np.newaxis]
-                    div_rule = (sens_j * mu_zero - sens_zero * mu_j) \
-                        / (mu_zero**2 + eps)
-
-                    sens_sep[ind + 1] = div_rule
-
-                mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
-
-                states_out = np.column_stack((mu, states[:, self.num_distr:]))
-                sens_out = np.vstack(sens_sep)
-
-                return states_out, sens_out
-
+                result = reorder_sens(sens, separate_sens=False)
             else:
-                t_prof, states = self.solve_unit(time_grid=t_vals,
-                                                 eval_sens=False,
-                                                 verbose=False)
+                t_prof, states_out = self.solve_unit(time_grid=t_vals,
+                                                     eval_sens=False,
+                                                     verbose=False)
 
-                # convert to mm**n
-                factor = (scale_factor)**np.arange(self.num_distr)
-                mu = states[:, :self.num_distr]
-                mu *= factor  # mm
+                result = states_out
 
-                mu_zero = mu[:, 0][..., np.newaxis] + eps
+        elif callable(self.param_wrapper):
+            if self.method == 'moments':
+                t_prof, states, sens = self.solve_unit(time_grid=t_vals,
+                                                       eval_sens=True,
+                                                       verbose=False)
 
-                mu[:, 1:] = (mu[:, 1:].T/mu_zero.flatten()).T  # mu_j/mu_0
+                # dy/dt for each state separately
+                sens_sep = reorder_sens(sens, separate_sens=True)
 
-                states_out = np.column_stack((mu, states[:, self.num_distr:]))
+                # TODO: is this the better way of naming the states?
+                di_keys = ['mu_%s' % ind for ind in range(self.num_distr)]
+                di_keys += ['w_%s' % name for name in self.name_species]
+                di_keys.append('vol')
 
-                return states_out
+                sens_sep = dict(zip(di_keys, sens_sep))
 
-        else:
-            t_prof, states_out = self.solve_unit(time_grid=t_vals,
-                                                 eval_sens=False,
-                                                 verbose=False)
-            return states_out
+                result = self.param_wrapper(self.dynamic_result, sens_sep)
+
+        return result
 
     def flatten_states(self):
         out = flatten_states(self.profiles_runs)
@@ -1368,7 +1353,7 @@ class BatchCryst(_BaseCryst):
                  adiabatic=False,
                  rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None, state_events=None):
+                 jac_type=None, state_events=None, param_wrapper=None):
         """ Construct a Batch Crystallizer object
         Parameters
         ----------
@@ -1417,7 +1402,7 @@ class BatchCryst(_BaseCryst):
                          controls, params_control, cfun_solub,
                          adiabatic,
                          rad_zero, reset_states, h_conv, vol_ht,
-                         basis, jac_type, state_events)
+                         basis, jac_type, state_events, param_wrapper)
 
         self.is_continuous = False
         self.oper_mode = 'Batch'
@@ -1791,13 +1776,14 @@ class MSMPR(_BaseCryst):
                  cfun_solub=None, adiabatic=False, rad_zero=0,
                  reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None, num_interp_points=3, state_events=None):
+                 jac_type=None, num_interp_points=3, state_events=None,
+                 param_wrapper=None):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          controls, params_control,
                          cfun_solub, adiabatic, rad_zero,
                          reset_states, h_conv, vol_ht,
-                         basis, jac_type, state_events)
+                         basis, jac_type, state_events, param_wrapper)
 
         """ Construct a MSMPR object
         Parameters
@@ -2130,7 +2116,7 @@ class SemibatchCryst(MSMPR):
                  params_control=None, cfun_solub=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
-                 state_events=None):
+                 state_events=None, param_wrapper=None):
 
         """ Construct a Semi-batch Crystallizer object
         Parameters
@@ -2181,7 +2167,8 @@ class SemibatchCryst(MSMPR):
                          cfun_solub, adiabatic, rad_zero,
                          reset_states,
                          h_conv, vol_ht, basis,
-                         jac_type, num_interp_points, state_events)
+                         jac_type, num_interp_points, state_events,
+                         param_wrapper)
 
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
                           distrib, mass_conc, temp, temp_ht, vol, phi_in):
