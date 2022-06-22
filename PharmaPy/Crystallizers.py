@@ -366,7 +366,7 @@ class _BaseCryst:
                 self.states_uo.append('total_moments')
 
                 di_distr['units'] = 'm**n'
-                states_di['mu_tilde_n'] = di_distr
+                states_di['mu_n'] = di_distr
 
                 # if name_class == 'SemibatchCryst':
                     # self.states_in_dict['Inlet']['distrib'] = self.num_distr
@@ -1760,11 +1760,12 @@ class BatchCryst(_BaseCryst):
         time_profile = np.array(time)
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['distrib'] *= 1 / self.scale
         dp['time'] = time_profile
-        dp['x_cryst'] = self.x_grid
 
         if self.method == '1D-FVM':
+            dp['distrib'] *= 1 / self.scale
+            dp['x_cryst'] = self.x_grid
+
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
