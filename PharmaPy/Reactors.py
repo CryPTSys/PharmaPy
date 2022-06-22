@@ -256,48 +256,25 @@ class _BaseReactor:
 
         self.states_di = {
             'mole_conc': {'index': self.name_species, 'dim': dim_conc,
-                          'units': 'mol/L'},
-            'temp': {'units': 'K', 'dim': 1},
-            'temp_ht': {'units': 'K', 'dim': 1},
-            'vol': {'units': 'm**3', 'dim': 1}
-            }
+                          'units': 'mol/L'}}
 
         self.fstates_di = {
+            'q_rxn': {'units': 'W', 'dim': 1},
             'q_ht': {'units': 'W', 'dim': 1},
-            'q_rxn': {'units': 'W', 'dim': 1}}
+            }
+
+        reactor_type = self.__class__.__name__
+
+        if not self.isothermal:
+            self.states_di['temp'] = {'units': 'K', 'dim': 1}
+            if reactor_type != 'PlugFlowReactor':
+                self.states_di['temp_ht'] = {'units': 'K', 'dim': 1}
+
+        if reactor_type == 'SemibatchReactor':
+            self.states_di['vol'] = {'units': 'm**3', 'dim': 1}
 
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
-
-        if self.isothermal:
-            del self.dim_states[self.name_states.index('temp')]
-            del self.dim_states[self.name_states.index('temp_ht')]
-
-            self.name_states.remove('temp')
-            self.name_states.remove('temp_ht')
-
-        reactor_type = self.__class__.__name__
-        if not reactor_type  == 'SemibatchReactor':
-            del self.dim_states[self.name_states.index('vol')]
-            self.name_states.remove('vol')
-
-        if reactor_type == 'PlugFlowReactor':  # Not implemented yet
-            del self.dim_states[self.name_states.index('temp_ht')]
-            self.name_states.remove('temp_ht')
-
-        #     name_concentr = [r'mole_conc_{}'.format(sp)
-        #                      for sp in self.name_species]
-
-        #     self.name_states = name_concentr + self.states_uo[1:]
-
-        # # Inputs
-        # self.input_names = name_concentr
-        # self.input_names.append('temp')
-
-        # states_map = dict(zip(self.states_uo, range(len(self.states_uo))))
-
-        # idx_inputs = [states_map.get(key) for key in self.input_names]
-        # self.idx_inputs = [elem for elem in idx_inputs if elem is not None]
 
     def get_inputs(self, time):
         inlet = getattr(self, 'Inlet', None)
@@ -591,7 +568,8 @@ class BatchReactor(_BaseReactor):
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rates = self.Kinetics.get_rxn_rates(mole_conc, temp, overall_rates=False,
+        rates = self.Kinetics.get_rxn_rates(mole_conc, temp,
+                                            overall_rates=False,
                                             delta_hrxn=deltah_rxn)
 
         # Balance terms (W)
@@ -603,8 +581,9 @@ class BatchReactor(_BaseReactor):
                 capacitance = vol[0] * (conc_all *
                                         1000 * cp_j).sum(axis=1)  # J/K (NCp)
                 self.capacitance = capacitance
+
             if self.isothermal:
-                heat_profile = -np.column_stack((source_term, ))
+                heat_profile = -np.column_stack((source_term, -source_term))
             else:
                 ht_term = self.heat_transfer(temp, temp_ht, vol)
                 heat_profile = np.column_stack((source_term, -ht_term))
@@ -743,9 +722,6 @@ class BatchReactor(_BaseReactor):
         time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         # Store results
-        self.statesProf = states
-        self.states = states[-1]
-
         self.retrieve_results(time, states)
 
         if eval_sens:
@@ -762,18 +738,23 @@ class BatchReactor(_BaseReactor):
             return time, states
 
     def retrieve_results(self, time, states):
-        # Prepare dict of results
+        time = np.asarray(time)
+
+        # ---------- Prepare dict of results
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['time'] = np.asarray(time)
+        dp['time'] = time
 
-        dp = complete_dict_states(time, dp, ('vol', 'temp', 'temp_ht'),
-                                  self.Liquid_1, self.controls)
+        dp = complete_dict_states(time, dp, ('vol', 'temp'), self.Liquid_1,
+                                  self.controls)
 
-        self.heat_prof = self.energy_balances(**dp, inputs=None,
-                                              heat_prof=True)
+        if 'temp_ht' not in self.name_states:
+            heat_prof = self.energy_balances(temp_ht=None, **dp, inputs=None,
+                                             heat_prof=True)
+        else:
+            heat_prof = self.energy_balances(**dp, inputs=None, heat_prof=True)
 
-        dp['q_rxn'] = self.heat_prof[:, 0]
-        dp['q_ht'] = self.heat_prof[:, 1]
+        dp['q_rxn'] = heat_prof[:, 0]
+        dp['q_ht'] = heat_prof[:, 1]
 
         self.profiles_runs.append(dp)
         dp = self.flatten_states()  # In case the UO has been run before
@@ -798,7 +779,8 @@ class BatchReactor(_BaseReactor):
                                   mole_conc=concentr_final)
 
         self.Outlet = self.Liquid_1
-        self.outputs = states
+        # self.outputs = states
+        self.outputs = dp
 
 
 class CSTR(_BaseReactor):
@@ -1776,7 +1758,7 @@ class PlugFlowReactor(_BaseReactor):
         self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
-        outlet_states = retrieve_pde_result(dp, x_name='vol',
+        outlet_states = retrieve_pde_result(self.dynamic_result, x_name='vol',
                                             x=self.vol_discr[-1])
 
         outlet_states['mole_conc'] = np.column_stack(

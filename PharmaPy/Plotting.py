@@ -240,13 +240,17 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
 
 
 def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
-                 cm=None, **fig_kwargs):
+                 cm_names=None, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
 
-    if cm is None:
-        cm = plt.cm.Blues
+    if cm_names is None:
+        cm_names = ['Blues', 'Oranges', 'Greens',  'Reds', 'Purples', ]
+    elif isinstance(cm_names, str):
+        cm_names = [cm_names]
+
+    cm = [getattr(plt.cm, cm_name) for cm_name in cm_names]
 
     fig, ax = plt.subplots(**fig_kwargs)
     if not isinstance(ax, np.ndarray):
@@ -255,7 +259,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
         ax = ax.flatten()
 
     if times is not None:
-        colors = cm(np.linspace(0.2, 1, len(times)))
+        colors = [cmap(np.linspace(0.2, 1, len(times))) for cmap in cm]
         y = get_state_distrib(uo.dynamic_result, *state_names,
                               time=times, x_name=x_name)
 
@@ -265,11 +269,13 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
         for t, time in enumerate(times):
             for ind, axis in enumerate(ax):
                 y_plot = y[names[ind]]
+
                 if isinstance(y_plot, list):
-                    for ar in y_plot:
-                        axis.plot(x_vals, ar[t], color=colors[t])
+                    for st, ar in enumerate(y_plot):
+                        ind_cm = st % len(cm)
+                        axis.plot(x_vals, ar[t], color=colors[ind_cm][t])
                 else:
-                    axis.plot(x_vals, y_plot[t], color=colors[t])
+                    axis.plot(x_vals, y_plot[t], color=colors[0][t])
 
                 axis.set_ylabel(names[ind])
 

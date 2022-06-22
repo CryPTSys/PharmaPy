@@ -588,6 +588,10 @@ class Filter:
             'mass_liquid': {'dim': 1, 'units': 'kg'},
             }
 
+        self.fstates_di = {
+
+            }
+
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
 
@@ -747,7 +751,8 @@ class Filter:
         dp = unpack_states(states, self.dim_states, self.name_states)
         dp['time'] = np.asarray(time)
 
-        self.dynamic_result = DynamicResult(self.states_di, **dp)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
         solid_cake = copy.deepcopy(self.Solid_1)
         solid_cake.updatePhase(

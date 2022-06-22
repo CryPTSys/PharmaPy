@@ -63,7 +63,7 @@ class DynamicResult:
 
         str_states = pprint(self.di_states, headers)
 
-        if self.di_fstates is not None:
+        if self.di_fstates is not None and len(self.di_fstates) > 0:
             head = {'f(states)': 's', 'dim': '', 'units': 's'}
             str_fstates = pprint(self.di_fstates, head)
 

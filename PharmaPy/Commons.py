@@ -175,13 +175,6 @@ def complete_dict_states(time, di, target_keys, phase, controls,
     return di
 
 
-# def model_decorator(params=None, switches=None):
-#     def wrap_unit_model(fun):
-#         if params is not None:
-#             if switches is None:
-#                 return fun(*args, **kwargs)
-
-
 def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
                        threshold=1e-5, norm_type=None):
 
