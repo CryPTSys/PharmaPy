@@ -221,6 +221,8 @@ class _BaseReactor:
         self.Liquid_1.__dict__.update(self.__original_phase_dict__)
         self.__dict__.update(copy_dict)
 
+        self.profiles_runs = []
+
     def _eval_state_events(self, time, states, sw):
         is_PFR = self.__class__.__name__ == 'PlugFlowReactor'
 

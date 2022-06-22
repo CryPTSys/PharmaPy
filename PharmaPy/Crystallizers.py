@@ -433,6 +433,8 @@ class _BaseCryst:
         for phase, di in zip(self.Phases, self.__original_phase_dict__):
             phase.__dict__.update(di)
 
+        self.profiles_runs = []
+
     def get_inputs(self, time):
 
         if self.__class__.__name__ == 'BatchCryst':
