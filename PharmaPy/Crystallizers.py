@@ -845,26 +845,10 @@ class _BaseCryst:
 
         # ---------- Liquid phase states
         init_liquid = self.Liquid_1.mass_conc.copy()
-        self.mask_composit = np.arange(len(init_liquid)) == self.target_ind
-
-        # Create indexes for reordering states
-        ind_max = np.argmax(init_liquid)
-
-        ind_imp = np.arange(len(init_liquid))
-        ind_imp = np.where(
-            (ind_imp != self.target_ind) & (ind_imp != ind_max))[0]
-
-        self.ind_imp = ind_imp
-
-        self.composit_order = np.argsort(
-            np.concatenate(([self.target_ind, ind_max], ind_imp))
-        )
 
         self.num_species = len(init_liquid)
 
-        self.len_states = [self.num_distr, self.num_species]
-
-        self.args_inputs = (self, self.num_species, self.num_distr)
+        self.len_states = [self.num_distr, self.num_species]  # TODO: not neces
 
         if 'vol' in self.states_uo:  # Batch or semibatch
             vol_init = self.Slurry.getTotalVol()
@@ -873,14 +857,6 @@ class _BaseCryst:
             self.len_states.append(1)
         else:
             init_susp = init_liquid
-
-        self.composit = init_liquid
-        self.temp = self.Liquid_1.temp
-
-        if 'temp' in self.controls.keys():
-            if len(self.args_control['temp']) > 0:
-                if self.args_control['temp'][0] is None:
-                    self.args_control['temp'][0] = self.temp
 
         if self.reset_states:
             self.reset()
@@ -967,16 +943,6 @@ class _BaseCryst:
         time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         self.retrieve_results(time, states)
-        # self.flatten_states()
-
-        # sat_conc = self.Kinetics.get_solubility(self.tempProf, self.wConcProf)
-        # supersat = self.wConcProf[:, self.target_ind] - sat_conc
-
-        # if self.Kinetics.rel_super:
-        #     supersat *= 1 / sat_conc
-
-        # self.supsatProf = supersat
-        # self.satConcProf = sat_conc
 
         # ---------- Organize sensitivity
         if eval_sens:
@@ -1081,36 +1047,6 @@ class _BaseCryst:
         out = flatten_states(self.profiles_runs)
 
         return out
-        # self.distribProf = np.vstack(self.distrib_runs)
-        # self.wConcProf = np.concatenate(self.wConc_runs)
-        # self.tempProf = np.concatenate(self.temp_runs)
-        # self.timeProf = np.concatenate(self.time_runs)
-
-        # if len(self.tempHT_runs) > 0:
-        #     self.tempProfHt = np.concatenate(self.tempHT_runs)
-
-        # # Update phases
-        # self.Liquid_1.tempProf = self.tempProf
-
-        # self.Liquid_1.massconcProf = self.wConcProf
-
-        # self.Liquid_1.timeProf = self.timeProf
-
-        # self.Solid_1.tempProf = self.tempProf
-        # self.Solid_1.timeProf = self.timeProf
-
-        # if self.method == 'moments':
-        #     self.Solid_1.momProf = self.distribProf
-        #     self.momProf = self.distribProf
-        # else:
-        #     distrProf = self.distribProf * self.vol_mult
-        #     self.Solid_1.distribProf = distrProf
-
-        #     self.Solid_1.momProf = self.Solid_1.getMoments(
-        #         distrib=distrProf, mom_num=[0, 1, 2, 3, 4])
-
-        #     self.momProf = self.Solid_1.getMoments(
-        #         distrib=self.distribProf, mom_num=[0, 1, 2, 3, 4])
 
     def plot_profiles(self, **fig_kwargs):
         """
