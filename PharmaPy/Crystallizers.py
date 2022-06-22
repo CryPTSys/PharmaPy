@@ -563,13 +563,15 @@ class _BaseCryst:
         name_unit = self.__class__.__name__
 
         if self.method == 'moments':
-            mu_n = di_states['mu_n']
-            moms = mu_n * (1e-6)**np.arange(len(mu_n))
-            di_states['distrib'] = moms
+            di_states['distrib'] = di_states['mu_n']
+            moms = di_states['mu_n'] * \
+                (1e-6)**np.arange(self.states_di['mu_n']['dim'])
+
         else:
             moms = self.Solid_1.getMoments(
-                distrib=di_states['distrib']/self.scale)
-            di_states['mu_n'] = moms
+                distrib=di_states['distrib']/self.scale)  # m**n
+
+        di_states['mu_n'] = moms
 
         if name_unit == 'BatchCryst':
             rhos = rhos_susp
@@ -819,7 +821,7 @@ class _BaseCryst:
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
-            if self.method == 'moments':
+            if self.method == 'moments':  # mu_n are expected in um**n
                 init_solid = self.Solid_1.moments
                 exp = np.arange(0, self.Solid_1.num_mom)
                 init_solid = init_solid * (1e6)**exp
@@ -832,7 +834,7 @@ class _BaseCryst:
             if self.method == 'moments':
                 init_solid = self.Slurry.moments
                 exp = np.arange(0, self.Slurry.num_mom)
-                init_solid *= (1e6)**exp
+                init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
                 x_grid = self.Slurry.x_distrib
