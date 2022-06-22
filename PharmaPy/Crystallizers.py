@@ -926,7 +926,8 @@ class _BaseCryst:
         problem = self.set_ode_problem(eval_sens, states_init,
                                        merged_params, jac_v_prod)
 
-        self.derivatives = problem.rhs(self.elapsed_time, states_init)
+        self.derivatives = problem.rhs(self.elapsed_time, states_init,
+                                       merged_params)
 
         if self.state_event_list is not None:
             def new_handle(solver, info):
@@ -1756,13 +1757,12 @@ class BatchCryst(_BaseCryst):
                 return dtemp_dt
 
     def retrieve_results(self, time, states):
+        time = np.array(time)
         self.elapsed_time = time[-1]
 
         # ---------- Create result object
-        time_profile = np.array(time)
-
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['time'] = time_profile
+        dp['time'] = time
 
         if self.method == '1D-FVM':
             dp['distrib'] *= 1 / self.scale
