@@ -12,13 +12,13 @@ from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
 from collections import OrderedDict
 import time
-from PharmaPy.Connections import Graph, get_inputs
+from PharmaPy.Connections import Connection, convert_str_flowsheet, topological_bfs
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
 
 
 class SimulationExec:
-    def __init__(self, pure_path, time_limits={}):
+    def __init__(self, pure_path, flowsheet):
 
         # Interfaces
         self.ThermoInstance = ThermoPhysicalManager(pure_path)
@@ -27,42 +27,69 @@ class SimulationExec:
         # Outputs
         self.StreamTable = None
         self.UnitOperations = OrderedDict()
-        self.UOCounter = 0
 
         self.uos_instances = {}
         self.oper_mode = []
-        self.connection_instances = []
-        self.connection_names = []
 
-        self.execution_names = None
+        if isinstance(flowsheet, dict):
+            graph = flowsheet
+        elif isinstance(flowsheet, str):
+            graph = convert_str_flowsheet(flowsheet)
 
-        self.time_limits = time_limits
+        self.graph = graph
+        self.execution_order = topological_bfs(graph)
+
+    def connect_flowsheet(self, graph):
+        count = 1
+
+        connections = []
+        for node, neighbors in graph.items():
+            source = getattr(self, node)
+
+            for adj in neighbors:
+                dest = getattr(self, adj)
+                connection = Connection(source_uo=source, destination_uo=dest)
+
+                conn_name = 'S%i' % count
+                setattr(self, conn_name, connection)
+
+                connections.append(connection)
+
+                count += 1
+
+        return connections
 
     def LoadUOs(self):
         uos_modules = ('Reactors', 'Crystallizers', 'Containers',
                        'Evaporators', 'SolidLiquidSep', 'Drying_Model')
 
         modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
-        for key, value in self.__dict__.items():
-            type_val = getattr(value, '__module__', None)
 
-            if type_val in modules_ids:
-                value.id_uo = key
-                value.name_species = self.NamesSpecies
-                self.uos_instances[key] = value
+        # if self.execution_order is None:
+
+        for name in self.execution_order:
+        # for key, value in self.__dict__.items():
+        #     type_val = getattr(value, '__module__', None)
+
+        #     if type_val in modules_ids:
+            value = getattr(self, name)
+            value.id_uo = name
+            value.name_species = self.NamesSpecies
+
+                # self.uos_instances[key] = value
                 # self.oper_mode.append(value.oper_mode)
 
-    def LoadConnections(self):
-        for key, value in self.__dict__.items():
-            module_name = getattr(value, '__module__', None)
+    # def LoadConnections(self):
+    #     for key, value in self.__dict__.items():
+    #         module_name = getattr(value, '__module__', None)
 
-            if module_name == 'PharmaPy.Connections':
-                value.ThermoInstance = self.ThermoInstance
+    #         if module_name == 'PharmaPy.Connections':
+    #             value.ThermoInstance = self.ThermoInstance
 
-                self.connection_instances.append(value)
-                self.connection_names.append(key)
+    #             self.connection_instances.append(value)
+    #             self.connection_names.append(key)
 
-                value.name = key
+    #             value.name = key
 
     def _get_ordered_uos_names(self, execution_order, uos_dict):
         names = []
@@ -79,7 +106,8 @@ class SimulationExec:
 
         if len(self.uos_instances) == 0:
             self.LoadUOs()
-            self.LoadConnections()
+            # self.LoadConnections()
+            connections = self.connect_flowsheet(self.graph)
 
         # Pick specific units, if given
         if kwargs_run is None:
@@ -93,55 +121,42 @@ class SimulationExec:
         if kwargs_ss is None:
             kwargs_ss = {}
 
-        # isbatch = [elem == 'Batch' for elem in self.oper_mode]
-
-        # Create graph and define execution order
-        if len(self.uos_instances) == 1:
-            execution_order = list(self.uos_instances.values())
-        else:
-            graph = Graph(self.connection_instances)
-            execution_order = graph.topological_order
-
-        uos = self.uos_instances
-
-        execution_order = [x for x in execution_order if x is not None]
-        execution_names = self._get_ordered_uos_names(execution_order,
-                                                      self.uos_instances)
-
-        self.execution_names = execution_names
+        execution_order = self.execution_order
+        execution_uos = [getattr(self, name) for name in execution_order]
 
         if pick_units is not None:
             ordered_names = []
             ordered_uos = []
-            for name in pick_units:
-                if name in execution_names:
-                    ordered_names.append(name)
-                    ind = execution_names.index(name)
-                    ordered_uos.append(execution_order[ind])
 
-            execution_order = ordered_uos
-            execution_names = ordered_names
+            for name in execution_order:
+                if name in pick_units:
+                    ordered_names.append(name)
+
+                    idx = execution_order.index(name)
+                    ordered_uos.append(execution_uos[idx])
+
+            execution_order = ordered_names
+            execution_uos = ordered_uos
+
 
         if tolerances_ss is None:
             tolerances_ss = {}
 
         # Run loop
-        for ind, instance in enumerate(execution_order):
-            uo_id = list(uos.keys())[list(uos.values()).index(instance)]
-
+        for name, instance in zip(execution_order, execution_uos):
             if verbose:
                 print()
                 print('{}'.format('-'*30))
-                print('Running {}'.format(uo_id))
+                print('Running {}'.format(name))
                 print('{}'.format('-'*30))
                 print()
 
-            for conn in self.connection_instances:
+            for conn in connections:  # TODO: this is confusing
                 if conn.destination_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
                     conn.TransferData()
 
-            kwargs_uo = kwargs_run.get(uo_id, {})
+            kwargs_uo = kwargs_run.get(name, {})
 
             tau = 0
             if hasattr(instance, '_get_tau'):
@@ -150,14 +165,13 @@ class SimulationExec:
             ss_time += tau
 
             if uos_steady_state is not None:
-                if execution_names[ind] in uos_steady_state:
+                if name in uos_steady_state:
                     if instance.__class__.__name__ == 'Mixer':
                         pass
                     else:
-                        tolerances = tolerances_ss.get(execution_names[ind],
-                                                       1e-6)
+                        tolerances = tolerances_ss.get(name, 1e-6)
 
-                        kw_ss = kwargs_ss.get(execution_names[ind], None)
+                        kw_ss = kwargs_ss.get(name, None)
 
                         if kw_ss is None:
                             kw_ss = {'tau': tau, 'time_stop': ss_time,
@@ -189,12 +203,6 @@ class SimulationExec:
                 print()
                 print('Done!')
                 print()
-
-            # # Connectivity
-            # for conn in self.connection_instances:
-            #     if conn.source_uo is instance:
-            #         conn.ReceiveData()  # receive phases from upstream uo
-            #         conn.TransferData()
 
         self.execution_order = execution_order
 

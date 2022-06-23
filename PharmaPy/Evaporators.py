@@ -562,8 +562,6 @@ class Evaporator:
             }
 
         self.fstates_di = {
-            'flow_liq': {'units': 'mol/s', 'dim': 1},
-            'flow_vap': {'units': 'mol/s', 'dim': 1},
             'vol_liq': {'units': 'm^3', 'dim': 1},
             'vol_vap': {'units': 'm^3', 'dim': 1}
                 }
@@ -1082,7 +1080,8 @@ class Evaporator:
         self.profiles_runs.append(dp)
         dp = self.flatten_states()
 
-        self.dynamic_result = DynamicResult(self.states_di, **dp)
+        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+                                            **dp)
 
         # ---------- Update phases
         self.Liquid_1.temp = dp['temp'][-1]

@@ -82,8 +82,7 @@ def get_indexes(names, picks):
             if low_pick in lower_names:
                 out.append(lower_names.index(low_pick))
             else:
-                mess = "Name '%s' not in the set of compound names "
-                "listed in the pure-component json file" % low_pick
+                mess = "Name '%s' not in the set of compound names listed in the pure-component json file" % low_pick
                 raise PharmaPyValueError(mess)
 
         elif isinstance(pick, (int, np.int32, np.int64)):

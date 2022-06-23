@@ -220,76 +220,39 @@ def get_inputs(time, uo, num_species, num_distr=0):
     return input_dict
 
 
-class Graph:
-    def __init__(self, connections=None):
+def topological_bfs(graph):
+    in_degree = {}
+    for node, neighbors in graph.items():
+        in_degree.setdefault(node, 0)
+        for n in neighbors:
+            in_degree[n] = in_degree.get(n, 0) + 1
 
-        self.connections = connections
+    path = []
 
-        # Create graph
-        self.graph = self.get_graph()
+    no_incoming = {node for node, count in in_degree.items() if count == 0}
 
-        self.topological_order = self.topologicalSort()
+    while no_incoming:
+        v = no_incoming.pop()
+        path.append(v)
+        for adj in graph.get(v, []):
+            in_degree[adj] -= 1
 
-        self.has_cycles = False
-        if len(self.topological_order) < len(self.graph):
-            raise PharmaPyNonImplementedError(
-                "PharmaPy does not support processes with recyle streams")
+            if in_degree[adj] == 0:
+                no_incoming.add(adj)
 
-    def get_graph(self):
-        nodes = []
-        graph = {}
+    return path
 
-        for conn in self.connections:
-            source = conn.source_uo
-            dest = conn.destination_uo
 
-            nodes += [source, dest]
+def convert_str_flowsheet(flowsheet):
+    seq = [a.strip() for a in flowsheet.split('-->')]
 
-            if source in graph:
-                graph[source].append(dest)
-            else:
-                graph[source] = [dest]
+    out = {}
+    num_uos = len(seq)
+    for ind in range(num_uos - 1):
+        out[seq[ind]] = [seq[ind + 1]]
 
-        nodes = set(nodes)
-
-        for node in nodes:
-            if node is not None and node not in graph:
-                graph[node] = []
-
-        return graph
-
-    def topologicalSort(self):
-        """
-        Breadth-first search (BFD) search
-
-        Returns
-        -------
-        path : list
-            list with UO objects in its execution order
-
-        """
-
-        in_degree = {}
-        for node, neighbors in self.graph.items():
-            in_degree.setdefault(node, 0)
-            for n in neighbors:
-                in_degree[n] = in_degree.get(n, 0) + 1
-
-        path = []
-
-        no_incoming = {node for node, count in in_degree.items() if count == 0}
-
-        while no_incoming:
-            v = no_incoming.pop()
-            path.append(v)
-            for adj in self.graph.get(v, []):
-                in_degree[adj] -= 1
-
-                if in_degree[adj] == 0:
-                    no_incoming.add(adj)
-
-        return path
-
+    out[seq[num_uos - 1]] = []
+    return out
 
 
 class Connection:
