@@ -8,3 +8,7 @@ Created on Mon Jun 13 11:14:31 2022
 
 class PharmaPyValueError(ValueError):
     pass
+
+
+class PharmaPyNonImplementedError(NotImplementedError):
+    pass

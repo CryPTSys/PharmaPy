@@ -7,6 +7,8 @@ Created on Mon Mar  2 15:36:35 2020
 
 from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
 from PharmaPy.Interpolation import local_newton_interpolation
+from PharmaPy.Errors import PharmaPyNonImplementedError
+
 from scipy.interpolate import CubicSpline
 
 import numpy as np
@@ -224,55 +226,70 @@ class Graph:
         self.connections = connections
 
         # Create graph
-        self.graph = {}
-        self.get_graph()
+        self.graph = self.get_graph()
 
-        self.num_vert = len(self.graph)
+        self.topological_order = self.topologicalSort()
+
+        self.has_cycles = False
+        if len(self.topological_order) < len(self.graph):
+            raise PharmaPyNonImplementedError(
+                "PharmaPy does not support processes with recyle streams")
 
     def get_graph(self):
+        nodes = []
+        graph = {}
+
         for conn in self.connections:
-            if conn.source_uo in self.graph.keys():
-                self.graph[conn.source_uo].append(conn.destination_uo)
+            source = conn.source_uo
+            dest = conn.destination_uo
+
+            nodes += [source, dest]
+
+            if source in graph:
+                graph[source].append(dest)
             else:
-                self.graph[conn.source_uo] = [conn.destination_uo]
+                graph[source] = [dest]
 
-            if conn.destination_uo not in self.graph.keys():
-                self.graph[conn.destination_uo] = []
+        nodes = set(nodes)
 
-        self.vertices = list(self.graph.keys())
+        for node in nodes:
+            if node is not None and node not in graph:
+                graph[node] = []
 
-        # for name in self.vertices:
-        #     if 'Source' == name.__class__.__name__:
-        #         self.graph.pop(name)
-
-    # A recursive function used by topologicalSort
-    def __topologicalSortUtil(self, v, visited, stack):
-
-        # Mark the current node as visited.
-        visited[v] = True
-
-        # Recur for all the vertices adjacent to this vertex
-        for i in self.graph[v]:
-            if not visited[i]:
-                # TODO this is new for me!!
-                self.__topologicalSortUtil(i, visited, stack)
-
-        # Push current vertex to stack which stores result
-        stack.insert(0, v)
+        return graph
 
     def topologicalSort(self):
-        # Mark all the vertices as not visited
-        visited = {key: False for key in self.vertices}
-        stack = []
+        """
+        Breadth-first search (BFD) search
 
-        # Call the recursive helper function to store Topological
-        # Sort starting from all vertices one by one
-        for vert in self.vertices:
-            if not visited[vert]:
-                self.__topologicalSortUtil(vert, visited, stack)
+        Returns
+        -------
+        path : list
+            list with UO objects in its execution order
 
-        # Print contents of stack
-        return stack
+        """
+
+        in_degree = {}
+        for node, neighbors in self.graph.items():
+            in_degree.setdefault(node, 0)
+            for n in neighbors:
+                in_degree[n] = in_degree.get(n, 0) + 1
+
+        path = []
+
+        no_incoming = {node for node, count in in_degree.items() if count == 0}
+
+        while no_incoming:
+            v = no_incoming.pop()
+            path.append(v)
+            for adj in self.graph.get(v, []):
+                in_degree[adj] -= 1
+
+                if in_degree[adj] == 0:
+                    no_incoming.add(adj)
+
+        return path
+
 
 
 class Connection:

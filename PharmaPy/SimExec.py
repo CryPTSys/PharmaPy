@@ -25,8 +25,6 @@ class SimulationExec:
         self.NamesSpecies = self.ThermoInstance.name_species
 
         # Outputs
-        # self.NumSpecies = len(self.NamesSpecies)
-        # self.NumStreams = len(self.Streams)
         self.StreamTable = None
         self.UnitOperations = OrderedDict()
         self.UOCounter = 0
@@ -47,6 +45,7 @@ class SimulationExec:
         modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
         for key, value in self.__dict__.items():
             type_val = getattr(value, '__module__', None)
+
             if type_val in modules_ids:
                 value.id_uo = key
                 value.name_species = self.NamesSpecies
@@ -101,7 +100,7 @@ class SimulationExec:
             execution_order = list(self.uos_instances.values())
         else:
             graph = Graph(self.connection_instances)
-            execution_order = graph.topologicalSort()
+            execution_order = graph.topological_order
 
         uos = self.uos_instances
 
