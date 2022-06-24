@@ -112,6 +112,18 @@ class DynamicResult:
 
         str_states = pprint(self.di_states, 'states', headers)
 
+        state_example = list(self.di_states.keys())[0]
+
+        header = 'PharmaPy result object'
+        lines = '-' * (len(header) + 2)
+
+        header = '\n'.join([lines, header, lines + '\n\n'])
+
+        explain = 'Fields shown in the tables below can be accessed as ' \
+            'result.<field>, e.g. result.%s \n\n' % state_example
+
+        top_text = header + explain
+
         if self.di_fstates is not None and len(self.di_fstates) > 0:
             head = {'dim': '', 'units': 's'}
             str_fstates = pprint(self.di_fstates, 'f(states)', head)
@@ -121,6 +133,7 @@ class DynamicResult:
         else:
             out_str = str_states
 
+        out_str = top_text + out_str
         out_str += '\n\nTime vector can be accessed as result.time\n'
 
         return out_str
