@@ -1338,7 +1338,7 @@ class ContinuousEvaporator:
 
         self.states_di = {
             'mol_i': {'index': self.name_species, 'units': 'mol',
-                      'dim': len(self.name_species)},
+                      'dim': len(self.name_species), 'type': 'diff'},
             'x_liq': {'index': self.name_species, 'units': '',
                       'dim': len(self.name_species), 'type': 'alg'},
             'y_vap': {'index': self.name_species, 'units': '',

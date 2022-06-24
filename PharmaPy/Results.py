@@ -118,37 +118,41 @@ class SimulationResult:
 
         names_uos = sim.execution_names
 
-        headers = {'Differential eqns': 'd', 'Algebraic eqns': 'd',
-                   'Model type': 's'}
+        headers = {'Diff eqns': 'd', 'Alg eqns': 'd',
+                   'Model type': 's', 'PharmaPy type': 's'}
 
         for name in names_uos:
-            states_di = getattr(getattr(sim, name), 'states_di')
+            states_di = getattr(getattr(sim, name), 'states_di', None)
 
-            num_diff = []
-            num_alg = []
-            for var, di in states_di.items():
-                num = di.get('index', 1)
+            if states_di is not None:
+                num_diff = []
+                num_alg = []
+                for var, di in states_di.items():
+                    num = di.get('index', 1)
 
-                if isinstance(num, (list, tuple)):
-                    num = len(num)
+                    if isinstance(num, (list, tuple)):
+                        num = len(num)
 
-                if di['type'] == 'diff':
-                    num_diff.append(num)
-                elif di['type'] == 'alg':
-                    num_alg.append(num)
+                    if di['type'] == 'diff':
+                        num_diff.append(num)
+                    elif di['type'] == 'alg':
+                        num_alg.append(num)
 
-            if sum(num_diff) == 0:
-                model_type = 'ALG'
-            elif sum(num_diff) > 0 and sum(num_alg) > 0:
-                model_type = 'DAE'
-            else:
-                model_type = 'ODE'
+                if sum(num_diff) == 0:
+                    model_type = 'ALG'
+                elif sum(num_diff) > 0 and sum(num_alg) > 0:
+                    model_type = 'DAE'
+                else:
+                    model_type = 'ODE'
 
-            di_uos[name] = {}
+                di_uos[name] = {}
 
-            di_uos[name]['Differential eqns'] = sum(num_diff)
-            di_uos[name]['Algebraic eqns'] = sum(num_alg)
-            di_uos[name]['Model type'] = model_type
+                pharmapy_type = getattr(sim, name).__class__.__name__
+
+                di_uos[name]['Diff eqns'] = sum(num_diff)
+                di_uos[name]['Alg eqns'] = sum(num_alg)
+                di_uos[name]['Model type'] = model_type
+                di_uos[name]['PharmaPy type'] = pharmapy_type
 
         out_uos = pprint(di_uos, 'Unit operation', headers, str_out=False)
 
@@ -162,6 +166,8 @@ class SimulationResult:
 
         names_uos = self.sim.execution_names
         out = [lines, welcome, lines + '\n']
+
+        # Flowsheet ASCII diagram (if the graph is simple)
         if names_uos is not None:
             is_simple = all([a < 2 for a in list(self.sim.in_degree.values())])
 
@@ -171,6 +177,7 @@ class SimulationResult:
 
                 out += ['Flowsheet structure:', flow_diagram + '\n']
 
+        # Include UOs table
         out_str = '\n'.join(out + self.out_uos)
 
         return out_str
