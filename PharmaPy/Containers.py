@@ -83,15 +83,17 @@ class Mixer:
         self.bipartite.append(None)
 
         states_di_flow = {
-            'mass_flow': {'units': 'kg/s', 'dim': 1},
-            'mass_frac': {'units': 'kg', 'dim': 1, 'index': self.Inlets[0].name_species},
-            'temp': {'units': 'K', 'dim': 1}
+            'mass_flow': {'units': 'kg/s', 'dim': 1, 'type': 'alg'},
+            'mass_frac': {'units': 'kg', 'dim': 1,
+                          'index': self.Inlets[0].name_species, 'type': 'alg'},
+            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
             }
 
         states_di_mass = {
-            'mass': {'units': 'kg', 'dim': 1},
-            'mass_frac': {'units': 'kg', 'dim': 1, 'index': self.Inlets[0].name_species},
-            'temp': {'units': 'K', 'dim': 1}
+            'mass': {'units': 'kg', 'dim': 1, 'type': 'alg'},
+            'mass_frac': {'units': 'kg', 'dim': 1,
+                          'index': self.Inlets[0].name_species, 'type': 'alg'},
+            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
             }
 
         self.states_di = {'flow': states_di_flow, 'non_flow': states_di_mass}
@@ -477,7 +479,9 @@ class Mixer:
                 dynamic_result = dict(zip(self.name_states['flow'], states))
                 dynamic_result['time'] = time
 
-                self.dynamic_result = DynamicResult(self.states_di['flow'],
+                self.states_di = self.states_di['flow']
+
+                self.dynamic_result = DynamicResult(self.states_di,
                                                     **dynamic_result)
 
                 self.outputs = dynamic_result
@@ -493,6 +497,8 @@ class Mixer:
                 self.Liquid_1.temp = temp
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
                                           mass=last_mass)
+
+                self.states_di = self.states_di['non_flow']
 
             self.Outlet = self.Liquid_1
             # self.outputs = np.atleast_2d(self.outputs)

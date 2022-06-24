@@ -7,7 +7,6 @@ Created on Mon Mar  2 15:36:35 2020
 
 from PharmaPy.NameAnalysis import NameAnalyzer, get_dict_states
 from PharmaPy.Interpolation import local_newton_interpolation
-from PharmaPy.Errors import PharmaPyNonImplementedError
 
 from scipy.interpolate import CubicSpline
 
@@ -240,7 +239,7 @@ def topological_bfs(graph):
             if in_degree[adj] == 0:
                 no_incoming.add(adj)
 
-    return path
+    return in_degree, path
 
 
 def convert_str_flowsheet(flowsheet):

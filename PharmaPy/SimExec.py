@@ -10,25 +10,27 @@ import pandas as pd
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
-from collections import OrderedDict
-import time
+
 from PharmaPy.Connections import Connection, convert_str_flowsheet, topological_bfs
+from PharmaPy.Errors import PharmaPyNonImplementedError
+from PharmaPy.Results import SimulationResult
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
+
+import time
 
 
 class SimulationExec:
     def __init__(self, pure_path, flowsheet):
 
         # Interfaces
-        self.ThermoInstance = ThermoPhysicalManager(pure_path)
-        self.NamesSpecies = self.ThermoInstance.name_species
+        thermo_instance = ThermoPhysicalManager(pure_path)
+        self.NamesSpecies = thermo_instance.name_species
 
         # Outputs
         self.StreamTable = None
-        self.UnitOperations = OrderedDict()
 
-        self.uos_instances = {}
+        self.uos_instances = {}  # TODO: check this under the new graph implem
         self.oper_mode = []
 
         if isinstance(flowsheet, dict):
@@ -37,7 +39,11 @@ class SimulationExec:
             graph = convert_str_flowsheet(flowsheet)
 
         self.graph = graph
-        self.execution_order = topological_bfs(graph)
+        self.in_degree, self.execution_names = topological_bfs(graph)
+
+        if len(self.execution_names) < len(self.graph):
+            raise PharmaPyNonImplementedError(
+                "Provided flowsheet contains recycle stream(s)")
 
     def connect_flowsheet(self, graph):
         count = 1
@@ -50,7 +56,7 @@ class SimulationExec:
                 dest = getattr(self, adj)
                 connection = Connection(source_uo=source, destination_uo=dest)
 
-                conn_name = 'S%i' % count
+                conn_name = 'CONN%i' % count
                 setattr(self, conn_name, connection)
 
                 connections.append(connection)
@@ -65,9 +71,9 @@ class SimulationExec:
 
         modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
 
-        # if self.execution_order is None:
+        # if self.execution_names is None:
 
-        for name in self.execution_order:
+        for name in self.execution_names:
         # for key, value in self.__dict__.items():
         #     type_val = getattr(value, '__module__', None)
 
@@ -78,27 +84,6 @@ class SimulationExec:
 
                 # self.uos_instances[key] = value
                 # self.oper_mode.append(value.oper_mode)
-
-    # def LoadConnections(self):
-    #     for key, value in self.__dict__.items():
-    #         module_name = getattr(value, '__module__', None)
-
-    #         if module_name == 'PharmaPy.Connections':
-    #             value.ThermoInstance = self.ThermoInstance
-
-    #             self.connection_instances.append(value)
-    #             self.connection_names.append(key)
-
-    #             value.name = key
-
-    def _get_ordered_uos_names(self, execution_order, uos_dict):
-        names = []
-        for obj in execution_order:
-            for key, uo in uos_dict.items():
-                if uo is obj:
-                    names.append(key)
-
-        return names
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        uos_steady_state=None, tolerances_ss=None, ss_time=0,
@@ -121,21 +106,21 @@ class SimulationExec:
         if kwargs_ss is None:
             kwargs_ss = {}
 
-        execution_order = self.execution_order
-        execution_uos = [getattr(self, name) for name in execution_order]
+        execution_names = self.execution_names
+        execution_uos = [getattr(self, name) for name in execution_names]
 
         if pick_units is not None:
             ordered_names = []
             ordered_uos = []
 
-            for name in execution_order:
+            for name in execution_names:
                 if name in pick_units:
                     ordered_names.append(name)
 
-                    idx = execution_order.index(name)
+                    idx = execution_names.index(name)
                     ordered_uos.append(execution_uos[idx])
 
-            execution_order = ordered_names
+            execution_names = ordered_names
             execution_uos = ordered_uos
 
 
@@ -143,7 +128,7 @@ class SimulationExec:
             tolerances_ss = {}
 
         # Run loop
-        for name, instance in zip(execution_order, execution_uos):
+        for name, instance in zip(execution_names, execution_uos):
             if verbose:
                 print()
                 print('{}'.format('-'*30))
@@ -204,10 +189,8 @@ class SimulationExec:
                 print('Done!')
                 print()
 
-        self.execution_order = execution_order
-
-        time_processing = np.zeros(len(execution_order))
-        for ind, uo in enumerate(execution_order):
+        time_processing = np.zeros(len(execution_names))
+        for ind, uo in enumerate(execution_names):
             if hasattr(uo, 'dynamic_result'):
                 time_prof = uo.dynamic_result.time
                 time_processing[ind] = time_prof[-1] - time_prof[0]
@@ -215,6 +198,8 @@ class SimulationExec:
                 time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
 
         self.time_processing = time_processing
+
+        self.result = SimulationResult(self)
 
 
     def GetStreamTable(self, basis='mass'):
@@ -747,16 +732,26 @@ class SimulationExec:
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)
         return statInst
 
-    def __repr__(self):  # This is just a very primitive idea
-        welcome = 'Welcome to PharmaPy'
-        len_header = len(welcome) + 2
-        lines = '-' * len_header
-        out = [lines, welcome, lines]
-        if self.execution_names is not None:
-            names = list(self.uos_instances.keys())
+    # def __repr__(self):  # This is just a very primitive idea
+    #     welcome = 'Welcome to PharmaPy'
+    #     len_header = len(welcome) + 2
+    #     lines = '-' * len_header
+    #     out = [lines, welcome, lines]
+    #     if self.execution_names is not None:
+    #         is_simple = all([a < 2 for a in list(self.in_degree.values())])
 
-            flow_diagram = ' --> '.join(names)
+    #         if is_simple:
 
-            out += ['Flowsheet structure:', flow_diagram]
+    #             flow_diagram = ' --> '.join(self.execution_names)
 
-        return '\n'.join(out)
+    #             out += ['Flowsheet structure:', flow_diagram]
+
+        # uo_header = 0
+        # for name in self.execution_names:
+        #     states_di = getattr(getattr(self, name), 'states_di')
+        #     var_types = [di['type'] for di in states_di.values()]
+
+        #     row = '\n' + name + var_types.count('diff') ''  + var_types
+
+
+        #     return '\n'.join(out)

@@ -258,7 +258,7 @@ class _BaseReactor:
 
         self.states_di = {
             'mole_conc': {'index': self.name_species, 'dim': dim_conc,
-                          'units': 'mol/L'}}
+                          'units': 'mol/L', 'type': 'diff'}}
 
         self.fstates_di = {
             'q_rxn': {'units': 'W', 'dim': 1},
@@ -268,12 +268,13 @@ class _BaseReactor:
         reactor_type = self.__class__.__name__
 
         if not self.isothermal:
-            self.states_di['temp'] = {'units': 'K', 'dim': 1}
+            self.states_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
             if reactor_type != 'PlugFlowReactor':
-                self.states_di['temp_ht'] = {'units': 'K', 'dim': 1}
+                self.states_di['temp_ht'] = {'units': 'K', 'dim': 1,
+                                             'type': 'diff'}
 
         if reactor_type == 'SemibatchReactor':
-            self.states_di['vol'] = {'units': 'm**3', 'dim': 1}
+            self.states_di['vol'] = {'units': 'm**3', 'dim': 1, 'type': 'diff'}
 
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]

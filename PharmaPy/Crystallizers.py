@@ -353,7 +353,7 @@ class _BaseCryst:
             }
 
         di_distr = {'dim': self.num_distr,
-                    'index': list(range(self.num_distr))}
+                    'index': list(range(self.num_distr)), 'type': 'diff'}
 
         if name_class != 'BatchCryst':
             self.names_states_in += ['vol_flow', 'temp']
@@ -401,21 +401,21 @@ class _BaseCryst:
 
         states_di['mass_conc'] = {'dim': len(self.name_species),
                                   'index': self.name_species,
-                                  'units': 'kg/m**3'}
+                                  'units': 'kg/m**3', 'type': 'diff'}
 
         if name_class != 'MSMPR':
-            states_di['vol'] = {'dim': 1, 'units': 'm**3'}
+            states_di['vol'] = {'dim': 1, 'units': 'm**3', 'type': 'diff'}
             self.states_uo.append('vol')
 
         if self.adiabatic:
             self.states_uo.append('temp')
 
-            states_di['temp'] = {'dim': 1, 'units': 'K'}
+            states_di['temp'] = {'dim': 1, 'units': 'K', 'type': 'diff'}
         elif 'temp' not in self.controls:
             self.states_uo += ['temp', 'temp_ht']
 
-            states_di['temp'] = {'dim': 1, 'units': 'K'}
-            states_di['temp_ht'] = {'dim': 1, 'units': 'K'}
+            states_di['temp'] = {'dim': 1, 'units': 'K', 'type': 'diff'}
+            states_di['temp_ht'] = {'dim': 1, 'units': 'K', 'type': 'diff'}
 
         self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
         self.names_states_out = self.names_states_in

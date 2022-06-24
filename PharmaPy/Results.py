@@ -6,27 +6,57 @@ Created on Mon Jun 13 11:38:23 2022
 """
 
 
-def pprint(di, headers):
-    out = []
+def pprint(di, name_items, fields, str_out=True):
+    """
+    Create a table showing items with their respective fiels as columns
 
-    field_names = list(headers.keys())
+    Parameters
+    ----------
+    di : dict
+        dictionary structured as:
+
+            {'item_1': {'field_1':..., 'field_2':...},
+             'item_2': {'field_1':..., 'field_2':...},
+             ...}
+
+    described_name : str
+        name of described variable.
+    fields : list of str
+        name of fields to be taken from nested dictionaries.
+
+    Returns
+    -------
+    out : TYPE
+        DESCRIPTION.
+
+    """
+
+    out = []
 
     form_header = []
     form_vals = []
     lens_header = []
 
-    state_names = list(di.keys())
-    max_lens = {field_names[0]: max([len(name) for name in state_names])}
+    header = [name_items] + list(fields.keys())
 
-    for name in field_names[1:]:
-        items = [len(repr(di[st][name])) for st in state_names]
-        max_lens[name] = max(items)
+    items = list(di.keys())
 
-    for ind, (header, typ) in enumerate(headers.items()):
-        le = max(len(header), max_lens[header]) + 2
+    # ---------- Lenghts
+    # Lenght of first column
+    max_lens = {name_items: max([len(name) for name in items])}
+
+    # Lenght of remaining columns
+    for name in fields:
+        vals = [len(repr(di[item][name])) for item in items]
+        max_lens[name] = max(vals)
+
+    # All fields
+    all_fields = {name_items: 's'} | fields
+    for name in all_fields:
+        le = max(len(name), max_lens[name]) + 2
 
         form_header.append("{:<%i}" % le)
-        form_vals.append("{:<%i%s}" % (le, typ))
+        form_vals.append("{:<%i%s}" % (le, all_fields[name]))
 
         lens_header.append(le)
 
@@ -37,17 +67,19 @@ def pprint(di, headers):
 
     lines = '-' * len_headers
     out.append(lines)
-    out.append(form_header.format(*headers))
+    out.append(form_header.format(*header))
     out.append(lines)
 
     for name in di:
-        field_vals = [di[name][field] for field in field_names[1:]]
+        field_vals = [di[name][field] for field in fields]
         item = form_vals.format(*([name] + field_vals))
 
         out.append(item)
 
     out.append(lines)
-    out = '\n'.join(out)
+
+    if str_out:
+        out = '\n'.join(out)
 
     return out
 
@@ -59,13 +91,13 @@ class DynamicResult:
         self.di_fstates = di_fstates
 
     def __repr__(self):
-        headers = {'states': 's', 'dim': '', 'units': 's'}
+        headers = {'dim': '', 'units': 's'}
 
-        str_states = pprint(self.di_states, headers)
+        str_states = pprint(self.di_states, 'states', headers)
 
         if self.di_fstates is not None and len(self.di_fstates) > 0:
-            head = {'f(states)': 's', 'dim': '', 'units': 's'}
-            str_fstates = pprint(self.di_fstates, head)
+            head = {'dim': '', 'units': 's'}
+            str_fstates = pprint(self.di_fstates, 'f(states)', head)
 
             out_str = str_states + '\n\n' + str_fstates
 
@@ -73,5 +105,72 @@ class DynamicResult:
             out_str = str_states
 
         out_str += '\n\nTime vector can be accessed as result.time\n'
+
+        return out_str
+
+
+class SimulationResult:
+    def __init__(self, sim):
+        self.sim = sim
+
+        # Create UO summary
+        di_uos = {}
+
+        names_uos = sim.execution_names
+
+        headers = {'Differential eqns': 'd', 'Algebraic eqns': 'd',
+                   'Model type': 's'}
+
+        for name in names_uos:
+            states_di = getattr(getattr(sim, name), 'states_di')
+
+            num_diff = []
+            num_alg = []
+            for var, di in states_di.items():
+                num = di.get('index', 1)
+
+                if isinstance(num, (list, tuple)):
+                    num = len(num)
+
+                if di['type'] == 'diff':
+                    num_diff.append(num)
+                elif di['type'] == 'alg':
+                    num_alg.append(num)
+
+            if sum(num_diff) == 0:
+                model_type = 'ALG'
+            elif sum(num_diff) > 0 and sum(num_alg) > 0:
+                model_type = 'DAE'
+            else:
+                model_type = 'ODE'
+
+            di_uos[name] = {}
+
+            di_uos[name]['Differential eqns'] = sum(num_diff)
+            di_uos[name]['Algebraic eqns'] = sum(num_alg)
+            di_uos[name]['Model type'] = model_type
+
+        out_uos = pprint(di_uos, 'Unit operation', headers, str_out=False)
+
+        self.out_uos = out_uos
+
+    def __repr__(self):
+        # Welcome message
+        welcome = 'Welcome to PharmaPy'
+        len_header = len(welcome) + 2
+        lines = '-' * len_header
+
+        names_uos = self.sim.execution_names
+        out = [lines, welcome, lines + '\n']
+        if names_uos is not None:
+            is_simple = all([a < 2 for a in list(self.sim.in_degree.values())])
+
+            if is_simple:
+
+                flow_diagram = ' --> '.join(names_uos)
+
+                out += ['Flowsheet structure:', flow_diagram + '\n']
+
+        out_str = '\n'.join(out + self.out_uos)
 
         return out_str

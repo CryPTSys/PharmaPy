@@ -549,16 +549,16 @@ class Evaporator:
 
         self.states_di = {
             'mol_i': {'index': self.name_species, 'units': 'mol',
-                      'dim': len(self.name_species)},
+                      'dim': len(self.name_species), 'type': 'diff'},
             'x_liq': {'index': self.name_species, 'units': '',
-                      'dim': len(self.name_species)},
+                      'dim': len(self.name_species), 'type': 'alg'},
             'y_vap': {'index': self.name_species, 'units': '',
-                      'dim': len(self.name_species)},
-            'mol_liq': {'units': 'mol', 'dim': 1},
-            'mol_vap': {'units': 'mol', 'dim': 1},
-            'pres': {'units': 'Pa', 'dim': 1},
-            'u_int': {'units': 'J', 'dim': 1},
-            'temp': {'units': 'K', 'dim': 1},
+                      'dim': len(self.name_species), 'type': 'alg'},
+            'mol_liq': {'units': 'mol', 'dim': 1, 'type': 'alg'},
+            'mol_vap': {'units': 'mol', 'dim': 1, 'type': 'alg'},
+            'pres': {'units': 'Pa', 'dim': 1, 'type': 'alg'},
+            'u_int': {'units': 'J', 'dim': 1, 'type': 'diff'},
+            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'},
             }
 
         self.fstates_di = {
@@ -1340,14 +1340,14 @@ class ContinuousEvaporator:
             'mol_i': {'index': self.name_species, 'units': 'mol',
                       'dim': len(self.name_species)},
             'x_liq': {'index': self.name_species, 'units': '',
-                      'dim': len(self.name_species)},
+                      'dim': len(self.name_species), 'type': 'alg'},
             'y_vap': {'index': self.name_species, 'units': '',
-                      'dim': len(self.name_species)},
-            'mol_liq': {'units': 'mol', 'dim': 1},
-            'mol_vap': {'units': 'mol', 'dim': 1},
-            'pres': {'units': 'Pa', 'dim': 1},
-            'u_int': {'units': 'J', 'dim': 1},
-            'temp': {'units': 'K', 'dim': 1},
+                      'dim': len(self.name_species), 'type': 'alg'},
+            'mol_liq': {'units': 'mol', 'dim': 1, 'type': 'alg'},
+            'mol_vap': {'units': 'mol', 'dim': 1, 'type': 'alg'},
+            'pres': {'units': 'Pa', 'dim': 1, 'type': 'alg'},
+            'u_int': {'units': 'J', 'dim': 1, 'type': 'diff'},
+            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'},
             }
 
         self.fstates_di = {

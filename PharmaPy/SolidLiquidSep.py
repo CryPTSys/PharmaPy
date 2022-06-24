@@ -584,8 +584,8 @@ class Filter:
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
 
         self.states_di = {
-            'mass_filtrate': {'dim': 1, 'units': 'kg'},
-            'mass_liquid': {'dim': 1, 'units': 'kg'},
+            'mass_filtrate': {'dim': 1, 'units': 'kg', 'type': 'diff'},
+            'mass_liquid': {'dim': 1, 'units': 'kg', 'type': 'diff'},
             }
 
         self.fstates_di = {
