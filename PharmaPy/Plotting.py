@@ -159,8 +159,8 @@ def get_states_result(result, *state_names):
 
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    if hasattr(uo, 'dynamic_result'):
-        time, data = get_states_result(uo.dynamic_result, *state_names)
+    if hasattr(uo, 'result'):
+        time, data = get_states_result(uo.result, *state_names)
     else:
         time, data = get_state_data(uo, *state_names)
 

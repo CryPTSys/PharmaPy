@@ -427,7 +427,7 @@ class _BaseReactor:
         fig, ax = plot_function(self, states_plot, fig_map=figmap,
                                 ncols=3, ylabels=ylabels, **fig_kwargs)
 
-        ax[1].plot(self.dynamic_result.time, self.dynamic_result.temp_ht, '--')
+        ax[1].plot(self.result.time, self.result.temp_ht, '--')
 
         ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 
@@ -762,10 +762,7 @@ class BatchReactor(_BaseReactor):
         self.profiles_runs.append(dp)
         dp = self.flatten_states()  # In case the UO has been run before
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
-
-        # vol_prof = np.ones_like(time) * self.Liquid_1.vol
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # Heat duty
         self.heat_duty = np.array([trapezoidal_rule(time, dp['q_ht']), 0])  # J
@@ -1567,7 +1564,7 @@ class PlugFlowReactor(_BaseReactor):
             heat_transfer = self.u_ht * a_prime * (temp - temp_ht)  # W/m**3
 
         if heat_profile:
-            ht_total = trapezoidal_rule(self.dynamic_result.vol, heat_transfer)  # W
+            ht_total = trapezoidal_rule(self.result.vol, heat_transfer)  # W
             return ht_total
 
         else:
@@ -1758,10 +1755,9 @@ class PlugFlowReactor(_BaseReactor):
         dp['time'] = time
         dp['vol'] = self.vol_discr
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
-        outlet_states = retrieve_pde_result(self.dynamic_result, x_name='vol',
+        outlet_states = retrieve_pde_result(self.result, x_name='vol',
                                             x=self.vol_discr[-1])
 
         outlet_states['mole_conc'] = np.column_stack(

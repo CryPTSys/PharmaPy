@@ -1024,7 +1024,7 @@ class _BaseCryst:
 
                 sens_sep = dict(zip(di_keys, sens_sep))
 
-                result = self.param_wrapper(self.dynamic_result, sens_sep)
+                result = self.param_wrapper(self.result, sens_sep)
 
         return result
 
@@ -1056,7 +1056,7 @@ class _BaseCryst:
         figmap = [0, 4, 5, 5]
         ylabels = ['mu_0', 'T', 'C_j', 'sigma']
 
-        if hasattr(self.dynamic_result, 'temp_ht'):
+        if hasattr(self.result, 'temp_ht'):
             states.append('temp_ht')
             figmap.append(4)
             ylabels.append('T_{ht}')
@@ -1065,15 +1065,15 @@ class _BaseCryst:
                                 nrows=3, ncols=2, ylabels=ylabels,
                                 **fig_kwargs)
 
-        time = self.dynamic_result.time
-        moms = self.dynamic_result.mu_n
+        time = self.result.time
+        moms = self.result.mu_n
 
         for ind, row in enumerate(moms[:, 1:].T):
             ax.flatten()[ind + 1].plot(time, row)
             ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
 
         # Solubility
-        ax[2, 1].plot(time, self.dynamic_result.solubility)
+        ax[2, 1].plot(time, self.result.solubility)
         ax[2, 1].lines[1].set_color('k')
         ax[2, 1].lines[1].set_alpha(0.4)
 
@@ -1708,7 +1708,7 @@ class BatchCryst(_BaseCryst):
         self.profiles_runs.append(dp)
         dp = self.flatten_states()
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+        self.result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
         # ---------- Update phases
@@ -1755,8 +1755,8 @@ class BatchCryst(_BaseCryst):
         if 'temp' in self.controls.keys():
             q_gen, capacitance = q_heat.T
 
-            dT_dt = np.diff(self.dynamic_result.temp) / \
-                np.diff(self.dynamic_result.time)
+            dT_dt = np.diff(self.result.temp) / \
+                np.diff(self.result.time)
 
             q_instant = dT_dt * capacitance[1:] + q_gen[1:]
             time = time[1:]
@@ -2038,7 +2038,7 @@ class MSMPR(_BaseCryst):
 
         self.outputs = dp
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
+        self.result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
 
         # ---------- Update phases

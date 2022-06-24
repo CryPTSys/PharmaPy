@@ -277,8 +277,8 @@ class Connection:
 
             self.Matter.y_upstream = self.source_uo.outputs
 
-            if hasattr(self.source_uo, 'dynamic_result'):
-                time_prof = self.source_uo.dynamic_result.time
+            if hasattr(self.source_uo, 'result'):
+                time_prof = self.source_uo.result.time
             else:
                 time_prof = self.source_uo.timeProf
 

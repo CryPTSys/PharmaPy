@@ -751,8 +751,7 @@ class Filter:
         dp = unpack_states(states, self.dim_states, self.name_states)
         dp['time'] = np.asarray(time)
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         solid_cake = copy.deepcopy(self.Solid_1)
         solid_cake.updatePhase(

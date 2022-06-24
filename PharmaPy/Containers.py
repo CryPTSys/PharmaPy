@@ -481,7 +481,7 @@ class Mixer:
 
                 self.states_di = self.states_di['flow']
 
-                self.dynamic_result = DynamicResult(self.states_di,
+                self.result = DynamicResult(self.states_di,
                                                     **dynamic_result)
 
                 self.outputs = dynamic_result
@@ -801,15 +801,14 @@ class DynamicCollector:
 
             dynamic_result['time'] = np.asarray(time)
 
-            self.dynamic_result = DynamicResult(self.states_di,
-                                                **dynamic_result)
+            self.result = DynamicResult(self.states_di, **dynamic_result)
 
             self.outputs = dynamic_result
 
         else:
             self.Outlet = self.CrystInst.Outlet
             self.outputs = self.CrystInst.outputs
-            self.dynamic_result = self.CrystInst.dynamic_result
+            self.result = self.CrystInst.result
 
     def plot_profiles(self, fig_size=None, time_div=1, pick_comp=None,
                       kwargs=None):

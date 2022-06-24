@@ -1080,8 +1080,7 @@ class Evaporator:
         self.profiles_runs.append(dp)
         dp = self.flatten_states()
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
         self.Liquid_1.temp = dp['temp'][-1]
@@ -1129,22 +1128,22 @@ class Evaporator:
             heat_bce[ind] = q_ht
             flow_vap[ind] = mass_bce[0]
 
-            x_liq = self.dynamic_result.x_liq[ind]
-            y_vap = self.dynamic_result.y_vap[ind]
+            x_liq = self.result.x_liq[ind]
+            y_vap = self.result.y_vap[ind]
 
             # if self.include_nitrogen:
             #     x_liq = x_liq[:-1]
             #     y_vap = y_vap[:-1]
 
             temp_bubble = self.Liquid_1.getBubblePoint(
-                pres=self.dynamic_result.pres[ind], mole_frac=x_liq)
+                pres=self.result.pres[ind], mole_frac=x_liq)
 
             h_liq[ind] = self.Liquid_1.getEnthalpy(
                 temp=temp_bubble, mole_frac=x_liq,
                 basis='mole')
 
             h_vap[ind] = self.Vapor_1.getEnthalpy(
-                temp=self.dynamic_result.temp[ind], mole_frac=y_vap,
+                temp=self.result.temp[ind], mole_frac=y_vap,
                 basis='mole')
 
         # Condensation duty
@@ -1839,8 +1838,7 @@ class ContinuousEvaporator:
 
         self.outputs = dp
 
-        self.dynamic_result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
         self.Liquid_1.temp = dp['temp'][-1]
@@ -1877,16 +1875,16 @@ class ContinuousEvaporator:
             heat_bce[ind] = energy[1]
 
             temp_bubble = self.Liquid_1.getBubblePoint(
-                pres=self.dynamic_result.pres[ind],
-                mole_frac=self.dynamic_result.x_liq[ind])
+                pres=self.result.pres[ind],
+                mole_frac=self.result.x_liq[ind])
 
             h_liq[ind] = self.Liquid_1.getEnthalpy(
                 temp=temp_bubble,
-                mole_frac=self.dynamic_result.x_liq[ind], basis='mole')
+                mole_frac=self.result.x_liq[ind], basis='mole')
 
             h_vap[ind] = self.Vapor_1.getEnthalpy(
-                temp=self.dynamic_result.temp[ind],
-                mole_frac=self.dynamic_result.y_vap[ind], basis='mole')
+                temp=self.result.temp[ind],
+                mole_frac=self.result.y_vap[ind], basis='mole')
 
             flow_liq[ind] = mat[0]
             flow_vap[ind] = mat[1]
