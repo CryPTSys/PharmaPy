@@ -46,9 +46,18 @@ def pprint(di, name_items, fields, str_out=True):
     max_lens = {name_items: max([len(name) for name in items])}
 
     # Lenght of remaining columns
-    for name in fields:
-        vals = [len(repr(di[item][name])) for item in items]
-        max_lens[name] = max(vals)
+    for field in fields:
+        field_vals = [di[name].get(field, '') for name in items]
+
+        for ind, val in enumerate(field_vals):
+            if isinstance(val, list):
+                if all([type(a) == str for a in val]):
+                    field_vals[ind] = ', '.join(val)
+                else:
+                    field_vals[ind] = '%i, ..., %i' % (val[0], val[-1])
+
+        len_vals = [len(repr(val)) for val in field_vals]
+        max_lens[field] = max(len_vals)
 
     # All fields
     all_fields = {name_items: 's'} | fields
@@ -71,7 +80,15 @@ def pprint(di, name_items, fields, str_out=True):
     out.append(lines)
 
     for name in di:
-        field_vals = [di[name][field] for field in fields]
+        field_vals = [di[name].get(field, '') for field in fields]
+
+        for ind, val in enumerate(field_vals):
+            if isinstance(val, list):
+                if all([type(a) == str for a in val]):
+                    field_vals[ind] = ', '.join(val)
+                else:
+                    field_vals[ind] = '%i, ..., %i' % (val[0], val[-1])
+
         item = form_vals.format(*([name] + field_vals))
 
         out.append(item)
@@ -91,7 +108,7 @@ class DynamicResult:
         self.di_fstates = di_fstates
 
     def __repr__(self):
-        headers = {'dim': '', 'units': 's'}
+        headers = {'dim': '', 'units': 's', 'index': 's'}
 
         str_states = pprint(self.di_states, 'states', headers)
 
