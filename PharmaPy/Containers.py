@@ -505,8 +505,7 @@ class Mixer:
 
 
 class DynamicCollector:
-    def __init__(self, timeshift_factor=1.5, temp_refer=298.15,
-                 tau=None, num_interp_points=3):
+    def __init__(self, temp_refer=298.15, tau=None, num_interp_points=3):
 
         self._Inlet = None
         self.num_interp_points = num_interp_points
@@ -517,7 +516,6 @@ class DynamicCollector:
         self.vol_offset = 0.75
 
         self.oper_mode = 'Dynamic'
-        self.time_shift = timeshift_factor
 
         self._Phases = None
 
@@ -747,10 +745,11 @@ class DynamicCollector:
             self.Phases = (liquid,)
 
             self.states_di = {
-                'mass': {'units': 'kg', 'dim': 1},
+                'mass': {'units': 'kg', 'dim': 1, 'type': 'diff'},
                 'mass_frac': {'units': '', 'dim': self.num_species,
-                              'index': self.Liquid_1.name_species},
-                'temp': {'units': 'K', 'dim': 1}
+                              'index': self.Liquid_1.name_species,
+                              'type': 'diff'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'diff'}
                 }
 
             self.dim_states = [a['dim'] for a in self.states_di.values()]
