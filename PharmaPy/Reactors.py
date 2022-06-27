@@ -48,7 +48,7 @@ def check_stoichiometry(stoich, mws):
 
 
 class _BaseReactor:
-    def __init__(self, partic_species, mask_params,
+    def __init__(self, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
                  h_conv, ht_mode, return_sens, state_events):
@@ -93,7 +93,7 @@ class _BaseReactor:
         self._Utility = None
 
         # Names
-        self.partic_species = partic_species
+        # self.partic_species = partic_species
         self.bipartite = None
         self.names_upstream = None
 
@@ -187,6 +187,7 @@ class _BaseReactor:
     @Kinetics.setter
     def Kinetics(self, instance):
         self._Kinetics = instance
+        self.partic_species = instance.partic_species
 
         name_params = self._Kinetics.name_params
         if self.mask_params is None:
@@ -461,7 +462,7 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
-    def __init__(self, partic_species, mask_params=None,
+    def __init__(self, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
@@ -504,7 +505,7 @@ class BatchReactor(_BaseReactor):
             estimate the sensitivity system using finite differences
         """
 
-        super().__init__(partic_species, mask_params,
+        super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          h_conv, ht_mode, return_sens, state_events)
@@ -784,7 +785,7 @@ class BatchReactor(_BaseReactor):
 
 
 class CSTR(_BaseReactor):
-    def __init__(self, partic_species, mask_params=None,
+    def __init__(self, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
@@ -828,7 +829,7 @@ class CSTR(_BaseReactor):
             estimate the sensitivity system using finite differences
         """
 
-        super().__init__(partic_species, mask_params,
+        super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          h_conv, ht_mode, return_sens, state_events)
@@ -1090,7 +1091,7 @@ class CSTR(_BaseReactor):
 
 
 class SemibatchReactor(CSTR):
-    def __init__(self, partic_species, vol_tank,
+    def __init__(self, vol_tank,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
@@ -1138,7 +1139,7 @@ class SemibatchReactor(CSTR):
             estimate the sensitivity system using finite differences
         """
 
-        super().__init__(partic_species, mask_params,
+        super().__init__(mask_params,
                          base_units, temp_ref,
                          isothermal, reset_states, controls,
                          h_conv, ht_mode, return_sens, state_events)
@@ -1301,7 +1302,7 @@ class SemibatchReactor(CSTR):
 
 
 class PlugFlowReactor(_BaseReactor):
-    def __init__(self, partic_species, diam_in,
+    def __init__(self, diam_in,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=False, adiabatic=False,
@@ -1353,7 +1354,7 @@ class PlugFlowReactor(_BaseReactor):
             estimate the sensitivity system using finite differences
         """
 
-        super().__init__(partic_species, mask_params,
+        super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
                          h_conv, ht_mode, return_sens, state_events)

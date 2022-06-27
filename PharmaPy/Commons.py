@@ -14,10 +14,31 @@ from itertools import cycle
 
 from assimulo.exception import TerminateSimulation
 
-from PharmaPy.Results import DynamicResult
-
 linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
+
+
+def get_permutation_indexes(ref_list, short_list):
+    """
+    Permutate indexes of short list with respect to the order in which they
+    appear in the reference list
+
+    Parameters
+    ----------
+    ref_list : list
+        reference list.
+    short_list : list
+        analyzed list. It must be a subset of ref_list.
+
+    Returns
+    -------
+    indexes : list
+        list of permutation indexes.
+
+    """
+    indexes = [short_list.index(val) for val in ref_list if val in short_list]
+
+    return indexes
 
 
 def flatten_states(state_list):

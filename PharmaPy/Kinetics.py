@@ -8,6 +8,10 @@ Created on Mon Oct 21 11:56:33 2019
 
 
 import numpy as np
+import json
+import re
+
+from PharmaPy.Commons import get_permutation_indexes
 # from autograd import numpy as np
 
 gas_ct = 8.314  # J/mol/K
@@ -52,9 +56,85 @@ def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
     return nucl_sec
 
 
+def disect_rxns(rxns, sep='-->'):
+
+    out = {}
+    species = []
+
+    for ind, rxn in enumerate(rxns):
+        out[ind] = {}
+        left, right = rxn.split(sep)
+
+        reactants = [x.strip() for x in left.split('+')]
+        products = [x.strip() for x in right.split('+')]
+
+        out[ind]['reactants'] = reactants
+        out[ind]['products'] = products
+
+        species += reactants
+        species += products
+
+    regex = '^\d+(\.\d+)?(/\d+)?\s?'
+    for ind, sp in enumerate(species):
+        species[ind] = re.sub(regex, '', sp)
+
+    species = list(dict.fromkeys(species))
+
+    return out, species
+
+
+def get_coeff(pattern, expr):
+    text = re.match(pattern, expr)
+
+    if text is None:
+        coeff = 1
+    elif '/' in text.group():
+        num, denom = text.group().split('/')
+        coeff = int(num) / int(denom)
+    else:
+        coeff = float(text.group())
+
+    return coeff
+
+
+def get_stoich(di_rxn, partic_species):
+
+    num_rxns = len(di_rxn)
+    num_species = len(partic_species)
+
+    # TODO: read json keys (name species) and make
+
+    stoich = np.zeros((num_rxns, num_species))
+
+    # I think this is the right regex pattern...
+    regex_coeff = r'\d+(\.\d+)?(/\d+)?'
+    regex_sub = r'^\d+(\.d+)?(/\d+)?\s?'
+
+    for num, di in di_rxn.items():
+        for r in di['reactants']:
+            coeff = get_coeff(regex_coeff, r)
+
+            r = re.sub(regex_sub, '', r)
+
+            col = partic_species.index(r)
+
+            stoich[num, col] = -coeff
+
+        for p in di['products']:
+            coeff = get_coeff(regex_coeff, p)
+
+            p = re.sub(regex_sub, '', p)
+
+            col = partic_species.index(p)
+
+            stoich[num, col] = coeff
+
+    return stoich
+
+
 class RxnKinetics:
 
-    def __init__(self, k_params, ea_params, rxn_list=None,
+    def __init__(self, path, k_params, ea_params, rxn_list=None,
                  stoich_matrix=None, partic_species=None,
                  keq_params=None, params_f=None,
                  reformulate_kin=False, delta_hrxn=0, tref_hrxn=298.15,
@@ -78,6 +158,8 @@ class RxnKinetics:
 
         Parameters
         ----------
+        path : str
+            path to the pure-component json file database
         k_params : list or tuple
             pre-exponential factor value(s) for the temperature-dependent term
             f_1.
@@ -147,6 +229,21 @@ class RxnKinetics:
         RxnKinetics object.
 
         """
+
+        with open(path) as f:
+            db = json.load(f)
+
+        name_species = list(db.keys())
+
+        if rxn_list is not None:
+            di, partic_species = disect_rxns(rxn_list)
+            stoich_matrix = get_stoich(di, partic_species)
+
+        perm_idx = get_permutation_indexes(name_species, partic_species)
+        stoich_matrix = stoich_matrix[:, perm_idx]
+
+        partic_species = [partic_species[ind] for ind in perm_idx]
+        self.partic_species = partic_species
 
         self.temp_ref = temp_ref
         self.reformulate_kin = reformulate_kin
