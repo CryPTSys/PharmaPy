@@ -48,7 +48,7 @@ class SimulationExec:
     def connect_flowsheet(self, graph):
         count = 1
 
-        connections = []
+        connections = {}
         for node, neighbors in graph.items():
             source = getattr(self, node)
 
@@ -56,10 +56,10 @@ class SimulationExec:
                 dest = getattr(self, adj)
                 connection = Connection(source_uo=source, destination_uo=dest)
 
-                conn_name = 'CONN%i' % count
+                conn_name = 'STR%i' % count
                 setattr(self, conn_name, connection)
 
-                connections.append(connection)
+                connections[conn_name] = connection
 
                 count += 1
 
@@ -136,7 +136,7 @@ class SimulationExec:
                 print('{}'.format('-'*30))
                 print()
 
-            for conn in connections:  # TODO: this is confusing
+            for conn in connections.values():  # TODO: this is confusing
                 if conn.destination_uo is instance:
                     conn.ReceiveData()  # receive phases from upstream uo
                     conn.TransferData()
@@ -200,7 +200,7 @@ class SimulationExec:
         self.time_processing = time_processing
 
         self.result = SimulationResult(self)
-
+        self.connections = connections
 
     def GetStreamTable(self, basis='mass'):
 
@@ -221,11 +221,11 @@ class SimulationExec:
         stream_cont = []
         index_stream = []
         index_phase = []
-        for ind, stream in enumerate(self.connection_instances):
+        for ind, (name, stream) in enumerate(self.connections.items()):
             matter_obj = stream.Matter
 
             if matter_obj is None:
-                index_stream.append(self.connection_names[ind])
+                index_stream.append(name)
                 index_phase.append(None)
                 stream_info = [np.nan] * (len(fields_phase) +
                                           len(fields_stream))
@@ -239,7 +239,7 @@ class SimulationExec:
                     phase_list = [matter_obj]
 
                 for phase in phase_list:
-                    index_stream.append(self.connection_names[ind])
+                    index_stream.append(name)
                     index_phase.append(phase.__class__.__name__)
                     stream_info = []
                     for field in fields_phase:
@@ -269,16 +269,6 @@ class SimulationExec:
 
         return stream_table
 
-    # def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
-    #                        wrapper_kwargs=None,
-    #                        spectra=None,
-    #                        fit_spectra=False, global_analysis=True,
-    #                        phase_modifiers=None, control_modifiers=None,
-    #                        measured_ind=None, optimize_flags=None,
-    #                        jac_fun=None,
-    #                        covar_data=None,
-    #                        pick_unit=None):
-
     def SetParamEstimation(self, x_data, y_data=None, spectra=None,
                            fit_spectra=False,
                            wrapper_kwargs=None,
@@ -287,8 +277,8 @@ class SimulationExec:
 
         self.LoadUOs()
 
-        if len(self.uos_instances) == 1:
-            target_unit = list(self.uos_instances.values())[0]
+        if len(self.graph) == 1:
+            target_unit = getattr(self, list(self.graph.keys())[0])
             # target_unit.reset_states = True
         else:
             if pick_unit is None:
@@ -731,27 +721,3 @@ class SimulationExec:
     def CreateStatsObject(self, alpha=0.95):
         statInst = StatisticsClass(self.ParamInst, alpha=alpha)
         return statInst
-
-    # def __repr__(self):  # This is just a very primitive idea
-    #     welcome = 'Welcome to PharmaPy'
-    #     len_header = len(welcome) + 2
-    #     lines = '-' * len_header
-    #     out = [lines, welcome, lines]
-    #     if self.execution_names is not None:
-    #         is_simple = all([a < 2 for a in list(self.in_degree.values())])
-
-    #         if is_simple:
-
-    #             flow_diagram = ' --> '.join(self.execution_names)
-
-    #             out += ['Flowsheet structure:', flow_diagram]
-
-        # uo_header = 0
-        # for name in self.execution_names:
-        #     states_di = getattr(getattr(self, name), 'states_di')
-        #     var_types = [di['type'] for di in states_di.values()]
-
-        #     row = '\n' + name + var_types.count('diff') ''  + var_types
-
-
-        #     return '\n'.join(out)

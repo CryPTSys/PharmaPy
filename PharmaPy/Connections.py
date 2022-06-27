@@ -404,17 +404,5 @@ class Connection:
                         elif 'Solid' in name_source and 'Solid' in name_destin:
                             pass
 
-            # if hasattr(self.destination_uo, 'Inlet'):
             self.destination_uo.Inlet = transfered_matter
             self.destination_uo.material_from_upstream = True
-            # else:
-            #     self.destination_uo.Inlets = transfered_matter
-            #     self.destination_uo.material_from_upstream = True
-
-            # if class_destination == 'DynamicCollector':
-            #     if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
-            #         self.destination_uo.KinCryst = self.source_uo.Kinetics
-            #         self.destination_uo.kwargs_cryst = {
-            #             'target_ind': self.source_uo.target_ind,
-            #             'target_comp': self.source_uo.target_comp,
-            #             'scale': self.source_uo.scale}

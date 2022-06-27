@@ -125,7 +125,7 @@ class DynamicResult:
         top_text = header + explain
 
         if self.di_fstates is not None and len(self.di_fstates) > 0:
-            head = {'dim': '', 'units': 's'}
+            head = {'dim': '', 'units': 's', 'index': 's'}
             str_fstates = pprint(self.di_fstates, 'f(states)', head)
 
             out_str = str_states + '\n\n' + str_fstates
