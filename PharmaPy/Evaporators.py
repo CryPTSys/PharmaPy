@@ -522,6 +522,8 @@ class Evaporator:
         self.elapsed_time = 0
         self.allow_flow = True
 
+        self.outputs = None
+
     @property
     def Phases(self):
         return self._Phases
@@ -1314,6 +1316,8 @@ class ContinuousEvaporator:
         self.state_event_list = state_events
 
         self.reflux_ratio = reflux_ratio
+
+        self.outputs = None
 
     @property
     def Phases(self):

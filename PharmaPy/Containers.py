@@ -14,8 +14,7 @@ from PharmaPy.MixedPhases import Slurry, SlurryStream
 
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Crystallizers import SemibatchCryst
-from PharmaPy.NameAnalysis import get_dict_states
-from PharmaPy.Connections import get_inputs_new, get_inputs
+from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Commons import unpack_states
 
@@ -25,8 +24,6 @@ from scipy.optimize import newton, fsolve
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
-
-import copy
 
 eps = np.finfo(float).eps
 
@@ -50,6 +47,7 @@ class Mixer:
         self.timeProf = None
 
         self.type_out = None
+        self.outputs = None
 
     @property
     def Inlets(self):
@@ -104,8 +102,8 @@ class Mixer:
         dim = {}
         names = {}
         for key, di in self.states_di.items():
-            dim[key] = {state: di[state]['dim'] for state in di}
-            names[key] = di.keys()
+            dim[key] = [di[state]['dim'] for state in di]
+            names[key] = list(di.keys())
 
         self.dim_states = dim
         self.name_states = names
@@ -264,7 +262,7 @@ class Mixer:
 
         # ---------- Material balances
         total_mass = mass_in.sum()
-        massfrac = np.dot(mass_in, massfrac_in)/total_mass
+        massfrac = np.dot(mass_in, massfrac_in) / total_mass
 
         # ---------- Energy balance
         h_in = []
@@ -407,17 +405,19 @@ class Mixer:
                 states = self.balances_solids(u_input, ind_solids)
         else:
             self.states_in_dict = {'Inlet': states_in_dict}
-            time_prof = [0]
+            time_prof = [0]  # Static mixer (instantaneous mix)
+
             if self.is_continuous:
 
                 for inlet in self.Inlets:
+                    # TODO: should we create a time_prof that contains the
+                    # times of all the input time grids? (like a universal set)
                     time_prof = getattr(inlet, 'time_upstream', None)
 
                     if time_prof is not None:
                         break
 
             u_input = self.get_inputs_new(time_prof)
-            # self.timeProf = time_prof
 
             # ---------- Create output phase
             path = self.Inlets[0].path_data
@@ -471,20 +471,25 @@ class Mixer:
                 last_massfrac = massfrac
                 last_mass = mass
 
-                self.outputs = np.hstack((massfrac, mass, temp))
+                self.states_di = self.states_di['non_flow']
+
+                result = dict(zip(self.name_states['non_flow'], states))
+                result['time'] = time
+
+                self.result = DynamicResult(self.states_di, **result)
+
             else:
                 last_massfrac = massfrac[-1]
                 last_mass = mass[-1]
 
-                dynamic_result = dict(zip(self.name_states['flow'], states))
-                dynamic_result['time'] = time
+                result = dict(zip(self.name_states['flow'], states))
+                result['time'] = time
 
                 self.states_di = self.states_di['flow']
 
-                self.result = DynamicResult(self.states_di,
-                                                    **dynamic_result)
+                self.result = DynamicResult(self.states_di, **result)
 
-                self.outputs = dynamic_result
+            self.outputs = result
 
             if self.is_continuous:
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
@@ -498,7 +503,7 @@ class Mixer:
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
                                           mass=last_mass)
 
-                self.states_di = self.states_di['non_flow']
+                # self.states_di = self.states_di['non_flow']
 
             self.Outlet = self.Liquid_1
             # self.outputs = np.atleast_2d(self.outputs)
@@ -537,6 +542,8 @@ class DynamicCollector:
         self.elapsed_time = 0
         self.oper_mode = 'Continuous'
         self.oper_mode = 'Semibatch'
+
+        self.outputs = None
 
     @property
     def Phases(self):

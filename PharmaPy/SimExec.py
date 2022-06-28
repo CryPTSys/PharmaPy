@@ -65,34 +65,34 @@ class SimulationExec:
 
         return connections
 
-    def LoadUOs(self):
-        uos_modules = ('Reactors', 'Crystallizers', 'Containers',
-                       'Evaporators', 'SolidLiquidSep', 'Drying_Model')
+    # def LoadUOs(self):
+    #     uos_modules = ('Reactors', 'Crystallizers', 'Containers',
+    #                    'Evaporators', 'SolidLiquidSep', 'Drying_Model')
 
-        modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
+    #     modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
 
-        # if self.execution_names is None:
+    #     # if self.execution_names is None:
 
-        for name in self.execution_names:
-        # for key, value in self.__dict__.items():
-        #     type_val = getattr(value, '__module__', None)
+    #     for name in self.execution_names:
+    #     # for key, value in self.__dict__.items():
+    #     #     type_val = getattr(value, '__module__', None)
 
-        #     if type_val in modules_ids:
-            value = getattr(self, name)
-            value.id_uo = name
-            value.name_species = self.NamesSpecies
+    #     #     if type_val in modules_ids:
+    #         value = getattr(self, name)
+    #         value.id_uo = name
+    #         value.name_species = self.NamesSpecies
 
-                # self.uos_instances[key] = value
-                # self.oper_mode.append(value.oper_mode)
+    #             # self.uos_instances[key] = value
+    #             # self.oper_mode.append(value.oper_mode)
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        uos_steady_state=None, tolerances_ss=None, ss_time=0,
                        kwargs_ss=None):
 
-        if len(self.uos_instances) == 0:
-            # self.LoadUOs()
-            # self.LoadConnections()
-            connections = self.connect_flowsheet(self.graph)
+        # if len(self.uos_instances) == 0:
+        #     # self.LoadUOs()
+        #     # self.LoadConnections()
+        #     connections = self.connect_flowsheet(self.graph)
 
         # Pick specific units, if given
         if kwargs_run is None:
@@ -112,9 +112,10 @@ class SimulationExec:
         if tolerances_ss is None:
             tolerances_ss = {}
 
-        time_processing = np.zeros(len(pick_units))
+        time_processing = {}
 
         # Run loop
+        connections = {}
         for ind, name in enumerate(self.execution_names):
             instance = getattr(self, name)
 
@@ -130,47 +131,52 @@ class SimulationExec:
                     source_uo=getattr(self, name),
                     destination_uo=getattr(self, self.execution_names[ind + 1]))
 
-            kwargs_uo = kwargs_run.get(name, {})
+                conn_name = 'CONN%i' % ind
+                connections[conn_name] = connection
 
-            tau = 0
-            if hasattr(instance, '_get_tau'):
-                tau = instance._get_tau()
+            # instance is already solved
+            if isinstance(instance.outputs, dict):
+                connection.ReceiveData()
+                connection.TransferData()
 
-            ss_time += tau
+            else:
+                kwargs_uo = kwargs_run.get(name, {})
 
-            if uos_steady_state is not None:
-                if name in uos_steady_state:
-                    if instance.__class__.__name__ == 'Mixer':
-                        pass
-                    else:
-                        tolerances = tolerances_ss.get(name, 1e-6)
+                tau = 0
+                if hasattr(instance, '_get_tau'):
+                    tau = instance._get_tau()
 
-                        kw_ss = kwargs_ss.get(name, None)
+                ss_time += tau
 
-                        if kw_ss is None:
-                            kw_ss = {'tau': tau, 'time_stop': ss_time,
-                                     'threshold': tolerances}
-
+                if uos_steady_state is not None:
+                    if name in uos_steady_state:
+                        if instance.__class__.__name__ == 'Mixer':
+                            pass
                         else:
-                            # TODO: should we keep this?
-                            kw_ss['threshold'] = tolerances
+                            tolerances = tolerances_ss.get(name, 1e-6)
 
-                            if 'tau' not in kw_ss.keys():
-                                kw_ss['tau'] = tau
+                            kw_ss = kwargs_ss.get(name, None)
 
-                        ss_event = {'callable': check_steady_state,
-                                    'num_conditions': 1,
-                                    'event_name': 'steady state',
-                                    'kwargs': kw_ss
-                                    }
+                            if kw_ss is None:
+                                kw_ss = {'tau': tau, 'time_stop': ss_time,
+                                         'threshold': tolerances}
 
-                        instance.state_event_list = [ss_event]
-                        kwargs_uo['any_event'] = False
+                            else:
+                                # TODO: should we keep this?
+                                kw_ss['threshold'] = tolerances
 
-            connection.ReceiveData()  # receive phases from upstream uo
-            connection.TransferData()
+                                if 'tau' not in kw_ss.keys():
+                                    kw_ss['tau'] = tau
 
-            if name in pick_units:
+                            ss_event = {'callable': check_steady_state,
+                                        'num_conditions': 1,
+                                        'event_name': 'steady state',
+                                        'kwargs': kw_ss
+                                        }
+
+                            instance.state_event_list = [ss_event]
+                            kwargs_uo['any_event'] = False
+
                 instance.solve_unit(**kwargs_uo)
 
                 uo_type = instance.__module__
@@ -182,6 +188,9 @@ class SimulationExec:
                     print('Done!')
                     print()
 
+                connection.ReceiveData()  # receive phases from upstream uo
+                connection.TransferData()
+
                 # Processing times
                 if hasattr(instance, 'result'):
                     time_prof = instance.result.time
@@ -189,7 +198,7 @@ class SimulationExec:
                 elif hasattr(instance, 'timeProf'):
                     time_prof = instance.timeProf
 
-                time_processing[ind] = time_prof[-1] - time_prof[0]
+                time_processing[name] = time_prof[-1] - time_prof[0]
 
         self.time_processing = time_processing
 

@@ -149,6 +149,8 @@ class _BaseReactor:
 
         self.profiles_runs = []
 
+        self.outputs = None
+
     @property
     def Phases(self):
         return self._Phases

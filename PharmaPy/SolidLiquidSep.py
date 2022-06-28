@@ -126,6 +126,8 @@ class DeliquoringStep:
         self.oper_mode = 'Batch'
         self.is_continuous = False
 
+        self.outputs = None
+
     @property
     def Phases(self):
         return self._Phases
@@ -550,6 +552,7 @@ class Filter:
         self.states_uo = ['mass_filtrate', 'mass_retained']
 
         self.deltaP = None
+        self.outputs = None
 
     @property
     def Phases(self):
@@ -845,6 +848,8 @@ class DisplacementWashing:
         self.is_continuous = False
 
         self.nomenclature()
+
+        self.outputs = None
 
     @property
     def Phases(self):

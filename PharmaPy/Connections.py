@@ -255,55 +255,23 @@ def convert_str_flowsheet(flowsheet):
 
 
 class Connection:
-    def __init__(self, material=None, source_uo=None, destination_uo=None,
-                 mass_flow=0, mass_ufunc=None, mole_flow=0,
-                 vol_flow=0, vol_ufunc=None):
-
-        if source_uo is None and material is None:
-            raise RuntimeError("No source UO to take material from. Please "
-                               "specify entering material with the 'material' "
-                               "argument")
-        self.Matter = material
+    def __init__(self, source_uo, destination_uo):
 
         self.source_uo = source_uo
         self.destination_uo = destination_uo
-        self.y_list = []
 
     def ReceiveData(self):
-        # Source UO
-        if self.Matter is None:
-            self.Matter = self.source_uo.Outlet
-            self.num_species = self.Matter.num_species
+        self.Matter = self.source_uo.Outlet
+        self.num_species = self.Matter.num_species
 
-            self.Matter.y_upstream = self.source_uo.outputs
+        self.Matter.y_upstream = self.source_uo.outputs
 
-            if hasattr(self.source_uo, 'result'):
-                time_prof = self.source_uo.result.time
-            else:
-                time_prof = self.source_uo.timeProf
+        time_prof = self.source_uo.result.time
 
-            if self.source_uo.is_continuous:
-                self.Matter.time_upstream = time_prof
-            else:
-                self.Matter.time_upstream = time_prof[-1]
-
-            self.y_list.append(self.source_uo.outputs)
-
+        if self.source_uo.is_continuous:
+            self.Matter.time_upstream = time_prof
         else:
-            if self.source_uo.is_continuous:
-                self.y_list.append(self.source_uo.outputs[1:])
-
-                y_stacked = np.vstack(self.y_list)
-                self.y_list = [y_stacked]
-
-                time_prof = self.source_uo.timeProf
-                idxs = np.where(np.diff(time_prof) > 0)[0]
-
-                time_prof = np.concatenate([time_prof[idxs],
-                                           np.array([time_prof[-1]])])
-
-                self.Matter.y_upstream = y_stacked
-                self.Matter.time_upstream = time_prof
+            self.Matter.time_upstream = time_prof[-1]
 
     def TransferData(self):
         if self.source_uo is None:
@@ -323,6 +291,7 @@ class Connection:
             states_down = self.destination_uo.names_states_in
             # states_down_dict = self.destination_uo.states_in_dict
 
+        # Streams and phases don't need unit conversion
         if states_up is None:
             bipartite = None
             names_upstream = None

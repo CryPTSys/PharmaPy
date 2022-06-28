@@ -228,6 +228,8 @@ class _BaseCryst:
 
         self.param_wrapper = param_wrapper
 
+        self.outputs = None
+
     @property
     def Phases(self):
         return self._Phases
