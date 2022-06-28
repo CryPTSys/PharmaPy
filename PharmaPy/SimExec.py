@@ -45,46 +45,6 @@ class SimulationExec:
             raise PharmaPyNonImplementedError(
                 "Provided flowsheet contains recycle stream(s)")
 
-    def connect_flowsheet(self, graph):
-        count = 1
-
-        connections = {}
-        for node, neighbors in graph.items():
-            source = getattr(self, node)
-
-            for adj in neighbors:
-                dest = getattr(self, adj)
-                connection = Connection(source_uo=source, destination_uo=dest)
-
-                conn_name = 'STR%i' % count
-                setattr(self, conn_name, connection)
-
-                connections[conn_name] = connection
-
-                count += 1
-
-        return connections
-
-    # def LoadUOs(self):
-    #     uos_modules = ('Reactors', 'Crystallizers', 'Containers',
-    #                    'Evaporators', 'SolidLiquidSep', 'Drying_Model')
-
-    #     modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
-
-    #     # if self.execution_names is None:
-
-    #     for name in self.execution_names:
-    #     # for key, value in self.__dict__.items():
-    #     #     type_val = getattr(value, '__module__', None)
-
-    #     #     if type_val in modules_ids:
-    #         value = getattr(self, name)
-    #         value.id_uo = name
-    #         value.name_species = self.NamesSpecies
-
-    #             # self.uos_instances[key] = value
-    #             # self.oper_mode.append(value.oper_mode)
-
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        uos_steady_state=None, tolerances_ss=None, ss_time=0,
                        kwargs_ss=None):
@@ -176,8 +136,7 @@ class SimulationExec:
                     conn_name = 'CONN%i' % count
                     connections[conn_name] = connection
 
-                    connection.ReceiveData()  # receive phases from upstream uo
-                    connection.TransferData()
+                    connection.transfer_data()
 
                     count += 1
 
@@ -195,8 +154,7 @@ class SimulationExec:
                 conn_name = 'CONN%i' % count
                 connections[conn_name] = connection
 
-                connection.ReceiveData()
-                connection.TransferData()
+                connection.transfer_data()
 
                 count += 1
 

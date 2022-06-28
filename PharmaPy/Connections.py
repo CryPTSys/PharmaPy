@@ -260,7 +260,12 @@ class Connection:
         self.source_uo = source_uo
         self.destination_uo = destination_uo
 
-    def ReceiveData(self):
+    def transfer_data(self):
+        self.FeedConnection()
+        self.ConvertUnits()
+        self.PassPhases()
+
+    def FeedConnection(self):
         self.Matter = self.source_uo.Outlet
         self.num_species = self.Matter.num_species
 
@@ -273,37 +278,24 @@ class Connection:
         else:
             self.Matter.time_upstream = time_prof[-1]
 
-    def TransferData(self):
-        if self.source_uo is None:
-            states_up = None
-        else:
-            states_up = self.source_uo.names_states_out
-            # states_up_dict = self.source_uo.states_out_dict
+    def ConvertUnits(self):
+        states_up = self.source_uo.names_states_out
 
-        class_destination = self.destination_uo.__class__.__name__
-        if class_destination == 'DynamicCollector':
-            if self.source_uo.__class__.__name__ == 'MSMPR':
-                states_down = self.destination_uo.names_states_in['crystallizer']
+        mode_source = self.source_uo.oper_mode
+        mode_dest = self.destination_uo.oper_mode
+
+        if mode_source == 'Continuous' and mode_dest != 'Batch':
+
+            class_destination = self.destination_uo.__class__.__name__
+            if class_destination == 'DynamicCollector':
+                if self.source_uo.__class__.__name__ == 'MSMPR':
+                    states_down = self.destination_uo.names_states_in['crystallizer']
+                else:
+                    states_down = self.destination_uo.names_states_in['liquid_mixer']
+
             else:
-                states_down = self.destination_uo.names_states_in['liquid_mixer']
+                states_down = self.destination_uo.names_states_in
 
-        else:
-            states_down = self.destination_uo.names_states_in
-            # states_down_dict = self.destination_uo.states_in_dict
-
-        # Streams and phases don't need unit conversion
-        if states_up is None:
-            bipartite = None
-            names_upstream = None
-
-        elif (self.source_uo.oper_mode == 'Batch' or
-              self.source_uo.oper_mode == 'Semibatch'):
-
-            bipartite = None
-            names_upstream = None
-
-        # time-dependent states for flowing material require unit conversion
-        else:
             name_analyzer = NameAnalyzer(
                 states_up, states_down, self.num_species,
                 len(getattr(self.Matter, 'distrib', []))
@@ -313,30 +305,19 @@ class Connection:
             converted_states = name_analyzer.convertUnitsNew(self.Matter)
             self.Matter.y_inlet = converted_states
 
-            bipartite = name_analyzer.bipartite
-            names_upstream = name_analyzer.names_up
+    def PassPhases(self):
 
-        # Assign names to downstream UO
-        if self.destination_uo.__class__.__name__ == 'Mixer':
-            self.destination_uo.bipartite.append(bipartite)
-            self.destination_uo.names_upstream.append(names_upstream)
-        else:
-            self.destination_uo.bipartite = bipartite
-            self.destination_uo.names_upstream = names_upstream
-
-        # ---------- Destination UO
-        mode = self.destination_uo.oper_mode
+        class_destination = self.destination_uo.__class__.__name__
+        mode_dest = self.destination_uo.oper_mode
         transfered_matter = copy.deepcopy(self.Matter)
 
         if class_destination == 'Mixer':
             self.destination_uo.Inlets = transfered_matter
-            self.destination_uo.material_from_upstream = True
 
-        elif mode == 'Batch':
+        elif mode_dest == 'Batch':
             self.destination_uo.Phases = transfered_matter
-            self.destination_uo.material_from_upstream = True
 
-        elif mode == 'Semibatch':
+        elif mode_dest == 'Semibatch':
             if class_destination == 'DynamicCollector':
                 self.destination_uo.Inlet = transfered_matter
                 self.destination_uo.material_from_upstream = True
@@ -352,31 +333,15 @@ class Connection:
                 self.destination_uo.Phases = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
-        elif mode == 'Continuous':  # Continuous
-            source_phases = self.source_uo.Outlet
-            if self.source_uo.oper_mode == 'Batch' and source_phases is not self.Matter:
-                if hasattr(self.Matter, 'Phases') and \
-                        hasattr(source_phases, 'Phases'):
-                    pass
-                elif hasattr(self.Matter, 'Phases'):
-                    pass
-
-                elif hasattr(source_phases, 'Phases'):
-                    print('Warning: Source UO yields a '
-                          'MixedPhases object, whereas the destination stream '
-                          'is a %s object' % self.Matter.__class__.__name__)
-
-                    name_destin = transfered_matter.__class__.__name__
-                    for phase in source_phases.Phases:
-                        name_source = phase.__class__.__name__
-
-                        if 'Liquid' in name_source and 'Liquid' in name_destin:
-                            transfered_matter.updatePhase(
-                                mass_frac=phase.mass_frac)
-                            transfered_matter.temp = phase.temp
-
-                        elif 'Solid' in name_source and 'Solid' in name_destin:
-                            pass
+        elif mode_dest == 'Continuous':  # Continuous
+            # Transfering from batch to continuous (how to approach this?)
+            if self.source_uo.oper_mode != 'Continuous':
+                pass
+                # TODO: bit TODO. We need to define how Batch/Semibatch
+                # followed by continuous will be handled. The most practical
+                # approach would be to solve thhe the downstream continuous
+                # section for a period of time such as the material from the
+                # last discontinuous UO is depleted, as stated in the paper.
+                # Reference date: (2022/06/28)
 
             self.destination_uo.Inlet = transfered_matter
-            self.destination_uo.material_from_upstream = True
