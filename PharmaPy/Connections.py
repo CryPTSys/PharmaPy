@@ -295,9 +295,14 @@ class Connection:
         if states_up is None:
             bipartite = None
             names_upstream = None
-        elif self.source_uo.oper_mode == 'Batch' or self.source_uo.oper_mode =='Semibatch':
+
+        elif (self.source_uo.oper_mode == 'Batch' or
+              self.source_uo.oper_mode == 'Semibatch'):
+
             bipartite = None
             names_upstream = None
+
+        # time-dependent states for flowing material require unit conversion
         else:
             name_analyzer = NameAnalyzer(
                 states_up, states_down, self.num_species,
@@ -305,8 +310,8 @@ class Connection:
                 )
 
             # Convert units and pass states to self.Matter
-            # name_analyzer.convertUnits(self.Matter)
-            name_analyzer.convertUnitsNew(self.Matter)
+            converted_states = name_analyzer.convertUnitsNew(self.Matter)
+            self.Matter.y_inlet = converted_states
 
             bipartite = name_analyzer.bipartite
             names_upstream = name_analyzer.names_up

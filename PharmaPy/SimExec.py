@@ -89,19 +89,8 @@ class SimulationExec:
                        uos_steady_state=None, tolerances_ss=None, ss_time=0,
                        kwargs_ss=None):
 
-        # if len(self.uos_instances) == 0:
-        #     # self.LoadUOs()
-        #     # self.LoadConnections()
-        #     connections = self.connect_flowsheet(self.graph)
-
-        # Pick specific units, if given
         if kwargs_run is None:
-            if pick_units is None:
-                keys = self.uos_instances.keys()
-            else:
-                keys = pick_units
-
-            kwargs_run = {key: {} for key in keys}
+            kwargs_run = {}
 
         if kwargs_ss is None:
             kwargs_ss = {}
@@ -116,30 +105,18 @@ class SimulationExec:
 
         # Run loop
         connections = {}
+        count = 1
         for ind, name in enumerate(self.execution_names):
             instance = getattr(self, name)
 
-            if verbose:
-                print()
-                print('{}'.format('-'*30))
-                print('Running {}'.format(name))
-                print('{}'.format('-'*30))
-                print()
+            if name in pick_units:
+                if verbose:
+                    print()
+                    print('{}'.format('-'*30))
+                    print('Running {}'.format(name))
+                    print('{}'.format('-'*30))
+                    print()
 
-            if len(self.graph[name]) > 0:  # there are neighbor UO(s)
-                connection = Connection(
-                    source_uo=getattr(self, name),
-                    destination_uo=getattr(self, self.execution_names[ind + 1]))
-
-                conn_name = 'CONN%i' % ind
-                connections[conn_name] = connection
-
-            # instance is already solved
-            if isinstance(instance.outputs, dict):
-                connection.ReceiveData()
-                connection.TransferData()
-
-            else:
                 kwargs_uo = kwargs_run.get(name, {})
 
                 tau = 0
@@ -188,17 +165,40 @@ class SimulationExec:
                     print('Done!')
                     print()
 
-                connection.ReceiveData()  # receive phases from upstream uo
-                connection.TransferData()
+                # Create connection object if needed
+                neighbors = self.graph[name]
+                if len(neighbors) > 0 and self.execution_names[ind + 1] in pick_units:
+                    uo_next = self.execution_names[ind + 1]
+                    connection = Connection(
+                        source_uo=getattr(self, name),
+                        destination_uo=getattr(self, uo_next))
+
+                    conn_name = 'CONN%i' % count
+                    connections[conn_name] = connection
+
+                    connection.ReceiveData()  # receive phases from upstream uo
+                    connection.TransferData()
+
+                    count += 1
 
                 # Processing times
-                if hasattr(instance, 'result'):
-                    time_prof = instance.result.time
-
-                elif hasattr(instance, 'timeProf'):
-                    time_prof = instance.timeProf
-
+                time_prof = instance.result.time
                 time_processing[name] = time_prof[-1] - time_prof[0]
+
+            # instance is already solved, pass data to connection
+            elif isinstance(instance.outputs, dict):
+                connection = Connection(
+                    source_uo=getattr(self, name),
+                    destination_uo=getattr(self,
+                                           self.execution_names[ind + 1]))
+
+                conn_name = 'CONN%i' % count
+                connections[conn_name] = connection
+
+                connection.ReceiveData()
+                connection.TransferData()
+
+                count += 1
 
         self.time_processing = time_processing
 

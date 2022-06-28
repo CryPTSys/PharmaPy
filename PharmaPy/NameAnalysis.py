@@ -279,7 +279,7 @@ class NameAnalyzer:
 
         # y_inlet = np.column_stack(list(dict_out.values()))
 
-        matter_transf.y_inlet = dict_out
+        # matter_transf.y_inlet = dict_out
 
         return dict_out
 

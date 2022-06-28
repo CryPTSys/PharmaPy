@@ -74,8 +74,6 @@ class Mixer:
             else:
                 self.names_states_in = self.names_states_in['non_flow']
 
-        # if update_names:
-        # self.states_out_dict = {'Liquid_1': }
         self.names_upstream.append(None)
         self.bipartite.append(None)
 
