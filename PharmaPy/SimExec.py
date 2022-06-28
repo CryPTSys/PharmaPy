@@ -39,7 +39,7 @@ class SimulationExec:
             graph = convert_str_flowsheet(flowsheet)
 
         self.graph = graph
-        self.in_degree, self.execution_names = topological_bfs(graph)
+        in_degree, self.execution_names = topological_bfs(graph)
 
         if len(self.execution_names) < len(self.graph):
             raise PharmaPyNonImplementedError(
@@ -90,7 +90,7 @@ class SimulationExec:
                        kwargs_ss=None):
 
         if len(self.uos_instances) == 0:
-            self.LoadUOs()
+            # self.LoadUOs()
             # self.LoadConnections()
             connections = self.connect_flowsheet(self.graph)
 
@@ -106,29 +106,18 @@ class SimulationExec:
         if kwargs_ss is None:
             kwargs_ss = {}
 
-        execution_names = self.execution_names
-        execution_uos = [getattr(self, name) for name in execution_names]
-
-        if pick_units is not None:
-            ordered_names = []
-            ordered_uos = []
-
-            for name in execution_names:
-                if name in pick_units:
-                    ordered_names.append(name)
-
-                    idx = execution_names.index(name)
-                    ordered_uos.append(execution_uos[idx])
-
-            execution_names = ordered_names
-            execution_uos = ordered_uos
-
+        if pick_units is None:
+            pick_units = self.execution_names
 
         if tolerances_ss is None:
             tolerances_ss = {}
 
+        time_processing = np.zeros(len(pick_units))
+
         # Run loop
-        for name, instance in zip(execution_names, execution_uos):
+        for ind, name in enumerate(self.execution_names):
+            instance = getattr(self, name)
+
             if verbose:
                 print()
                 print('{}'.format('-'*30))
@@ -136,10 +125,10 @@ class SimulationExec:
                 print('{}'.format('-'*30))
                 print()
 
-            for conn in connections.values():  # TODO: this is confusing
-                if conn.destination_uo is instance:
-                    conn.ReceiveData()  # receive phases from upstream uo
-                    conn.TransferData()
+            if len(self.graph[name]) > 0:  # there are neighbor UO(s)
+                connection = Connection(
+                    source_uo=getattr(self, name),
+                    destination_uo=getattr(self, self.execution_names[ind + 1]))
 
             kwargs_uo = kwargs_run.get(name, {})
 
@@ -178,24 +167,29 @@ class SimulationExec:
                         instance.state_event_list = [ss_event]
                         kwargs_uo['any_event'] = False
 
-            instance.solve_unit(**kwargs_uo)
+            connection.ReceiveData()  # receive phases from upstream uo
+            connection.TransferData()
 
-            uo_type = instance.__module__
-            if uo_type != 'PharmaPy.Containers':
-                instance.flatten_states()
+            if name in pick_units:
+                instance.solve_unit(**kwargs_uo)
 
-            if verbose:
-                print()
-                print('Done!')
-                print()
+                uo_type = instance.__module__
+                if uo_type != 'PharmaPy.Containers':
+                    instance.flatten_states()
 
-        time_processing = np.zeros(len(execution_names))
-        for ind, uo in enumerate(execution_names):
-            if hasattr(uo, 'dynamic_result'):
-                time_prof = uo.dynamic_result.time
+                if verbose:
+                    print()
+                    print('Done!')
+                    print()
+
+                # Processing times
+                if hasattr(instance, 'result'):
+                    time_prof = instance.result.time
+
+                elif hasattr(instance, 'timeProf'):
+                    time_prof = instance.timeProf
+
                 time_processing[ind] = time_prof[-1] - time_prof[0]
-            elif hasattr(uo, 'timeProf'):
-                time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
 
         self.time_processing = time_processing
 
