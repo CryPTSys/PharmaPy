@@ -29,14 +29,13 @@ eps = np.finfo(float).eps
 
 
 class Mixer:
-    def __init__(self, phases=(), vol=None, temp_refer=298.15):
+    def __init__(self, temp_refer=298.15):
 
         self._Inlets = []
 
         self.oper_mode = None
 
         self.elapsed_time = 0
-        self.vol = vol
 
         self.temp_refer = temp_refer
 
@@ -80,33 +79,24 @@ class Mixer:
         self.names_upstream.append(None)
         self.bipartite.append(None)
 
-        states_di_flow = {
-            'mass_flow': {'units': 'kg/s', 'dim': 1, 'type': 'alg'},
-            'mass_frac': {'units': 'kg', 'dim': 1,
-                          'index': self.Inlets[0].name_species, 'type': 'alg'},
-            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
-            }
+        if flow_flag:
+            self.states_di = {
+                'mass_flow': {'units': 'kg/s', 'dim': 1, 'type': 'alg'},
+                'mass_frac': {'units': 'kg', 'dim': 1,
+                              'index': self.Inlets[0].name_species, 'type': 'alg'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
+                }
 
-        states_di_mass = {
-            'mass': {'units': 'kg', 'dim': 1, 'type': 'alg'},
-            'mass_frac': {'units': 'kg', 'dim': 1,
-                          'index': self.Inlets[0].name_species, 'type': 'alg'},
-            'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
-            }
+        else:
+            self.states_di = {
+                'mass': {'units': 'kg', 'dim': 1, 'type': 'alg'},
+                'mass_frac': {'units': 'kg', 'dim': 1,
+                              'index': self.Inlets[0].name_species, 'type': 'alg'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
+                }
 
-        self.states_di = {'flow': states_di_flow, 'non_flow': states_di_mass}
-
-        self.dim_states = {}
-        self.name_states = {}
-
-        dim = {}
-        names = {}
-        for key, di in self.states_di.items():
-            dim[key] = [di[state]['dim'] for state in di]
-            names[key] = list(di.keys())
-
-        self.dim_states = dim
-        self.name_states = names
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+        self.name_states = list(self.states_di.keys())
 
     def nomenclature(self):
         self.names_states_in = {
@@ -471,9 +461,7 @@ class Mixer:
                 last_massfrac = massfrac
                 last_mass = mass
 
-                self.states_di = self.states_di['non_flow']
-
-                result = dict(zip(self.name_states['non_flow'], states))
+                result = dict(zip(self.name_states, states))
                 result['time'] = time
 
                 self.result = DynamicResult(self.states_di, **result)
@@ -482,10 +470,8 @@ class Mixer:
                 last_massfrac = massfrac[-1]
                 last_mass = mass[-1]
 
-                result = dict(zip(self.name_states['flow'], states))
+                result = dict(zip(self.name_states, states))
                 result['time'] = time
-
-                self.states_di = self.states_di['flow']
 
                 self.result = DynamicResult(self.states_di, **result)
 
@@ -503,10 +489,7 @@ class Mixer:
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
                                           mass=last_mass)
 
-                # self.states_di = self.states_di['non_flow']
-
             self.Outlet = self.Liquid_1
-            # self.outputs = np.atleast_2d(self.outputs)
 
 
 class DynamicCollector:
