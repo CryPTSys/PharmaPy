@@ -5,6 +5,60 @@ Created on Mon Jun 13 11:38:23 2022
 @author: dcasasor
 """
 
+import numpy as np
+import pandas as pd
+
+
+def get_stream_info(obj, fields):
+    if not isinstance(obj, (tuple, list)):
+        obj = [obj]
+
+    out = []
+    for phase in obj:
+        stream_info = {}
+        for field in fields:
+            stream_info[field] = getattr(phase, field)
+
+        out.append(stream_info)
+
+    return out
+
+
+def flatten_dict_fields(di, index=None):
+    target_keys = []
+
+    new_fields = {}
+    for key in di:
+        if isinstance(di[key], (tuple, list, np.ndarray)):
+            val = di[key]
+            target_keys.append(key)
+
+            if index is None:
+                suff = range(len(val))
+            elif isinstance(index, (list, tuple)):
+                suff = index
+            else:
+                suff = index[key]
+
+            for ind, num in enumerate(val):
+                new_fields['%s_%s' % (key, suff[ind])] = num
+
+    for key in target_keys:
+        di.pop(key)
+
+    out = di | new_fields
+    return out
+
+
+def get_di_multiindex(di):
+
+    out = {(i, j, k): di[i][j][k]
+           for i in di.keys()
+           for j in di[i].keys()
+           for k in range(len(di[i][j]))}
+
+    return out
+
 
 def pprint(di, name_items, fields, str_out=True):
     """
@@ -187,6 +241,110 @@ class SimulationResult:
         out_uos = pprint(di_uos, 'Unit operation', headers, str_out=False)
 
         self.out_uos = out_uos
+
+    def get_raw_objects(self):
+        out = {}
+
+        for name, uo in self.sim.uos_instances.items():
+            # Inlets (flows)
+            if hasattr(uo, 'Inlet'):
+                if uo.Inlet is not None:
+                    if uo.Inlet.y_upstream is None:
+                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+
+                        if uo.oper_mode == 'Batch':
+                            elapsed_time = 1
+                        elif uo.Inlet.DynamicInlet is not None:
+                            elapsed_time = uo.result.time
+                        else:
+                            elapsed_time = uo.timeProf[-1] - uo.timeProf[0]
+
+                    else:
+                        inlet = None
+                        elapsed_time = None
+
+            elif uo.__class__.__name__ == 'Mixer':
+                inlet = []
+                elapsed_time = []
+
+                for inl in uo.Inlets:
+                    if inl.y_upstream is None:
+                        inlet.append(inl)
+
+                        if uo.oper_mode == 'Batch':
+                            time = 1
+                        elif inl.DynamicInlet is None:
+                            time_prof = uo.result.time
+                            time = time_prof[-1] - time_prof[0]
+
+                    elapsed_time.append(time)
+
+            else:
+                inlet = None
+                elapsed_time = None
+
+            out[name] = {'raw_streams': inlet, 'time_streams': elapsed_time}
+
+            # Initial holdups
+            if hasattr(uo, '__original_phase__'):
+                orig = uo.__original_phase__
+            else:
+                orig = None
+
+            out[name]['raw_holdups'] = orig
+
+        return out
+
+    def GetStreamTable(self, basis='mass'):
+        uo_dict = self.sim.uos_instances
+
+        # TODO: include inlets and holdups in the stream table
+        inlet_di = self.get_raw_objects()
+
+        if basis == 'mass':
+            fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
+            fields_stream = ['mass_flow', 'vol_flow', 'mass_frac']
+
+            frac_preffix = 'w_{}'
+        elif basis == 'mole':
+            fields_phase = ['temp', 'pres', 'moles', 'vol', 'mole_frac']
+            fields_stream = ['mole_flow', 'vol_flow', 'mole_frac']
+
+            frac_preffix = 'x_{}'
+
+        info = {}
+        for ind, name in enumerate(uo_dict):
+            matter_obj = uo_dict[name].Outlet
+            info[name] = {}
+
+            if 'Stream' in matter_obj.__class__.__name__:
+                fields = fields_stream
+            else:
+                fields = fields_phase
+
+            raw_inlets = inlet_di[name]['raw_streams']
+            if raw_inlets is not None:
+                entries = get_stream_info(raw_inlets, fields)
+                entries = [flatten_dict_fields(entry, self.sim.NamesSpecies)
+                           for entry in entries]
+
+                info[name]['Raw inlets'] = entries
+
+            # raw_holdup = inlet_di[name]['raw_holdups']
+            # if raw_holdup is not None:
+            #     info[name]['Initial holdup'] = get_stream_info(raw_holdup, fields)
+
+            entries = get_stream_info(matter_obj, fields)
+            entries = [flatten_dict_fields(entry, self.sim.NamesSpecies)
+                       for entry in entries]
+            info[name]['Outlet'] = entries
+
+        di_multiindex = get_di_multiindex(info)
+        mux = pd.MultiIndex.from_tuples(di_multiindex.keys())
+
+        stream_table = pd.DataFrame(list(di_multiindex.values()), index=mux)
+
+        return stream_table
 
     def __repr__(self):
         # Welcome message

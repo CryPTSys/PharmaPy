@@ -70,6 +70,8 @@ class SimulationExec:
             instance = getattr(self, name)
 
             if name in pick_units:
+                self.uos_instances[name] = instance
+
                 if verbose:
                     print()
                     print('{}'.format('-'*30))
@@ -163,80 +165,13 @@ class SimulationExec:
         self.result = SimulationResult(self)
         self.connections = connections
 
-    def GetStreamTable(self, basis='mass'):
-
-        # # TODO: include inlets and holdups in the stream table
-        # inlets, holdups, _, inlets_id, holdups_id = self.get_raw_objects()
-
-        if basis == 'mass':
-            fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
-            fields_stream = ['mass_flow', 'vol_flow']
-
-            frac_preffix = 'w_{}'
-        elif basis == 'mole':
-            fields_phase = ['temp', 'pres', 'moles', 'vol', 'mole_frac']
-            fields_stream = ['mole_flow', 'vol_flow']
-
-            frac_preffix = 'x_{}'
-
-        stream_cont = []
-        index_stream = []
-        index_phase = []
-        for ind, (name, stream) in enumerate(self.connections.items()):
-            matter_obj = stream.Matter
-
-            if matter_obj is None:
-                index_stream.append(name)
-                index_phase.append(None)
-                stream_info = [np.nan] * (len(fields_phase) +
-                                          len(fields_stream))
-
-                stream_cont.append(stream_info)
-            else:
-
-                if matter_obj.__module__ == 'PharmaPy.MixedPhases':
-                    phase_list = matter_obj.Phases  # TODO: change this
-                else:
-                    phase_list = [matter_obj]
-
-                for phase in phase_list:
-                    index_stream.append(name)
-                    index_phase.append(phase.__class__.__name__)
-                    stream_info = []
-                    for field in fields_phase:
-                        value_phase = getattr(phase, field, None)
-                        stream_info.append(np.atleast_1d(value_phase))
-
-                    for field in fields_stream:
-                        value_stream = getattr(phase, field, None)
-                        stream_info.append(np.atleast_1d(value_stream))
-
-                    stream_info = np.concatenate(stream_info)
-                    stream_cont.append(stream_info)
-
-        cols = fields_phase[:-1] + \
-            [frac_preffix.format(ind) for ind in self.NamesSpecies] + \
-            fields_stream
-
-        indexes = zip(*(index_stream, index_phase))
-        idx = pd.MultiIndex.from_tuples(indexes, names=('Stream', 'Phase'))
-        stream_table = pd.DataFrame(stream_cont, index=idx, columns=cols)
-
-        cols_reorder = fields_phase[:-1] + fields_stream + \
-            [frac_preffix.format(ind) for ind in self.NamesSpecies]
-
-        stream_table = stream_table[cols_reorder]
-        # stream_table[stream_table == 0] = None
-
-        return stream_table
-
     def SetParamEstimation(self, x_data, y_data=None, spectra=None,
                            fit_spectra=False,
                            wrapper_kwargs=None,
                            phase_modifiers=None, control_modifiers=None,
                            pick_unit=None, **inputs_paramest):
 
-        self.LoadUOs()
+        # self.LoadUOs()
 
         if len(self.graph) == 1:
             target_unit = getattr(self, list(self.graph.keys())[0])
