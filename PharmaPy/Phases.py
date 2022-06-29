@@ -310,7 +310,7 @@ class LiquidPhase(ThermoPhysicalManager):
         if temp is not None:
             self.temp = temp
 
-        if pres is None:
+        if pres is not None:
             self.pres = pres
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
@@ -834,6 +834,9 @@ class SolidPhase(ThermoPhysicalManager):
             self.distrib = distrib
             self.moments = self.getMoments()
             self.num_distrib = len(distrib)
+
+            self.vol = self.moments[3]
+            self.mass = self.moments[3] * self.getDensity()
 
         if mass is not None:
             self.mass = mass

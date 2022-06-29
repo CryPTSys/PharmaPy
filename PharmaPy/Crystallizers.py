@@ -2040,8 +2040,7 @@ class MSMPR(_BaseCryst):
 
         self.outputs = dp
 
-        self.result = DynamicResult(self.states_di, self.fstates_di,
-                                            **dp)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
         self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * self.vol_mult)
@@ -2064,7 +2063,8 @@ class MSMPR(_BaseCryst):
         solid_comp[self.target_ind] = 1
 
         if type(self) == MSMPR:
-            liquid_out = LiquidStream(path, mass_conc=dp['mass_conc'][-1],
+            liquid_out = LiquidStream(path,
+                                      mass_conc=dp['mass_conc'][-1],
                                       temp=dp['temp'][-1])
 
             if self.method == '1D-FVM':
@@ -2075,9 +2075,10 @@ class MSMPR(_BaseCryst):
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol)  # TODO
 
-            self.Outlet = SlurryStream(vol_flow=inputs['Inlet']['vol_flow'][-1],
-                                       x_distrib=self.x_grid,
-                                       distrib=dp['distrib'][-1])
+            self.Outlet = SlurryStream(
+                vol_flow=inputs['Inlet']['vol_flow'][-1],
+                x_distrib=self.x_grid,
+                distrib=dp['distrib'][-1])
 
             self.get_heat_duty(time, states)  # TODO: allow for semi-batch
 

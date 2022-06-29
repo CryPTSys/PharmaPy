@@ -13,13 +13,17 @@ def get_stream_info(obj, fields):
     if not isinstance(obj, (tuple, list)):
         obj = [obj]
 
-    out = []
-    for phase in obj:
+    out = {}
+    for ind, phase in enumerate(obj):
         stream_info = {}
         for field in fields:
-            stream_info[field] = getattr(phase, field)
+            stream_info[field] = getattr(phase, field, None)
 
-        out.append(stream_info)
+        phase_type = phase.__class__.__name__
+        if phase_type in out:
+            phase_type = phase_type + '_' + ind
+
+        out[phase_type] = stream_info
 
     return out
 
@@ -55,7 +59,7 @@ def get_di_multiindex(di):
     out = {(i, j, k): di[i][j][k]
            for i in di.keys()
            for j in di[i].keys()
-           for k in range(len(di[i][j]))}
+           for k in di[i][j].keys()}
 
     return out
 
@@ -303,12 +307,12 @@ class SimulationResult:
 
         if basis == 'mass':
             fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
-            fields_stream = ['mass_flow', 'vol_flow', 'mass_frac']
+            fields_stream = ['temp', 'pres', 'mass_flow', 'vol_flow', 'mass_frac']
 
             frac_preffix = 'w_{}'
         elif basis == 'mole':
             fields_phase = ['temp', 'pres', 'moles', 'vol', 'mole_frac']
-            fields_stream = ['mole_flow', 'vol_flow', 'mole_frac']
+            fields_stream = ['temp', 'pres', 'mole_flow', 'vol_flow', 'mole_frac']
 
             frac_preffix = 'x_{}'
 
@@ -322,11 +326,14 @@ class SimulationResult:
             else:
                 fields = fields_phase
 
+            if matter_obj.__module__ == 'PharmaPy.MixedPhases':
+                matter_obj = matter_obj.Phases
+
             raw_inlets = inlet_di[name]['raw_streams']
             if raw_inlets is not None:
                 entries = get_stream_info(raw_inlets, fields)
-                entries = [flatten_dict_fields(entry, self.sim.NamesSpecies)
-                           for entry in entries]
+                entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
+                           for key, val in entries.items()}
 
                 info[name]['Raw inlets'] = entries
 
@@ -335,8 +342,8 @@ class SimulationResult:
             #     info[name]['Initial holdup'] = get_stream_info(raw_holdup, fields)
 
             entries = get_stream_info(matter_obj, fields)
-            entries = [flatten_dict_fields(entry, self.sim.NamesSpecies)
-                       for entry in entries]
+            entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
+                       for key, val in entries.items()}
             info[name]['Outlet'] = entries
 
         di_multiindex = get_di_multiindex(info)

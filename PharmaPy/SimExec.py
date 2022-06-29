@@ -39,7 +39,7 @@ class SimulationExec:
             graph = convert_str_flowsheet(flowsheet)
 
         self.graph = graph
-        in_degree, self.execution_names = topological_bfs(graph)
+        self.in_degree, self.execution_names = topological_bfs(graph)
 
         if len(self.execution_names) < len(self.graph):
             raise PharmaPyNonImplementedError(
