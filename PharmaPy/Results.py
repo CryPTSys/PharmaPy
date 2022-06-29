@@ -252,20 +252,22 @@ class SimulationResult:
         for name, uo in self.sim.uos_instances.items():
             # Inlets (flows)
             if hasattr(uo, 'Inlet'):
-                if uo.Inlet is not None:
-                    if uo.Inlet.y_upstream is None:
-                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
+                if uo.Inlet is None:
+                    inlet = None
+                    elapsed_time = None
+                elif uo.Inlet.y_upstream is None:
+                    inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
 
-                        if uo.oper_mode == 'Batch':
-                            elapsed_time = 1
-                        elif uo.Inlet.DynamicInlet is not None:
-                            elapsed_time = uo.result.time
-                        else:
-                            elapsed_time = uo.timeProf[-1] - uo.timeProf[0]
-
+                    if uo.oper_mode == 'Batch':
+                        elapsed_time = 1
+                    elif uo.Inlet.DynamicInlet is not None:
+                        elapsed_time = uo.result.time
                     else:
-                        inlet = None
-                        elapsed_time = None
+                        elapsed_time = uo.timeProf[-1] - uo.timeProf[0]
+
+                else:
+                    inlet = None
+                    elapsed_time = None
 
             elif uo.__class__.__name__ == 'Mixer':
                 inlet = []
@@ -305,16 +307,15 @@ class SimulationResult:
         # TODO: include inlets and holdups in the stream table
         inlet_di = self.get_raw_objects()
 
+        base = ['temp', 'pres']
+
         if basis == 'mass':
-            fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
-            fields_stream = ['temp', 'pres', 'mass_flow', 'vol_flow', 'mass_frac']
+            fields_phase = base + ['mass', 'vol', 'mass_frac']
+            fields_stream = base + ['mass_flow', 'vol_flow', 'mass_frac']
 
-            frac_preffix = 'w_{}'
         elif basis == 'mole':
-            fields_phase = ['temp', 'pres', 'moles', 'vol', 'mole_frac']
-            fields_stream = ['temp', 'pres', 'mole_flow', 'vol_flow', 'mole_frac']
-
-            frac_preffix = 'x_{}'
+            fields_phase = base + ['moles', 'vol', 'mole_frac']
+            fields_stream = base + ['mole_flow', 'vol_flow', 'mole_frac']
 
         info = {}
         for ind, name in enumerate(uo_dict):
