@@ -232,26 +232,30 @@ class ParameterEstimation:
         self.y_data = y_data
         self.num_datasets = len(self.y_data)
 
+        if self.experim_names is None:
+            self.experim_names = ['exp_%i' % (ind + 1)
+                                  for ind in range(self.num_datasets)]
+
         if measured_ind is None:
             measured_ind = list(range(y_data[0].shape[1]))
 
         self.measured_ind = measured_ind
-
-        if self.experim_names is None:
-            self.experim_names = ['exp_%i' % (ind + 1)
-                                  for ind in range(self.num_datasets)]
 
         # ---------- Arguments
         if args_fun is None:
             args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
             args_fun = [args_fun]
+        else:
+            args_fun = list(args_fun.values())
 
         if kwargs_fun is None:
             kwargs_fun = [{}] * self.num_datasets
         elif self.num_datasets == 1:
-            if not isinstance(kwargs_fun, list):
-                kwargs_fun = [kwargs_fun]
+            # if not isinstance(kwargs_fun, list):
+            kwargs_fun = [kwargs_fun]
+        else:
+            kwargs_fun = list(kwargs_fun.values())
 
         self.args_fun = args_fun
         self.kwargs_fun = kwargs_fun
@@ -554,7 +558,7 @@ class ParameterEstimation:
 
         return covar
 
-    def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None):
+    def plot_data_model(self, fig_grid=None, **fig_kwargs):
 
         num_plots = self.num_datasets
 
@@ -565,13 +569,12 @@ class ParameterEstimation:
             num_cols = fig_grid[1]
             num_rows = fig_grid[0]
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=fig_size)
+        fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
 
         if num_plots == 1:
             axes = np.asarray(axes)[np.newaxis]
 
-        if fig_kwargs is None:
-            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
+        ax_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
 
         ax_flatten = axes.flatten()
 
@@ -579,8 +582,6 @@ class ParameterEstimation:
         y_data = self.y_data
 
         for ind in range(self.num_datasets):  # experiment loop
-            markers = cycle(['o', 's', '^', '*', 'P', 'X'])
-
             mask_nan = np.isfinite(self.y_model[ind])
             y_model = self.y_model[ind]
 
@@ -591,16 +592,17 @@ class ParameterEstimation:
             lines = ax_flatten[ind].lines
             colors = [line.get_color() for line in lines]
 
+            markers = cycle(['o', 's', '^', '*', 'P', 'X'])
             for color, y in zip(colors, y_data[ind].T):
                 ax_flatten[ind].plot(x_data[ind], y, color=color,
                                      marker=next(markers),
-                                     **fig_kwargs)
+                                     **ax_kwargs)
 
             # Edit
             ax_flatten[ind].spines['right'].set_visible(False)
             ax_flatten[ind].spines['top'].set_visible(False)
 
-            ax_flatten[ind].set_xlabel('$x$')
+            # ax_flatten[ind].set_xlabel('$x$')
             ax_flatten[ind].set_ylabel(r'$\mathbf{y}$')
 
             ax_flatten[ind].xaxis.set_minor_locator(AutoMinorLocator(2))
@@ -611,6 +613,9 @@ class ParameterEstimation:
 
         if len(axes) == 1:
             axes = axes[0]
+            axes.set_xlabel('$x$')
+        else:
+            fig.text(0.5, 0, '$x$', ha='center')
 
         fig.tight_layout()
 
@@ -671,11 +676,13 @@ class ParameterEstimation:
         else:
             experim_names = self.experim_names
 
+        markers = cycle(['o', 's', '^', '*', 'P', 'X'])
         for ind, y_model in enumerate(y_model):
             y_data = self.y_data[ind]
 
             axis.scatter(y_model.T.flatten(), y_data.T.flatten(),
-                         label=experim_names[ind], **fig_kwargs)
+                         label=experim_names[ind], marker=next(markers),
+                         **fig_kwargs)
 
         axis.set_xlabel('Model')
         axis.set_ylabel('Data')

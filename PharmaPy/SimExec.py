@@ -184,28 +184,33 @@ class SimulationExec:
                 pass  # remember setting reset_states to True!!
 
         if phase_modifiers is None:
-            if control_modifiers is None:
-                phase_modifiers = [phase_modifiers]
+            if isinstance(x_data, dict):
+                phase_modifiers = {key: {} for key in x_data}
             else:
-                phase_modifiers = [phase_modifiers] * len(control_modifiers)
+                phase_modifiers = {}
 
         if control_modifiers is None:
-            if phase_modifiers is None:
-                control_modifiers = [control_modifiers]
+            if isinstance(x_data, dict):
+                control_modifiers = {key: {} for key in x_data}
             else:
-                control_modifiers = [control_modifiers] * len(phase_modifiers)
+                control_modifiers = {}
 
         if wrapper_kwargs is None:
             wrapper_kwargs = {}
 
-        keys = ['modify_phase', 'modify_controls']
+        if isinstance(x_data, dict):
+            kwargs_wrapper = {
+                key: {'modify_phase': phase_modifiers[key],
+                      'modify_controls': control_modifiers[key]}
+                for key in x_data}
 
-        kwargs_wrapper = list(zip(phase_modifiers, control_modifiers))
+            for di in kwargs_wrapper.values():
+                di.update({'run_args': wrapper_kwargs})
+        else:
+            kwargs_wrapper = {'modify_phase': phase_modifiers,
+                              'modify_controls': control_modifiers}
 
-        kwargs_wrapper = [dict(zip(keys, item)) for item in kwargs_wrapper]
-
-        for di in kwargs_wrapper:
-            di.update({'run_args': wrapper_kwargs})
+            kwargs_wrapper['run_args'] = wrapper_kwargs
 
         # Get 1D array of parameters from the UO class
         param_seed = inputs_paramest.pop('param_seed', None)

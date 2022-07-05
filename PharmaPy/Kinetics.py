@@ -136,20 +136,20 @@ class RxnKinetics:
 
     def __init__(self, path, k_params, ea_params, rxn_list=None,
                  stoich_matrix=None, partic_species=None,
-                 keq_params=None, params_f=None,
-                 reformulate_kin=False, delta_hrxn=0, tref_hrxn=298.15,
-                 temp_ref=298.15, reparam_center=True,
-                 kinetic_model=None, df_dstates=None, df_dtheta=None):
+                 temp_ref=None, reformulate_kin=False,
+                 keq_params=None, params_f=None, delta_hrxn=0,
+                 tref_hrxn=298.15, kinetic_model=None, df_dstates=None,
+                 df_dtheta=None):
         """
         Create a reaction kinetics object. Reaction rate (r_i) is assumed to
         have the following functional form:
             r_i = f_1(T) * f_2(C_1, ..., C_{n_comp})
 
         with the temperature-dependent term f_1 given by:
-            f_1 = k_i * exp(-ea_i/R/T)
+            f_1 = k_i * exp(-Ea_i/R/T)
 
-        Composition-dependent term f_2 is optional. If not given, f_2 is
-        assumed to be of the form:
+        Composition-dependent term f_2 can be passed as a user-defined
+        function. If not given, f_2 is assumed to be of the form:
             f_2 = prod_{j in reactants for rxn i} C_j (alpha_{i,j})
 
         where alpha_{i,j} values are determined automatically by PharmaPy from
@@ -164,7 +164,8 @@ class RxnKinetics:
             pre-exponential factor value(s) for the temperature-dependent term
             f_1.
         ea_params : list or tuple
-            activation energy value(s) for the temperature-dependent term f_1.
+            activation energy [J/mol] value(s) for the temperature-dependent
+            term f_1.
         rxn_list: list of str, optional.
             list containing reactions represented by strings, where the
             pattern '+' separates reactants or products from one another, and
@@ -198,21 +199,28 @@ class RxnKinetics:
         params_f : numpy array, optional
             parameters for the concentration-dependent term f_2.
             If no custom model is provided through the 'kinetic_model'
-            argument, then params_f are interpreted as the reaction orders of
-            a built-in elementary reaction kinetic model.
+            argument, then 'params_f' values are interpreted as the reaction
+            orders of the built-in elementary reaction kinetic model.
             The params_f argument is optional only if no custom model is provided.
             If not given, the reaction orders are set to the stoichiometric
             coefficients for the involved reactants. The default is None.
+        temp_ref : float, optional
+            reference temperature [K]. If not passed, it will be set to np.inf.
+            The default is None.
         reformulate_kin : bool, optional
-            DESCRIPTION. The default is False.
+            if True, f_1(T) will be reformulated as:
+
+                f_1(T) = exp[phi_1 + exp(phi_2) * (1/T_ref - 1/T)]
+
+            where phi_1 = ln(k_i) - Ea/R/T_ref and phi_2 = ln(Ea/R)
+            We recommend to use this reparametrization when performing
+            parameter estimation with datasets at different temperatures.
+            The default is False.
         delta_hrxn : float, optional
             DESCRIPTION. The default is 0.
         tref_hrxn : float, optional
             DESCRIPTION. The default is 298.15.
-        temp_ref : TYPE, optional
-            DESCRIPTION. The default is 298.15.
-        reparam_center : TYPE, optional
-            DESCRIPTION. The default is True.
+
         kinetic_model : callable, optional  # TODO: make it f(T, C)
             kinetic model to be used to compute f_2. It must have
             the signature:
@@ -244,6 +252,9 @@ class RxnKinetics:
 
         partic_species = [partic_species[ind] for ind in perm_idx]
         self.partic_species = partic_species
+
+        if temp_ref is None:
+            temp_ref = np.inf
 
         self.temp_ref = temp_ref
         self.reformulate_kin = reformulate_kin
@@ -278,8 +289,6 @@ class RxnKinetics:
         self.stoich_matrix = stoich_matrix
 
         # ---------- Parameters
-        self.reparam_center = reparam_center
-
         params_dict = {'k_params': k_params, 'ea_params': ea_params,
                        'keq_params': keq_params, 'params_f': params_f}
 
@@ -310,10 +319,15 @@ class RxnKinetics:
         self.sensitivities = None
 
     def transform_params(self, kvals, evals):
-        ea_term = evals/gas_ct/self.temp_ref * self.reparam_center
+        if self.reformulate_kin:
+            ea_term = evals/gas_ct/self.temp_ref
 
-        phi_1 = np.log(kvals) - ea_term
-        phi_2 = np.log(evals/gas_ct)
+            phi_1 = np.log(kvals) - ea_term
+            phi_2 = np.log(evals/gas_ct)
+
+        else:
+            phi_1 = kvals
+            phi_2 = evals
 
         return phi_1, phi_2
 
@@ -323,16 +337,9 @@ class RxnKinetics:
             k_params = np.atleast_1d(params['k_params']) + eps
             ea_params = np.atleast_1d(params['ea_params']) + eps
 
-            if self.reformulate_kin:
-                phi_1, phi_2 = self.transform_params(k_params, ea_params)
-            else:
-                phi_1 = k_params
-                phi_2 = ea_params
+            self.phi_1, self.phi_2 = self.transform_params(k_params, ea_params)
 
-            self.num_paramsk = len(phi_1) + len(phi_2)
-
-            self.phi_1 = phi_1
-            self.phi_2 = phi_2
+            self.num_paramsk = len(self.phi_1) + len(self.phi_2)
 
             self.fit_paramsf = True
             if self.elem_flag:
@@ -355,8 +362,7 @@ class RxnKinetics:
             self.order_map = self.stoich_matrix < 0
 
         else:
-            self.phi_1 = params[:self.num_rxns]
-            self.phi_2 = params[self.num_rxns:self.num_rxns*2]
+            self.phi_1, self.phi_2 = np.split(params, 2)
 
             if self.elem_flag:
                 # Reorganize rxn orders into a stoich_matrix-like structure
@@ -423,9 +429,10 @@ class RxnKinetics:
     def temp_term(self, temp):
 
         temp = np.asarray(temp)
+        inv_temp = (1/self.temp_ref - 1/temp)
 
         if self.reformulate_kin:
-            inv_temp = (1/self.temp_ref - 1/temp)
+
             if temp.ndim == 0:
                 k_temp = np.exp(self.phi_1 + np.exp(self.phi_2) * inv_temp)
             else:
@@ -434,10 +441,10 @@ class RxnKinetics:
 
         else:
             if temp.ndim == 0:
-                k_temp = self.phi_1 * np.exp(-self.phi_2/temp/gas_ct)
+                k_temp = self.phi_1 * np.exp(self.phi_2/gas_ct * inv_temp)
             else:
                 k_temp = self.phi_1 * \
-                    np.exp(np.outer(1/temp, -self.phi_2/gas_ct))
+                    np.exp(np.outer(inv_temp, self.phi_2/gas_ct))
 
         return k_temp
 
@@ -448,21 +455,22 @@ class RxnKinetics:
         if temp.ndim == 0:
             k_eq = self.keq_params * np.exp(-deltah_temp/gas_ct * inv_temp)
         else:
-            k_eq = self.keq_params * np.exp(
-                -np.outer(inv_temp, deltah_temp/gas_ct))
+            k_eq = self.keq_params * \
+                np.exp(-np.outer(inv_temp, deltah_temp/gas_ct))
 
         return k_eq
 
     def dk_dkparams(self, temp):
         temp_term = self.temp_term(temp)
 
+        inv_temp = (1/self.temp_ref - 1/temp)
+
         if self.reformulate_kin:
             drate_dphi1 = np.diag(temp_term)
-            dphi_2 = temp_term * (1/self.temp_ref - 1 /
-                                  temp) * np.exp(self.phi_2)
+            dphi_2 = temp_term * inv_temp * np.exp(self.phi_2)
         else:
-            drate_dphi1 = np.diag(np.exp(-self.phi_2/gas_ct/temp))
-            dphi_2 = -temp_term/gas_ct/temp
+            drate_dphi1 = np.diag(np.exp(self.phi_2/gas_ct * inv_temp))
+            dphi_2 = temp_term/gas_ct * inv_temp
 
         drate_dphi2 = np.diag(dphi_2)
         drate_dk = np.hstack((drate_dphi1, drate_dphi2))

@@ -88,7 +88,7 @@ class LiquidPhase(ThermoPhysicalManager):
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None,
                  mass_conc=None, mole_conc=None,
-                 ind_solv=None, verbose=True):
+                 name_solv=None, verbose=True):
 
         super().__init__(path_thermo)
 
@@ -107,6 +107,12 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
+
+        if name_solv is None:
+            ind_solv = name_solv
+        else:
+            ind_solv = self.name_species.index(name_solv)
+
         self.ind_solv = ind_solv
 
         self.temp = np.float(temp)

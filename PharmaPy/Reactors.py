@@ -270,7 +270,9 @@ class _BaseReactor:
 
         reactor_type = self.__class__.__name__
 
-        if not self.isothermal:
+        if self.isothermal:
+            self.fstates_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
+        else:
             self.states_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
             if reactor_type != 'PlugFlowReactor':
                 self.states_di['temp_ht'] = {'units': 'K', 'dim': 1,
@@ -427,12 +429,16 @@ class _BaseReactor:
 
         figmap = (0, 1, 2, 2)
         ylabels = ('C_j', 'T', 'Q_rxn', 'Q_ht')
+
+        ncols = max(figmap) + 1
+
         fig, ax = plot_function(self, states_plot, fig_map=figmap,
-                                ncols=3, ylabels=ylabels, **fig_kwargs)
+                                ncols=ncols, ylabels=ylabels, **fig_kwargs)
 
-        ax[1].plot(self.result.time, self.result.temp_ht, '--')
+        if hasattr(self.result, 'temp_ht'):
+            ax[1].plot(self.result.time, self.result.temp_ht, '--')
 
-        ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
+            ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 
         fig.tight_layout()
 
@@ -454,7 +460,7 @@ class _BaseReactor:
         elif mode == 'per_state':
             sens_data = reorder_sens(self.sensit, separate_sens=True)
 
-        fig, axis = plot_sens(self.timeProf, sens_data,
+        fig, axis = plot_sens(self.result.time, sens_data,
                               name_states=name_states,
                               name_params=self.Kinetics.name_params,
                               mode=mode, black_white=black_white,
@@ -664,6 +670,7 @@ class BatchReactor(_BaseReactor):
 
         if time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
+            self.elapsed_time = time_grid[0]
 
         # Initial states
         conc_init = self.Liquid_1.mole_conc[self.mask_species]
@@ -753,11 +760,11 @@ class BatchReactor(_BaseReactor):
         dp = complete_dict_states(time, dp, ('vol', 'temp'), self.Liquid_1,
                                   self.controls)
 
-        if 'temp_ht' not in self.name_states:
+        if 'temp_ht' in self.name_states:
+            heat_prof = self.energy_balances(**dp, inputs=None, heat_prof=True)
+        else:
             heat_prof = self.energy_balances(temp_ht=None, **dp, inputs=None,
                                              heat_prof=True)
-        else:
-            heat_prof = self.energy_balances(**dp, inputs=None, heat_prof=True)
 
         dp['q_rxn'] = heat_prof[:, 0]
         dp['q_ht'] = heat_prof[:, 1]
