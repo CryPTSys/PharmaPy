@@ -174,7 +174,6 @@ class PiecewiseLagrange:
         if y_init is not None:
             self.y_vals[0, 0] = y_init
 
-        time_eval = np.atleast_1d(time_eval)
         time_k = self.time_k
 
         if self.equal_dt:
@@ -195,25 +194,36 @@ class PiecewiseLagrange:
         colloc = np.linspace(0, 1, self.order)
 
         # Lagrange polynomials for k = 1, ..., K (all intervals)
-        poly = np.zeros((len(time_eval), self.order))
+        i_set = set(range(self.order))
 
-        i_set = np.arange(self.order)
+        if isinstance(time_eval, np.ndarray):
+            ntimes = len(time_eval)
 
-        for i in i_set:
-            i_pr = np.setdiff1d(i_set, i)  # i prime
-            poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+            poly = np.zeros((ntimes, self.order))
 
-            poly[:, i] = poly_indiv.prod(axis=1)
+            for i in i_set:
+                i_pr = list(i_set.difference([i]))
+                poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
 
-        u_time = np.zeros_like(time_eval, dtype=float)
+                poly[:, i] = poly_indiv.prod(axis=1)
 
-        for ind in np.unique(k):
-            row_map = k == ind
-            poly_k = poly[row_map]
-            u_time[row_map] = np.dot(poly_k, self.y_vals[ind - 1]).flatten()
+            u_time = np.zeros_like(time_eval, dtype=float)
 
-        if len(u_time) == 1:
-            u_time = u_time[0]
+            for ind in np.unique(k):
+                row_map = k == ind
+                poly_k = poly[row_map]
+                u_time[row_map] = np.dot(poly_k,
+                                         self.y_vals[ind - 1]).flatten()
+
+        else:
+            poly = np.zeros(self.order)
+            for i in i_set:
+                i_pr = list(i_set.difference([i]))
+                poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+
+                poly[i] = poly_indiv.prod()
+
+            u_time = np.dot(poly, self.y_vals[k - 1])
 
         return u_time
 
