@@ -94,16 +94,16 @@ def smoothstep(x, x_min=0, x_max=1, N=1):
     return result
 
 
-class SplineInterpolation:
-    def __init__(self, x_data, y_data):
+# class SplineInterpolation:
+#     def __init__(self, x_data, y_data):
 
-        self.Spline = CubicSpline(x_data, y_data)
+#         self.Spline = CubicSpline(x_data, y_data)
 
-    def evalSpline(self, x):
+#     def evalSpline(self, x):
 
-        y_interp = self.Spline(x)
+#         y_interp = self.Spline(x)
 
-        return y_interp
+#         return y_interp
 
 
 class PiecewiseLagrange:

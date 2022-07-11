@@ -558,18 +558,17 @@ class ParameterEstimation:
 
         return covar
 
-    def plot_data_model(self, fig_grid=None, **fig_kwargs):
+    def plot_data_model(self, **fig_kwargs):
 
         num_plots = self.num_datasets
 
-        if fig_grid is None:
+        if 'ncols' not in fig_kwargs and 'nrows' not in fig_kwargs:
             num_cols = bool(num_plots // 2) + 1
             num_rows = num_plots // 2 + num_plots % 2
-        else:
-            num_cols = fig_grid[1]
-            num_rows = fig_grid[0]
 
-        fig, axes = plt.subplots(num_rows, num_cols, **fig_kwargs)
+            fig_kwargs.updagte({'nrows': num_rows, 'ncols': num_cols})
+
+        fig, axes = plt.subplots(**fig_kwargs)
 
         if num_plots == 1:
             axes = np.asarray(axes)[np.newaxis]

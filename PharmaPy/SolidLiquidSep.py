@@ -9,7 +9,6 @@ import numpy as np
 from PharmaPy.Commons import trapezoidal_rule, series_erfc
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
-from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
 
 from PharmaPy.Commons import unpack_states
@@ -25,7 +24,6 @@ from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 from assimulo.exception import TerminateSimulation
 
-from scipy.integrate import quad
 from scipy.special import erfc
 
 eps = np.finfo(float).eps * 1.1
