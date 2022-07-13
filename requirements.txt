@@ -4,3 +4,4 @@ matplotlib
 pandas
 autograd
 assimulo
+cyipopt
