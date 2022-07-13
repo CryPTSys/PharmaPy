@@ -311,6 +311,8 @@ class Connection:
         mode_dest = self.destination_uo.oper_mode
         transfered_matter = copy.deepcopy(self.Matter)
 
+        transfered_matter.transferred_from_uo = True
+
         if class_destination == 'Mixer':
             self.destination_uo.Inlets = transfered_matter
 

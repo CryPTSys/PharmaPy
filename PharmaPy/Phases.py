@@ -195,6 +195,7 @@ class LiquidPhase(ThermoPhysicalManager):
         self.y_upstream = None
 
         self._name = None
+        self.transferred_from_uo = False
 
     @property
     def name(self):
@@ -487,6 +488,8 @@ class VaporPhase(ThermoPhysicalManager):
 
         self.y_upstream = None
         self._name = None
+
+        self.transferred_from_uo = False
 
     @property
     def name(self):
@@ -823,6 +826,7 @@ class SolidPhase(ThermoPhysicalManager):
         self.distribProf = None
 
         self._name = None
+        self.transferred_from_uo = False
 
     @property
     def name(self):

@@ -67,16 +67,23 @@ class Slurry:
 
         self.temp = None
 
+        self.transferred_from_uo = False
+
     @property
     def Phases(self):
         return self._Phases
 
     @Phases.setter
     def Phases(self, phases_list):
-        if isinstance(phases_list, tuple):
+        if isinstance(phases_list, (list, tuple)):
             phases_list = list(phases_list)
 
         self._Phases = phases_list
+
+        for phase in self._Phases:
+            if phase.transferred_from_uo:
+                self.transferred_from_uo = True
+                break
 
         classify_phases(self)
 

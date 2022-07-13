@@ -1771,7 +1771,17 @@ class PlugFlowReactor(_BaseReactor):
                                             x=self.vol_discr[-1])
 
         outlet_states['mole_conc'] = np.column_stack(
-            outlet_states['mole_conc'].values())
+            list(outlet_states['mole_conc'].values()))
+
+        # dm_dt = 0
+        # mole_frac = self.Liquid_1.conc_to_frac(outlet_states['mole_conc'],
+        #                                        basis='mole')
+        # dens = self.Liquid_1.getDensity(mole_frac=mole_frac, basis='mole')
+
+        # mole_frac_in = self.Liquid_1.conc_to_frac(inputs['mole_conc'],
+        #                                           basis='mole')
+        # dens_in = self.Liquid_1.getDensity(mole_frac=mole_frac_in,
+        #                                    basis='mole')
 
         outlet_states['vol_flow'] = np.ones_like(time) * inputs['vol_flow']
 

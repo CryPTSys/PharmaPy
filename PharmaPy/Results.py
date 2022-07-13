@@ -9,6 +9,13 @@ import numpy as np
 import pandas as pd
 
 
+def get_name_object(obj):
+    typ = obj.__class__.__name__
+    identif = repr(obj).split(' ')[-1][:-1]
+
+    return '.'.join([typ, identif])
+
+
 def get_stream_info(obj, fields):
     if not isinstance(obj, (tuple, list)):
         obj = [obj]
@@ -19,11 +26,8 @@ def get_stream_info(obj, fields):
         for field in fields:
             stream_info[field] = getattr(phase, field, None)
 
-        phase_type = phase.__class__.__name__
-        if phase_type in out:
-            phase_type = phase_type + '_' + ind
-
-        out[phase_type] = stream_info
+        phase_name = get_name_object(phase)
+        out[phase_name] = stream_info
 
     return out
 
@@ -246,66 +250,8 @@ class SimulationResult:
 
         self.out_uos = out_uos
 
-    def get_raw_objects(self):
-        out = {}
-
-        for name, uo in self.sim.uos_instances.items():
-            # Inlets (flows)
-            if hasattr(uo, 'Inlet'):
-                if uo.Inlet is None:
-                    inlet = None
-                    elapsed_time = None
-                elif uo.Inlet.y_upstream is None:
-                    inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
-
-                    if uo.oper_mode == 'Batch':
-                        elapsed_time = 1
-                    elif uo.Inlet.DynamicInlet is not None:
-                        elapsed_time = uo.result.time
-                    else:
-                        elapsed_time = uo.timeProf[-1] - uo.timeProf[0]
-
-                else:
-                    inlet = None
-                    elapsed_time = None
-
-            elif uo.__class__.__name__ == 'Mixer':
-                inlet = []
-                elapsed_time = []
-
-                for inl in uo.Inlets:
-                    if inl.y_upstream is None:
-                        inlet.append(inl)
-
-                        if uo.oper_mode == 'Batch':
-                            time = 1
-                        elif inl.DynamicInlet is None:
-                            time_prof = uo.result.time
-                            time = time_prof[-1] - time_prof[0]
-
-                    elapsed_time.append(time)
-
-            else:
-                inlet = None
-                elapsed_time = None
-
-            out[name] = {'raw_streams': inlet, 'time_streams': elapsed_time}
-
-            # Initial holdups
-            if hasattr(uo, '__original_phase__'):
-                orig = uo.__original_phase__
-            else:
-                orig = None
-
-            out[name]['raw_holdups'] = orig
-
-        return out
-
     def GetStreamTable(self, basis='mass'):
         uo_dict = self.sim.uos_instances
-
-        # TODO: include inlets and holdups in the stream table
-        inlet_di = self.get_raw_objects()
 
         base = ['temp', 'pres']
 
@@ -330,27 +276,28 @@ class SimulationResult:
             if matter_obj.__module__ == 'PharmaPy.MixedPhases':
                 matter_obj = matter_obj.Phases
 
-            raw_inlets = inlet_di[name]['raw_streams']
-            if raw_inlets is not None:
-                entries = get_stream_info(raw_inlets, fields)
-                entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
-                           for key, val in entries.items()}
-
-                info[name]['Raw inlets'] = entries
-
-            # raw_holdup = inlet_di[name]['raw_holdups']
-            # if raw_holdup is not None:
-            #     info[name]['Initial holdup'] = get_stream_info(raw_holdup, fields)
-
             entries = get_stream_info(matter_obj, fields)
             entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
                        for key, val in entries.items()}
+
             info[name]['Outlet'] = entries
 
         di_multiindex = get_di_multiindex(info)
         mux = pd.MultiIndex.from_tuples(di_multiindex.keys())
 
         stream_table = pd.DataFrame(list(di_multiindex.values()), index=mux)
+
+        raw_materials = self.sim.GetRawMaterials(basis=basis, totals=False)
+        stream_table = pd.concat((raw_materials, stream_table), axis=0)
+
+        grouped = stream_table.groupby(axis=0, level=0)
+
+        dfs = []
+
+        for key in uo_dict:
+            dfs.append(grouped.get_group(key))
+
+        stream_table = pd.concat(dfs, axis=0)
 
         return stream_table
 

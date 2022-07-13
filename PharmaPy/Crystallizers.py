@@ -258,9 +258,6 @@ class _BaseCryst:
                 self.Slurry = Slurry()
                 self.Slurry.Phases = self._Phases
 
-                # self.init_mass = self.Liquid_1.mass + self.Solid_1.mass
-                # self.init_liq = copy.copy(self.Liquid_1.mass)
-
         if self.Slurry is not None:
             self.__original_phase_dict__ = [
                 copy.deepcopy(phase.__dict__) for phase in self.Slurry.Phases]
@@ -286,6 +283,8 @@ class _BaseCryst:
             # Save safe copy of original phases
             self.__original_phase__ = [copy.deepcopy(self.Liquid_1),
                                        copy.deepcopy(self.Solid_1)]
+
+            self.__original_phase__ = copy.deepcopy(self.Slurry)
 
             self.kron_jtg = np.zeros_like(self.Liquid_1.mass_frac)
             self.kron_jtg[self.target_ind] = 1

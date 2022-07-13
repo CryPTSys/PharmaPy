@@ -13,7 +13,7 @@ from PharmaPy.StatsModule import StatisticsClass
 
 from PharmaPy.Connections import Connection, convert_str_flowsheet, topological_bfs
 from PharmaPy.Errors import PharmaPyNonImplementedError
-from PharmaPy.Results import SimulationResult
+from PharmaPy.Results import SimulationResult, flatten_dict_fields, get_name_object
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
 
@@ -371,166 +371,191 @@ class SimulationExec:
                                          'num_workers', 'labor_cost'))
         return labor_df
 
-    def get_raw_objects(self):
-        raw_inlets = []
-        inlets_ids = []
+    def get_from_phases(self, phases, fields):
+        if phases.__module__ == 'PharmaPy.MixedPhases':
+            phases = phases.Phases
+        else:
+            phases = [phases]
 
-        raw_holdups = []
-        holdups_ids = []
+        out = {}
+        for phase in phases:
+            di = {}
+            for field in fields:
+                di[field] = getattr(phase, field)
 
-        time_inlets = []
+            name_phase = get_name_object(phase)
+            out[name_phase] = di
 
-        for uo in self.uos_instances.values():
-            # Inlets (flows)
-            if hasattr(uo, 'Inlet'):
-                if uo.Inlet is not None:
-                    if uo.Inlet.y_upstream is None:
-                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
-                        raw_inlets.append(inlet)
+        return out
 
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        elif uo.Inlet.DynamicInlet is not None:
-                            # time_inlets.append(uo.timeProf)
-                            time_inlets.append(uo.dynamic_result.time)
-                        else:
-                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
-                            time_inlets.append(elapsed)
+    def get_raw_inlets(self, uo, basis='mass'):
+        if hasattr(uo, 'Inlet'):
+            inlets = [uo.Inlet]
+        elif uo.__class__.__name__ == 'Mixer':
+            inlets = uo.Inlets
+        else:
+            inlets = [None]
 
-                        inlets_ids.append(uo.id_uo)
+        inlets = [inlet for inlet in inlets if inlet is not None]
+        inlets = [inlet for inlet in inlets if inlet.y_upstream is None]
 
-            elif uo.__class__.__name__ == 'Mixer':
-            # hasattr(uo, 'Inlets'):
-                for inlet in uo.Inlets:
-                    if inlet.y_upstream is None:
-                        raw_inlets.append(inlet)
+        inlet_count = 1
+        out = {}
 
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        elif inlet.DynamicInlet is not None:
-                            time_inlets.append(uo.timeProf)
-                        else:
-                            if hasattr(uo, 'dynamic_result'):
-                                time_prof = uo.dynamic_result.time
-                            else:
-                                time_prof = uo.timeProf
-
-                            elapsed = time_prof[-1] - time_prof[0]
-                            time_inlets.append(elapsed)
-
-                        inlets_ids.append(uo.id_uo)
-
-            # Initial holdups
-            if hasattr(uo, '__original_phase__'):
-                if uo.oper_mode == 'Continuous':
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-                elif not uo.material_from_upstream:
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-
-        return (raw_inlets, raw_holdups, time_inlets, inlets_ids,
-                holdups_ids)
-
-    def GetRawMaterials(self, include_holdups=True, steady_state=False):
-        name_equip = self.uos_instances.keys()
-
-        # Raw materials
-        (raw_flows, raw_holdups, time_flows,
-         flow_idx, holdup_idx) = self.get_raw_objects()
-
-        # Flows
-        fracs = []
-        masses_inlets = np.zeros(len(raw_flows))
-        for ind, obj in enumerate(raw_flows):
-            if hasattr(obj, 'DynamicInlet') and obj.DynamicInlet is not None:
-                # qty_str = ('mass_flow', 'mole_flow')
-                inputs = obj.evaluate_inputs(time_flows[ind])
-
-                if 'mole_flow' in inputs:
-                    flow_profile = inputs['mole_flow'] * obj.mw_av / 1000
-                else:
-                    flow_profile = inputs['mass_flow']
-                # for string in qty_str:
-                #     massprof = mass_profile[string]
-                #     isarray = isinstance(massprof, np.ndarray)
-
-                #     if isarray:
-                #         qty_unit = string
-                #         mass_profile = massprof
-                #         break
-                # if qty_unit == 'mole_flow':
-
-                if steady_state:
-                    masses_inlets[ind] = flow_profile[-1] * \
-                        (time_flows[ind][-1] - time_flows[ind][0])
-                else:
-                    masses_inlets[ind] = trapezoidal_rule(time_flows[ind],
-                                                          flow_profile)
-
-                # pass
-
+        for inlet in inlets:
+            if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
+                streams = inlet.Phases
             else:
-                try:
-                    masses_inlets[ind] = obj.mass_flow * time_flows[ind]
-                except:
-                    masses_inlets[ind] = obj.mass
+                streams = [inlet]
 
-                # masses_inlets[ind] *= time_flows
+            di = {}
+            for stream in streams:
+                fields = ['temp', 'pres']
 
-            fracs.append(obj.mass_frac)
+                name_stream = get_name_object(stream)
 
-        fracs = np.array(fracs)
+                di[name_stream] = {}
+                inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
 
-        inlet_comp_mass = (fracs.T * masses_inlets).T
+                dens = stream.getDensity(basis=basis)
 
-        holdup_comp_mass = []
-        if include_holdups:
-            fracs = []
-            masses_holdups = np.zeros(len(raw_holdups))
-            for ind, obj in enumerate(raw_holdups):
-                if isinstance(obj, list):
-                    masa = [elem.mass for elem in obj]
-                    masa = np.array(masa)
+                if uo.oper_mode == 'Batch':
+                    elapsed_time = 1
+                elif inlet.DynamicInlet is None:
+                    time = uo.timeProf[-1] - uo.timeProf[0]
+                    if basis == 'mass':
+                        flow = inlet.mass_flow
+                        total = flow*time
 
-                    frac = [elem.mass_frac for elem in obj]
-                    frac = (np.array(frac).T * masa).T
-                    frac = frac.sum(axis=0)
+                        di[name_stream] = {'mass': total}
+                        fields += ['mass_frac', 'mass_flow', 'vol_flow']
 
-                    mass = 1
+                    else:
+                        flow = inlet.mole_flow
+                        total = flow*time
+
+                        di[name_stream] = {'moles': total}
+                        fields += ['mole_frac', 'mole_flow', 'vol_flow']
+
                 else:
-                    mass = obj.mass
-                    frac = obj.mass_frac
+                    time = uo.result.time
+                    inputs = uo.Inlet.DynamicInlet.evaluate_inputs(time)
 
-                masses_holdups[ind] = mass
-                fracs.append(frac)
+                    if basis == 'mass':
+                        if 'mass_flow' in inputs:
+                            flow = inputs['mass_flow']
+                        else:
+                            flow = inputs['mole_flow'] * inlet.mw_av / 1000
 
-            fracs = np.array(fracs)
+                        total = trapezoidal_rule(time, flow)
 
-            holdup_comp_mass = (fracs.T * masses_holdups).T
+                        di[name_stream] = {'mass': total}
 
-        if len(holdup_comp_mass) == 0:
-            holdup_comp_mass = np.zeros((len(name_equip),
-                                         len(self.NamesSpecies))
-                                        )
+                        fields += ['mass_frac']
 
-            holdup_idx = name_equip
+                    elif basis == 'mole':
+                        if 'mole_flow' in inputs:
+                            flow = inputs['mole_flow']
+                        else:
+                            flow = inputs['mass_flow'] / inlet.mw_av * 1000
 
-        if len(inlet_comp_mass) == 0:
-            inlet_comp_mass = np.zeros((len(name_equip),
-                                        len(self.NamesSpecies))
-                                       )
+                        total = trapezoidal_rule(time, flow)
 
-            flow_idx = name_equip
+                        di[name_stream] = {'moles': total}
+                        fields += ['mole_frac']
 
-        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
-                               columns=self.NamesSpecies)
+                vol = total / dens
+                if basis == 'mole':
+                    vol *= 1/1000
 
-        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
-                                 columns=self.NamesSpecies)
+                di[name_stream]['vol'] = vol
 
-        raw_df = pd.concat((flow_df, holdup_df), axis=0,
-                           keys=('inlets', 'holdups'))
+            from_inlet = self.get_from_phases(inlet, fields)
+
+            for key in from_inlet:
+                di[key].update(from_inlet[key])
+
+            out['Inlet_%i' % inlet_count] = di
+
+            inlet_count += 1
+
+        return out
+
+    def get_holdup(self, uo, basis='mass'):
+        out = {}
+
+        if hasattr(uo, '__original_phase__'):
+            phases = uo.__original_phase__
+
+            if basis == 'mass':
+                fields = ['mass', 'mass_frac']
+            elif basis == 'mole':
+                fields = ['mole', 'mole_frac']
+
+            fields += ['temp', 'pres', 'vol']
+
+            if not phases.transferred_from_uo:
+                out = self.get_from_phases(phases, fields)
+                out = {'Initial_holdup': out}
+
+        return out
+
+    def GetRawMaterials(self, basis='mass', totals=True, steady_state=False):
+
+        out = {}
+        for name, uo in self.uos_instances.items():
+            out[name] = {}
+
+            raw_inlets = self.get_raw_inlets(uo, basis=basis)
+            raw_holdup = self.get_holdup(uo, basis=basis)
+
+            for second in raw_inlets:  # flatten multidimensional states
+                for third in raw_inlets[second]:
+                    di_raw = flatten_dict_fields(raw_inlets[second][third],
+                                                 index=self.NamesSpecies)
+                    raw_inlets[second][third] = di_raw
+
+            for second in raw_holdup:
+                for third in raw_holdup[second]:
+                    di_hold = flatten_dict_fields(raw_holdup[second][third],
+                                                  index=self.NamesSpecies)
+                    raw_holdup[second][third] = di_hold
+
+            out[name].update(raw_inlets)
+            out[name].update(raw_holdup)
+
+        di_multiindex = {(i, j, k): out[i][j][k]
+                         for i in out
+                         for j in out[i]
+                         for k in out[i][j]}
+
+        multi_index = pd.MultiIndex.from_tuples(di_multiindex)
+        raw_df = pd.DataFrame(list(di_multiindex.values()), index=multi_index)
+
+        if totals:
+            if basis == 'mass':
+                mass_frac = raw_df.filter(regex='mass_frac').values
+
+                mass = raw_df['mass'].values[:, np.newaxis]
+                mass_comp = mass_frac * mass
+
+                cols = ['mass_%s' % comp for comp in self.NamesSpecies]
+                cols = ['mass'] + cols
+
+                raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
+                                      columns=cols, index=raw_df.index)
+
+            elif basis == 'moles':
+                mole_frac = raw_df.filter(regex='mole_frac').values
+                moles = raw_df['moles'].values[:, np.newaxis]
+                moles_comp = mole_frac * moles
+
+                cols = ['moles_%s' % comp for comp in self.NamesSpecies]
+                cols = ['moles'] + cols
+
+                raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
+                                      columns=cols, index=raw_df.index)
+
         return raw_df
 
     def GetDuties(self, full_output=False):
