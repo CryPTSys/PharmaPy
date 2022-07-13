@@ -18,19 +18,108 @@ linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
 
 
-def unravel_states(states, num_states, name_states, discretized=False,
-                   state_map=None):
+def get_permutation_indexes(ref_list, short_list):
+    """
+    Permutate indexes of short list with respect to the order in which they
+    appear in the reference list
+
+    Parameters
+    ----------
+    ref_list : list
+        reference list.
+    short_list : list
+        analyzed list. It must be a subset of ref_list.
+
+    Returns
+    -------
+    indexes : list
+        list of permutation indexes.
+
+    """
+    indexes = [short_list.index(val) for val in ref_list if val in short_list]
+
+    return indexes
+
+
+def flatten_states(state_list):
+    name_states = list(state_list[0].keys())
+
+    if len(state_list) == 1:
+        return state_list[0]
+    else:
+        out = {}
+        for name in name_states:
+            ar = [di[name] for di in state_list]
+            if ar[0].ndim == 1:
+                out[name] = np.concatenate(ar)
+            else:
+                out[name] = np.vstack(ar)
+
+        return out
+
+
+def unpack_discretized(states, num_states, name_states, indexes=None,
+                       state_map=None, inputs=None):
+
     acum_len = np.cumsum(num_states)[:-1]
 
-    if discretized:
+    if states.ndim == 1:
         states_reord = states.reshape(-1, sum(num_states))
+
         states_split = np.split(states_reord, acum_len, axis=1)
-    elif states.ndim == 1:
+        states_split = [a[:, 0] if a.shape[1] == 1 else a
+                        for a in states_split]
+
+    elif states.ndim > 1:
+        dim_tot = sum(num_states)
+        num_fv = states.shape[1] // dim_tot
+        num_times = states.shape[0]
+
+        nums = list(num_states) * num_fv
+        acum_len = np.cumsum(nums)[:-1]
+
+        states_fv = np.split(states, acum_len, axis=1)
+
+        count_states = len(name_states)
+        states_split = []
+        for idx_state, name in enumerate(name_states):
+            state = np.vstack(states_fv[idx_state::count_states])
+
+            di_key = indexes[name]
+
+            if di_key is None:
+                state_data = state.reshape(-1, num_times).T
+
+                if inputs is not None:
+                    state_data = np.column_stack((inputs[name], state_data))
+            else:
+                state_data = {}
+                for idx_col in range(state.shape[1]):
+                    di_data = state[:, idx_col].reshape(-1, num_times).T
+
+                    if inputs is not None:
+                        inpt = inputs[name]
+                        di_data = np.column_stack((inpt[:, idx_col], di_data))
+
+                    state_data[di_key[idx_col]] = di_data
+
+            states_split.append(state_data)
+
+    dict_states = dict(zip(name_states, states_split))
+
+    return dict_states
+
+
+def unpack_states(states, num_states, name_states, state_map=None):
+    acum_len = np.cumsum(num_states)[:-1]
+
+    if states.ndim == 1:
         states_split = np.split(states, acum_len)
         states_split = [a[0] if len(a) == 1 else a for a in states_split]
     elif states.ndim > 1:
         states_split = np.split(states, acum_len, axis=1)
-        states_split = [a[:, 0] if a.shape[1] == 1 else a for a in states_split]
+        states_split = [a[:, 0] if a.shape[1] == 1 else a
+                        for a in states_split]
 
     if state_map is not None:
         states_split = [array for ind, array in enumerate(states_split)
@@ -44,11 +133,67 @@ def unravel_states(states, num_states, name_states, discretized=False,
     return dict_states
 
 
-# def model_decorator(params=None, switches=None):
-#     def wrap_unit_model(fun):
-#         if params is not None:
-#             if switches is None:
-#                 return fun(*args, **kwargs)
+def retrieve_pde_result(data, x_name, time=None, x=None, idx_time=None,
+                        idx_vol=None):
+
+    if isinstance(data, dict):
+        di = data
+    elif data.__class__.__name__ == 'DynamicResult':
+        di = data.__dict__
+
+    out = {}
+
+    if idx_time is None:
+        if time is None:
+            idx_time = np.arange(len(di['time']))
+        elif isinstance(time, (list, tuple, np.ndarray)):
+            # TODO: Should we interpolate instead?
+            idx_time = [np.argmin(abs(t - di['time'])) for t in time]
+        else:
+            idx_time = np.argmin(abs(time - di['time']))
+            out['time'] = di['time'][idx_time]
+
+    if idx_vol is None:
+        if x is None:
+            idx_vol = np.arange(len(di[x_name]))
+        else:
+            idx_vol = np.argmin(abs(x - di[x_name]))
+            out[x_name] = di[x_name][idx_vol]
+
+    di_filtered = {key: di[key] for key in di
+                   if key != 'time' and key != x_name}
+
+    for key, val in di_filtered.items():
+        if isinstance(val, dict):
+            out[key] = retrieve_pde_result(val, x_name, idx_time=idx_time,
+                                           idx_vol=idx_vol)
+        elif isinstance(val, np.ndarray):
+            out[key] = val[idx_time][:, idx_vol]
+
+    return out
+
+
+def complete_dict_states(time, di, target_keys, phase, controls,
+                         u_inputs=None):
+    for key in target_keys:
+        if key not in di:
+            if key in controls.keys():
+                di[key] = controls[key](time)
+            else:
+                val = getattr(phase, key, None)
+
+                if isinstance(time, (list, np.ndarray)) and len(time) > 1:
+                    val = val * np.ones_like(time)
+
+                di[key] = val
+
+        if u_inputs is not None:
+            if di[key].ndim == 1:
+                di[key] = np.hstack((u_inputs[key], di[key]))
+            else:
+                di[key] = np.vstack((u_inputs[key], di[key]))
+
+    return di
 
 
 def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
@@ -84,13 +229,16 @@ def eval_state_events(time, states, switches,
                       sdot=None, discretized_model=False, state_map=None):
     events = []
 
-    dict_states = unravel_states(states, states_dim, name_states,
-                                 discretized=discretized_model)
+    if discretized_model:
+        unpack_fn = globals()['unpack_discretized']
+    else:
+        unpack_fn = globals()['unpack_states']
+
+    dict_states = unpack_fn(states, states_dim, name_states)
 
     if sdot is not None:
-        dict_sdot = unravel_states(sdot, states_dim, name_states,
-                                   discretized=discretized_model,
-                                   state_map=state_map)
+        dict_sdot = unpack_fn(sdot, states_dim, name_states,
+                              state_map=state_map)
 
     if any(switches):
 

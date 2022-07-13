@@ -12,7 +12,7 @@ import pathlib
 
 
 def ParseDatabase(path_datafile, to_arrays=True):
-    if isinstance(path_datafile, list) or isinstance(path_datafile, tuple):
+    if isinstance(path_datafile, (list, tuple)):
         with open(path_datafile[0]) as file:
             original_data = json.load(file)
 
@@ -37,7 +37,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
     entries = set().union(*entries)
     dd = {k: [d.get(k) for d in original_data.values()] for k in entries}
 
-    # Convert to arrays
+    # Convert to arrays  # TODO: improve this
     if to_arrays:
         dd_arrays = {}
         for key, vals in dd.items():

@@ -32,13 +32,13 @@ class LiquidStream(LiquidPhase):
                  mass_flow=0, vol_flow=0, mole_flow=0,
                  controls=None, args_control=None,
                  mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None,
-                 ind_solv=None, num_interpolation_points=3):
+                 name_solv=None, num_interpolation_points=3):
 
         super().__init__(path_thermo, temp, pres,
                          mass=mass_flow, vol=vol_flow, moles=mole_flow,
                          mass_frac=mass_frac, mole_frac=mole_frac,
                          mass_conc=mass_conc, mole_conc=mole_conc,
-                         ind_solv=ind_solv)
+                         name_solv=name_solv)
 
         self.mass_flow = self.mass
         self.vol_flow = self.vol

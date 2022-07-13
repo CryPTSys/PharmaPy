@@ -85,6 +85,8 @@ class Drying:
         self.is_continuous = False
         self.state_event_list = state_events
 
+        self.outputs = None
+
     @property
     def Phases(self):
         return self._Phases

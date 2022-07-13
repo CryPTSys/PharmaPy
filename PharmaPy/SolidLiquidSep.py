@@ -9,8 +9,10 @@ import numpy as np
 from PharmaPy.Commons import trapezoidal_rule, series_erfc
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
-from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
+
+from PharmaPy.Commons import unpack_states
+from PharmaPy.Results import DynamicResult
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
@@ -22,7 +24,6 @@ from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 from assimulo.exception import TerminateSimulation
 
-from scipy.integrate import quad
 from scipy.special import erfc
 
 eps = np.finfo(float).eps * 1.1
@@ -136,6 +137,8 @@ class DeliquoringStep:
         self.nomenclature()
         self.oper_mode = 'Batch'
         self.is_continuous = False
+
+        self.outputs = None
 
     @property
     def Phases(self):
@@ -603,6 +606,7 @@ class Filter:
         self.states_uo = ['mass_filtrate', 'mass_retained']
 
         self.deltaP = None
+        self.outputs = None
 
     @property
     def Phases(self):
@@ -634,7 +638,22 @@ class Filter:
         if self.log_params:
             self.params = np.log(self.params)
 
-        self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        # self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        # self.__original_phase__ = copy.deepcopy(self.Liquid_1)
+
+        self.states_di = {
+            'mass_filtrate': {'dim': 1, 'units': 'kg', 'type': 'diff'},
+            'mass_liquid': {'dim': 1, 'units': 'kg', 'type': 'diff'},
+            }
+
+        self.fstates_di = {
+            'mass_cake_dry': {'dim': 1, 'units': 'kg', 'type': 'alg'},
+            'mass_cake_wet': {'dim': 1, 'units': 'kg', 'type': 'alg'}
+
+            }
+
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
 
     def nomenclature(self):
         self.names_states_in = ['mass', 'temp', 'mass_frac', 'total_distrib']
@@ -771,32 +790,36 @@ class Filter:
         time, states = solver.simulate(final_time, ncp_list=time_grid)
 
         # Additional model equations
-        self.cake_dry = self.c_solids * states[:, 0] / dens_liq
-        self.cake_wet = self.cake_dry * \
-            (1 + epsilon/(1 - epsilon) * dens_liq/dens_sol)
-
         self.time_filt = visc_liq/self.deltaP * (
             self.alpha*self.c_solids/2 * (vol_filtrate/self.area_filt)**2 +
             self.r_medium * (vol_filtrate/self.area_filt))
         # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
         #     / (2 * self.area_filt**2 * self.deltaP)\
         #     + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
-        self.retrieve_results(time, states)
+        self.retrieve_results(time, states, dens_liq, dens_sol, epsilon)
 
         return time, states
 
-    def retrieve_results(self, time, states):
+    def retrieve_results(self, time, states, dens_liq, dens_sol, epsilon):
         self.timeProf = np.array(time)
         self.massProf = states
 
+        dp = unpack_states(states, self.dim_states, self.name_states)
+        dp['time'] = np.asarray(time)
+
+        cake_dry = self.c_solids * states[:, 0] / dens_liq
+        cake_wet = cake_dry * (1 + epsilon/(1 - epsilon) * dens_liq/dens_sol)
+
+        dp['mass_cake_dry'] = cake_dry
+        dp['mass_cake_wet'] = cake_wet
+
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
+
         solid_cake = copy.deepcopy(self.Solid_1)
-        solid_cake.updatePhase(
-            mass=self.cake_dry[-1], distrib=self.Solid_1.distrib)
+        solid_cake.updatePhase(mass=cake_dry[-1], distrib=self.Solid_1.distrib)
 
         liquid_cake = copy.deepcopy(self.Liquid_1)
         liquid_cake.updatePhase(mass=self.massProf[-1, 1])  # TODO: the other outlet
-
-        # self.Solid_1.mass = self.cake_dry[-1]
 
         self.Outlet = Cake()
         self.Outlet.Phases = (liquid_cake, solid_cake)
@@ -823,8 +846,7 @@ class Filter:
 
         return states[:, 0]
 
-    def plot_profiles(self, fig_size=None, time_div=1, black_white=False):
-        
+    def plot_profiles(self, time_div=1, black_white=False, **fig_kwargs):
         """
         
         Parameters
@@ -842,9 +864,9 @@ class Filter:
         """
             
         mass_filtr, mass_up = self.massProf.T
-        time_plot = self.timeProf/ time_div
+        time_plot = self.timeProf / time_div
 
-        fig, ax = plt.subplots(1, 2, figsize=fig_size, sharex=True)
+        fig, ax = plt.subplots(1, 2, **fig_kwargs, sharex=True)
 
         # Liquid mass
         if black_white:
@@ -854,7 +876,8 @@ class Filter:
                        '--', color='k')
         else:
             ax[0].plot(time_plot, mass_filtr, time_plot, mass_up, '--')
-            ax[1].plot(time_plot, self.cake_dry, time_plot, self.cake_wet,
+            ax[1].plot(time_plot, self.result.mass_cake_dry,
+                       time_plot, self.result.mass_cake_wet,
                        '--')
 
         ax[0].set_ylabel('mass liquid (kg)')
@@ -922,6 +945,8 @@ class DisplacementWashing:
         self.is_continuous = False
 
         self.nomenclature()
+
+        self.outputs = None
 
     @property
     def Phases(self):

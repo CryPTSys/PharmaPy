@@ -14,28 +14,28 @@ from PharmaPy.MixedPhases import Slurry, SlurryStream
 
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Crystallizers import SemibatchCryst
-from PharmaPy.NameAnalysis import get_dict_states
-from PharmaPy.Connections import get_inputs_new, get_inputs
+from PharmaPy.Connections import get_inputs_new
+
+from PharmaPy.Commons import unpack_states
+
+from PharmaPy.Results import DynamicResult
 
 from scipy.optimize import newton, fsolve
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
-import copy
-
 eps = np.finfo(float).eps
 
 
 class Mixer:
-    def __init__(self, phases=(), vol=None, temp_refer=298.15):
+    def __init__(self, temp_refer=298.15):
 
         self._Inlets = []
 
         self.oper_mode = None
 
         self.elapsed_time = 0
-        self.vol = vol
 
         self.temp_refer = temp_refer
 
@@ -46,6 +46,7 @@ class Mixer:
         self.timeProf = None
 
         self.type_out = None
+        self.outputs = None
 
     @property
     def Inlets(self):
@@ -73,10 +74,27 @@ class Mixer:
             else:
                 self.names_states_in = self.names_states_in['non_flow']
 
-        # if update_names:
-        # self.states_out_dict = {'Liquid_1': }
         self.names_upstream.append(None)
         self.bipartite.append(None)
+
+        if flow_flag:
+            self.states_di = {
+                'mass_flow': {'units': 'kg/s', 'dim': 1, 'type': 'alg'},
+                'mass_frac': {'units': 'kg', 'dim': 1,
+                              'index': self.Inlets[0].name_species, 'type': 'alg'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
+                }
+
+        else:
+            self.states_di = {
+                'mass': {'units': 'kg', 'dim': 1, 'type': 'alg'},
+                'mass_frac': {'units': 'kg', 'dim': 1,
+                              'index': self.Inlets[0].name_species, 'type': 'alg'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'alg'}
+                }
+
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+        self.name_states = list(self.states_di.keys())
 
     def nomenclature(self):
         self.names_states_in = {
@@ -232,7 +250,7 @@ class Mixer:
 
         # ---------- Material balances
         total_mass = mass_in.sum()
-        massfrac = np.dot(mass_in, massfrac_in)/total_mass
+        massfrac = np.dot(mass_in, massfrac_in) / total_mass
 
         # ---------- Energy balance
         h_in = []
@@ -361,6 +379,8 @@ class Mixer:
 
         states_in_dict = dict(zip(self.names_states_in, len_in))
 
+        time_prof = None
+
         if any(solids_flag):
             self.states_in_dict = {'Inlet': states_in_dict}  # TODO (solids?)
             u_input, ind_solids = self.get_inputs_solids()
@@ -373,17 +393,19 @@ class Mixer:
                 states = self.balances_solids(u_input, ind_solids)
         else:
             self.states_in_dict = {'Inlet': states_in_dict}
-            time_prof = [0]
+            time_prof = [0]  # Static mixer (instantaneous mix)
+
             if self.is_continuous:
 
                 for inlet in self.Inlets:
+                    # TODO: should we create a time_prof that contains the
+                    # times of all the input time grids? (like a universal set)
                     time_prof = getattr(inlet, 'time_upstream', None)
 
                     if time_prof is not None:
                         break
 
             u_input = self.get_inputs_new(time_prof)
-            self.timeProf = time_prof
 
             # ---------- Create output phase
             path = self.Inlets[0].path_data
@@ -399,11 +421,11 @@ class Mixer:
                 states = self.balances(u_input)
 
         # ---------- Retrieve results
-        self.retrieve_results(states)
+        self.retrieve_results(time_prof, states)
 
         return states
 
-    def retrieve_results(self, states):
+    def retrieve_results(self, time, states):
         solids_flag = [inlet.__module__ == 'PharmaPy.MixedPhases'
                        for inlet in self.Inlets]
 
@@ -431,17 +453,27 @@ class Mixer:
 
         else:
             mass, massfrac, temp = states
+
             # ---------- Update phases
             if massfrac.ndim == 1:
                 last_massfrac = massfrac
                 last_mass = mass
 
-                self.outputs = np.hstack((massfrac, mass, temp))
+                result = dict(zip(self.name_states, states))
+                result['time'] = time
+
+                self.result = DynamicResult(self.states_di, **result)
+
             else:
                 last_massfrac = massfrac[-1]
                 last_mass = mass[-1]
 
-                self.outputs = np.column_stack((massfrac, mass, temp))
+                result = dict(zip(self.name_states, states))
+                result['time'] = time
+
+                self.result = DynamicResult(self.states_di, **result)
+
+            self.outputs = result
 
             if self.is_continuous:
                 self.Liquid_1.updatePhase(mass_frac=last_massfrac,
@@ -456,13 +488,10 @@ class Mixer:
                                           mass=last_mass)
 
             self.Outlet = self.Liquid_1
-            self.outputs = np.atleast_2d(self.outputs)
-            # self.timeProf = [0]
 
 
 class DynamicCollector:
-    def __init__(self, timeshift_factor=1.5, temp_refer=298.15,
-                 tau=None, num_interp_points=3):
+    def __init__(self, temp_refer=298.15, tau=None, num_interp_points=3):
 
         self._Inlet = None
         self.num_interp_points = num_interp_points
@@ -473,7 +502,6 @@ class DynamicCollector:
         self.vol_offset = 0.75
 
         self.oper_mode = 'Dynamic'
-        self.time_shift = timeshift_factor
 
         self._Phases = None
 
@@ -494,6 +522,9 @@ class DynamicCollector:
 
         self.elapsed_time = 0
         self.oper_mode = 'Continuous'
+        self.oper_mode = 'Semibatch'
+
+        self.outputs = None
 
     @property
     def Phases(self):
@@ -525,16 +556,19 @@ class DynamicCollector:
             names_states_in = self.names_states_in['crystallizer']
             self.model_type = 'crystallizer'
 
+            states_in_dict = dict.fromkeys(names_states_in)
+
         else:
             self.name_species = inlet_object.name_species
 
             names_states_in = self.names_states_in['liquid_mixer']
             self.model_type = 'liquid_mixer'
 
-        self.num_species = len(self.name_species)
-        len_in = [self.num_species, 1, 1]
+            len_in = [len(self.name_species), 1, 1]
 
-        states_in_dict = dict(zip(names_states_in, len_in))
+            states_in_dict = dict(zip(names_states_in, len_in))
+
+        self.num_species = len(self.name_species)
 
         self.states_in_dict = {'Inlet': states_in_dict}
 
@@ -542,12 +576,15 @@ class DynamicCollector:
 
     def nomenclature(self):
         names_liquid = ['mass_frac', 'mass_flow', 'temp']
-        names_solids = ['distrib', 'mass_conc', 'vol_flow', 'temp']
+        names_solids = ['mass_conc', 'vol_flow', 'temp', 'distrib']
 
         self.names_states_in = {'liquid_mixer': names_liquid,
                                 'crystallizer': names_solids}
 
-        self.names_states_out = ['mass_frac', 'mass', 'temp']
+        names_out_liquid = ['mass_frac', 'mass', 'temp']
+        names_out_solids = ['mass_conc', 'vol', 'temp', 'total_distrib']
+        self.names_states_out = {'liquid_mixer': names_out_liquid,
+                                 'crystallizer': names_out_solids}
 
     def get_inputs(self, time):
         all_inputs = self.Inlet.InterpolateInputs(time)
@@ -610,12 +647,18 @@ class DynamicCollector:
         return dtemp_dt
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True):
-        # Initial values
+        self.names_states_in = self.names_states_in[self.model_type]
+        self.names_states_out = self.names_states_out[self.model_type]
 
         if self.model_type == 'crystallizer':
-            self.names_states_in = self.names_states_in['crystallizer']
-            init_dict = get_inputs(self.elapsed_time, self, self.num_species,
-                                   len(self.Inlet.x_distrib))
+
+            self.states_in_dict['Inlet']['distrib'] = len(self.Inlet.x_distrib)
+            self.states_in_dict['Inlet']['mass_conc'] = len(self.Inlet.Liquid_1.mass_conc)
+            self.states_in_dict['Inlet']['vol_flow'] = 1
+            self.states_in_dict['Inlet']['temp'] = 1
+
+            init_dict = get_inputs_new(self.elapsed_time, self.Inlet,
+                                       self.states_in_dict)['Inlet']
 
             path = self.Inlet.Liquid_1.path_data
 
@@ -648,20 +691,23 @@ class DynamicCollector:
             SemiCryst.names_upstream = self.names_upstream
             SemiCryst.bipartite = self.bipartite
 
+            self.states_di = SemiCryst.states_di
+
             SemiCryst.elapsed_time = self.elapsed_time
 
             time, states = SemiCryst.solve_unit(runtime, time_grid,
                                                 verbose=verbose)
 
             # Retrieve crystallizer results
-            output_names = ['timeProf', 'wConcProf', 'tempProf', 'Outlet',
-                            'outputs']
+            output_names = ['Outlet', 'outputs']
 
             for name in output_names:
                 setattr(self, name, getattr(SemiCryst, name))
 
             self.CrystInst = SemiCryst
-            self.Outlet = SemiCryst.Outlet
+
+            self.retrieve_results(time, states)
+            # self.Outlet = SemiCryst.Outlet
 
             vol_phase = self.Outlet.vol_slurry
             if isinstance(vol_phase, np.ndarray):
@@ -670,6 +716,7 @@ class DynamicCollector:
             self.vol_phase = vol_phase
 
             self.Phases = phases
+
         elif self.model_type == 'liquid_mixer':
             path = self.Inlet.path_data
 
@@ -684,7 +731,17 @@ class DynamicCollector:
             states_init = np.hstack((frac_init, mass_init, temp_init))
 
             self.Phases = (liquid,)
-            # classify_phases(self)
+
+            self.states_di = {
+                'mass': {'units': 'kg', 'dim': 1, 'type': 'diff'},
+                'mass_frac': {'units': '', 'dim': self.num_species,
+                              'index': self.Liquid_1.name_species,
+                              'type': 'diff'},
+                'temp': {'units': 'K', 'dim': 1, 'type': 'diff'}
+                }
+
+            self.dim_states = [a['dim'] for a in self.states_di.values()]
+            self.name_states = list(self.states_di.keys())
 
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time)
@@ -719,17 +776,26 @@ class DynamicCollector:
         self.massProf = states[:, self.num_species]
         self.tempProf = states[:, self.num_species + 1]
 
-        self.outputs = np.atleast_2d(states[-1])
+        if self.CrystInst is None:
+            self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
+                                      mass=self.massProf[-1])
 
-        self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
-                                  mass=self.massProf[-1])
+            self.Liquid_1.temp = self.tempProf[-1]
 
-        self.Liquid_1.temp = self.tempProf[-1]
-
-        if self.is_cryst:
-            self.Outlet = self.CrystInst.Outlet
-        else:
             self.Outlet = self.Liquid_1
+            dynamic_result = unpack_states(states, self.dim_states,
+                                           self.name_states)
+
+            dynamic_result['time'] = np.asarray(time)
+
+            self.result = DynamicResult(self.states_di, **dynamic_result)
+
+            self.outputs = dynamic_result
+
+        else:
+            self.Outlet = self.CrystInst.Outlet
+            self.outputs = self.CrystInst.outputs
+            self.result = self.CrystInst.result
 
     def plot_profiles(self, fig_size=None, time_div=1, pick_comp=None,
                       kwargs=None):

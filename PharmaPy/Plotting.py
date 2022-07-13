@@ -8,11 +8,87 @@ Created on Thu Jun  9 18:02:01 2022
 import matplotlib.pyplot as plt
 import numpy as np
 
+from PharmaPy.Errors import PharmaPyValueError
+from PharmaPy.Commons import retrieve_pde_result
+
+
+special = ('alpha', 'beta', 'gamma', 'phi', 'rho', 'epsilon', 'sigma', 'mu',
+           'nu', 'psi', 'pi')
+
+
+def latexify_name(name, units=False):
+    parts = name.split('/')
+
+    out = []
+    count = 0
+    for part in parts:
+        sep = None
+        if '**' in part:
+            segm = part.split('**')
+            sep = '^'
+        elif '_' in part:
+            segm = part.split('_')
+            sep = '_'
+        else:
+            segm = [part]
+
+        for ind, s in enumerate(segm):
+            if s in special:
+                segm[ind] = '\\' + s
+
+        if sep is None:
+            if count > 0:
+                part = part + '^{-1}'
+            else:
+                part = segm[0]
+        else:
+            inv = ''
+            if count > 0:
+                inv = '-'
+
+            part = segm[0] + sep + '{' + inv + segm[1] + '}'
+
+        out.append(part)
+        count += 1
+
+    if len(out) > 1:
+        out = ' \ '.join(out)
+    else:
+        out = out[0]
+
+    if units:
+        out = '$\mathregular{' + out + '}$'
+    else:
+        out = '$' + out + '$'
+
+    return out
+
 
 def color_axis(ax, color):
     ax.spines['right'].set_color(color)
     ax.tick_params(axis='y', colors=color, which='both')
     ax.yaxis.label.set_color(color)
+
+
+def get_indexes(names, picks):
+    names = [a for a in names]
+    out = []
+
+    lower_names = [str(a).lower() if isinstance(a, str) else a for a in names]
+
+    for pick in picks:
+        if isinstance(pick, str):
+            low_pick = pick.lower()
+            if low_pick in lower_names:
+                out.append(lower_names.index(low_pick))
+            else:
+                mess = "Name '%s' not in the set of compound names listed in the pure-component json file" % low_pick
+                raise PharmaPyValueError(mess)
+
+        elif isinstance(pick, (int, np.int32, np.int64)):
+            out.append(pick)
+
+    return out
 
 
 def get_state_data(uo, *state_names):
@@ -35,19 +111,43 @@ def get_state_data(uo, *state_names):
     return time, di
 
 
-def get_states_di(uo, *state_names):
-    data = uo.dynamic_profiles.copy()
-    time = data.pop('time')
+def get_state_distrib(result, *state_names, **kwargs_retrieve):
+    di = retrieve_pde_result(result, **kwargs_retrieve)
+    out = {}
+    for name in state_names:
+        idx = None
+        if isinstance(name, (tuple, list, range)):
+            state, idx = name
+        else:
+            state = name
+
+        y = di[state]
+        if idx is None:
+            if isinstance(y, dict):
+                y = list(y.values())
+        else:
+            y = [y[i] for i in idx]
+
+        out[state] = y
+
+    return out
+
+
+def get_states_result(result, *state_names):
+    time = result.time
+    states_fstates = result.di_states | result.di_fstates
 
     out = {}
     for key in state_names:
         idx = None
         if isinstance(key, (list, tuple, range)):
             state, idx = key
+            indexes = states_fstates[state]['index']
+            idx = get_indexes(indexes, idx)
         else:
             state = key
 
-        y = data[state]
+        y = getattr(result, state)
 
         if idx is not None:
             y = y[:, idx]
@@ -59,34 +159,41 @@ def get_states_di(uo, *state_names):
 
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    if hasattr(uo, 'dynamic_profiles'):
-        time, data = get_states_di(uo, *state_names)
+    if hasattr(uo, 'result'):
+        time, data = get_states_result(uo.result, *state_names)
     else:
         time, data = get_state_data(uo, *state_names)
 
     if fig_map is None:
         fig_map = range(len(data))
 
-    fig, axes = plt.subplots(**fig_kwargs)
+    fig, ax_orig = plt.subplots(**fig_kwargs)
 
-    if isinstance(axes, np.ndarray):
-        axes = axes.flatten()
+    if isinstance(ax_orig, np.ndarray):
+        axes = ax_orig.flatten()
     else:
-        axes = (axes, )
+        axes = (ax_orig, )
 
     count = 0
     linestyles = ('-', '--', '-.', ':')
     colors = plt.cm.tab10
-    for ind, (name, y) in enumerate(data.items()):
-        idx = fig_map[ind]
+
+    names = list(data.keys())
+
+    for ind, idx in enumerate(fig_map):
+        name = names[ind]
+        y = data[name]
         twin = False
 
         index_y = False
+        states_and_fstates = uo.states_di | uo.fstates_di
+        index_y = states_and_fstates[name].get('index', False)
+
         if isinstance(state_names[ind], (tuple, list, range)):
             y_ind = state_names[ind][1]
-            if hasattr(uo, 'states_di'):
-                index_y = uo.states_di[name].get('index', False)
-                index_y = [index_y[a] for a in y_ind]
+            y_ind = get_indexes(index_y, y_ind)
+
+            index_y = [index_y[a] for a in y_ind]
 
         if len(axes[idx].lines) > 0:
             ax = axes[idx].twinx()
@@ -110,12 +217,13 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         if ylabels is None:
             ylabel = name
         else:
-            ylabel = ylabels[ind]
+            ylabel = latexify_name(ylabels[ind])
 
-        if hasattr(uo, 'states_di') and include_units:
-            units = uo.states_di[name]['units']
-            if len(units) > 0:
-                ylabel = ylabel + ' (' + uo.states_di[name]['units'] + ')'
+        units = states_and_fstates[name].get('units', '')
+        if len(units) > 0:
+            unit_name = latexify_name(states_and_fstates[name]['units'],
+                                      units=True)
+            ylabel = ylabel + ' (' + unit_name + ')'
 
         if index_y:
             ax.legend(index_y, loc='best')
@@ -127,4 +235,49 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if len(axes) == 1:
         axes = axes[0]
 
-    return fig, axes
+    return fig, ax_orig
+
+
+def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
+                 cm_names=None, **fig_kwargs):
+    if times is None and x_vals is None:
+        raise ValueError("Both 'times' and 'x_vals' arguments are None. "
+                         "Please specify one of them")
+
+    if cm_names is None:
+        cm_names = ['Blues', 'Oranges', 'Greens',  'Reds', 'Purples', ]
+    elif isinstance(cm_names, str):
+        cm_names = [cm_names]
+
+    cm = [getattr(plt.cm, cm_name) for cm_name in cm_names]
+
+    fig, ax = plt.subplots(**fig_kwargs)
+    if not isinstance(ax, np.ndarray):
+        ax = [ax]
+    else:
+        ax = ax.flatten()
+
+    if times is not None:
+        colors = [cmap(np.linspace(0.2, 1, len(times))) for cmap in cm]
+        y = get_state_distrib(uo.dynamic_result, *state_names,
+                              time=times, x_name=x_name)
+
+        names = list(y.keys())
+        x_vals = getattr(uo.dynamic_result, x_name)
+
+        for t, time in enumerate(times):
+            for ind, axis in enumerate(ax):
+                y_plot = y[names[ind]]
+
+                if isinstance(y_plot, list):
+                    for st, ar in enumerate(y_plot):
+                        ind_cm = st % len(cm)
+                        axis.plot(x_vals, ar[t], color=colors[ind_cm][t])
+                else:
+                    axis.plot(x_vals, y_plot[t], color=colors[0][t])
+
+                axis.set_ylabel(names[ind])
+
+        fig.text(0.5, 0, x_name)
+
+    return fig, ax
