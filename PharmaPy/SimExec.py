@@ -490,7 +490,7 @@ class SimulationExec:
             if basis == 'mass':
                 fields = ['mass', 'mass_frac']
             elif basis == 'mole':
-                fields = ['mole', 'mole_frac']
+                fields = ['moles', 'mole_frac']
 
             fields += ['temp', 'pres', 'vol']
 
