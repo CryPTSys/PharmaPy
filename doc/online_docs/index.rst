@@ -10,8 +10,9 @@ Welcome to PharmaPy's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   state_events.rst
-   
+   state_events
+   installation
+
 ..   general_features.rst
 ..   unit_operations.rst
 ..   simulation_executive.rst
