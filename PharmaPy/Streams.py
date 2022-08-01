@@ -180,6 +180,8 @@ class VaporStream(VaporPhase):
 
         self.controllable = ('mass_flow', 'mole_flow', 'vol_flow', 'temp')
 
+        self._DynamicInlet = None
+
         # del self.mass
         # del self.vol
         # del self.moles
