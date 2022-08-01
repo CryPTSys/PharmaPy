@@ -261,7 +261,8 @@ class _BaseReactor:
 
         self.states_di = {
             'mole_conc': {'index': self.name_species, 'dim': dim_conc,
-                          'units': 'mol/L', 'type': 'diff'}}
+                          'units': 'mol/L', 'type': 'diff'}
+            }
 
         self.fstates_di = {
             'q_rxn': {'units': 'W', 'dim': 1},
@@ -281,6 +282,14 @@ class _BaseReactor:
         if reactor_type == 'SemibatchReactor':
             self.states_di['vol'] = {'units': 'm**3', 'dim': 1, 'type': 'diff'}
 
+        for key in self.states_di:
+            self.states_di[key]['depends_on'] = ['time']
+            
+        
+        if reactor_type == 'PlugFlowReactor':
+            for key in self.states_di:
+                self.states_di[key]['depends_on'].append('vol')
+            
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
 
@@ -1409,7 +1418,7 @@ class PlugFlowReactor(_BaseReactor):
 
         self.names_states_out += ['temp', 'vol_flow']
         self.names_states_in = self.names_states_out
-
+        
     def get_inputs(self, time):
         inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 

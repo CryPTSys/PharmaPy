@@ -566,7 +566,7 @@ class ParameterEstimation:
             num_cols = bool(num_plots // 2) + 1
             num_rows = num_plots // 2 + num_plots % 2
 
-            fig_kwargs.updagte({'nrows': num_rows, 'ncols': num_cols})
+            fig_kwargs.update({'nrows': num_rows, 'ncols': num_cols})
 
         fig, axes = plt.subplots(**fig_kwargs)
 

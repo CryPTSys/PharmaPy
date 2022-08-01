@@ -111,8 +111,19 @@ def get_state_data(uo, *state_names):
     return time, di
 
 
+def get_state_names(state_list):
+    out = []
+    for state in state_list:
+        if isinstance(state, (list, tuple)):
+            state = state[0]
+        out.append(state)
+
+    return out
+
 def get_state_distrib(result, *state_names, **kwargs_retrieve):
-    di = retrieve_pde_result(result, **kwargs_retrieve)
+
+    states = get_state_names(state_names)
+    di = retrieve_pde_result(result, states=states, **kwargs_retrieve)
     out = {}
     for name in state_names:
         idx = None
@@ -159,10 +170,10 @@ def get_states_result(result, *state_names):
 
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    if hasattr(uo, 'result'):
-        time, data = get_states_result(uo.result, *state_names)
-    else:
-        time, data = get_state_data(uo, *state_names)
+    # if hasattr(uo, 'result'):
+    time, data = get_states_result(uo.result, *state_names)
+    # else:
+        # time, data = get_state_data(uo, *state_names)
 
     if fig_map is None:
         fig_map = range(len(data))
@@ -238,7 +249,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     return fig, ax_orig
 
 
-def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
+def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                  cm_names=None, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
@@ -258,12 +269,17 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
         ax = ax.flatten()
 
     if times is not None:
-        colors = [cmap(np.linspace(0.2, 1, len(times))) for cmap in cm]
-        y = get_state_distrib(uo.dynamic_result, *state_names,
-                              time=times, x_name=x_name)
+        if len(times) == 1:
+            ls = [0.99]
+        else:
+            ls = np.linspace(0.2, 1, len(times))
+
+        colors = [cmap(ls) for cmap in cm]
+        y = get_state_distrib(uo.result, *state_names, time=times,
+                              x_name=x_name)
 
         names = list(y.keys())
-        x_vals = getattr(uo.dynamic_result, x_name)
+        x_vals = getattr(uo.result, x_name)
 
         for t, time in enumerate(times):
             for ind, axis in enumerate(ax):
