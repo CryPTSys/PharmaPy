@@ -251,9 +251,9 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if len(axes) == 1:
         axes = axes[0]
 
-    for ax in axes:
-        if len(ax.lines) == 0:
-            ax.remove()
+    # for ax in axes:
+    #     if len(ax.lines) == 0:
+    #         ax.remove()
 
     return fig, ax_orig
 
