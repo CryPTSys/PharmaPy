@@ -202,7 +202,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         y = data[name]
         twin = False
 
-        index_y = False
+        # index_y = False
         index_y = states_and_fstates[name].get('index', False)
 
         if isinstance(state_names[ind], (tuple, list, range)):
@@ -306,9 +306,9 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
                 axis.set_ylabel(names[ind])
 
-
         for ind, name in enumerate(names):
             axis = ax[ind]
+            index_y = states_and_fstates[name].get('index', False)
             if ylabels is None:
                 ylabel = names[ind]
             else:
@@ -320,6 +320,15 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                 ylabel = ylabel + ' (' + unit_name + ')'
 
             axis.set_ylabel(ylabel)
+
+            if index_y:
+                if isinstance(state_names[ind], (tuple, list)):
+                    picks = state_names[ind][1]
+                    picks = get_indexes(index_y, picks)
+
+                    index_y = [index_y[i] for i in picks]
+
+                axis.legend(index_y, loc='best')
 
         for axis in ax:
             if len(axis.lines) == 0:
