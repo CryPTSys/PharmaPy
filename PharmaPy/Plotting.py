@@ -13,7 +13,7 @@ from PharmaPy.Commons import retrieve_pde_result
 
 
 special = ('alpha', 'beta', 'gamma', 'phi', 'rho', 'epsilon', 'sigma', 'mu',
-           'nu', 'psi', 'pi')
+           'nu', 'psi', 'pi', '#')
 
 
 def latexify_name(name, units=False):
@@ -259,7 +259,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
 
 
 def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
-                 cm_names=None, ylabels=None, **fig_kwargs):
+                 cm_names=None, ylabels=None, legend=True, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
@@ -321,7 +321,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
             axis.set_ylabel(ylabel)
 
-            if index_y:
+            if index_y and legend:
                 if isinstance(state_names[ind], (tuple, list)):
                     picks = state_names[ind][1]
                     picks = get_indexes(index_y, picks)
@@ -335,5 +335,8 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                 axis.remove()
 
         fig.text(0.5, 0, x_name)
+
+        if len(ax) == 1:
+            ax = ax[0]
 
     return fig, ax

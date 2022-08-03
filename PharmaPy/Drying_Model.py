@@ -641,32 +641,6 @@ class Drying:
 
             fig.tight_layout()
 
-            # fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
-
-            # idx_time = np.argmin(abs(time - self.timeProf))
-            # w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
-            # w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
-
-            # xliq_plot = np.hstack(w_liq)[idx_time].reshape(-1, self.num_nodes)
-            # ygas_plot = np.hstack(w_vap)[idx_time].reshape(-1, self.num_nodes)
-
-            # axes[0].plot(self.z_centers, xliq_plot.T)
-            # axes[1].plot(self.z_centers, ygas_plot.T)
-
-            # axes[0].text(1, 1.04, 'time = %.3f s' % time, ha='right',
-            #              transform=axes[0].transAxes)
-
-            # axes[1].set_xlabel('$z$ (m)')
-
-            # label_liq = [self.Liquid_1.name_species[ind] for ind in pick_liq]
-            # label_vap = [self.Liquid_1.name_species[ind] for ind in pick_vap]
-
-            # axes[0].legend(label_liq)
-            # axes[1].legend(label_vap)
-
-            # axes[0].set_ylabel('$x_{liq}$')
-            # axes[1].set_ylabel('$y_{gas}$')
-
         if z_pos is not None:
             fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
 

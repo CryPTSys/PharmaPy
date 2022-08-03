@@ -23,7 +23,7 @@ from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
 from PharmaPy.Results import DynamicResult
-from PharmaPy.Plotting import plot_function
+from PharmaPy.Plotting import plot_function, plot_distrib
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -1089,148 +1089,20 @@ class _BaseCryst:
         fig.tight_layout()
         return fig, ax
 
-    def plot_csd(self, view_angles=(20, -20), fig_size=None, time_eval=None,
-                 vol_based=False, time_div=1, logx=True):
-        """
-
-        Parameters
-        ----------
-        view_angles : tuple (optional, default = (20, -20))
-            TODO (maybe erase?)
-        fig_size : tuple (optional, default = None)
-            Size of the figure to be populated.
-        time_eval : int (optional, default = None)
-            Integer value indicating the time in which
-            crystal size distribution of interest is calculated.
-        vol_based : bool (optional, default = False)
-            Boolean value indiciating whether the crystal size
-            distribution is in volume-based.
-        time_div : int (optional, default = 1)
-            TODO
-        logx : bool (optional, default = True)
-            Boolean value indicating whether the x axis is
-            presented in log scale.
-
-        Raises
-        ------
-        RuntimeError
-            DESCRIPTION.
-
-        Returns
-        -------
-        fig : TYPE
-            DESCRIPTION.
-        ax : TYPE
-            DESCRIPTION.
-
-        """
-        self.flatten_states()
-
-        if self.method != '1D-FVM':
-            raise RuntimeError('No 3D data to show. Run crystallizer with the '
-                               'FVM method')
-
-        if time_eval is None:
-            if vol_based:
-                csd_plot = self.distribVolProf
-            else:
-                csd_plot = self.distribProf
-
-            ls = LightSource(azdeg=0, altdeg=65)
-            rgb = ls.shade(csd_plot, plt.cm.RdYlBu)
-
-            time_plot = self.timeProf / time_div
-
-            x_mesh, t_mesh = np.meshgrid(np.log10(self.x_grid), time_plot)
-            x_mesh, t_mesh = np.meshgrid(self.x_grid[:90], time_plot[2:])
-
-            fig = plt.figure(figsize=fig_size)
-
-            ax = fig.gca(projection='3d')
-            ax.plot_surface(t_mesh, x_mesh, np.log10(csd_plot[2:, :90]),
-                            facecolors=rgb, antialiased=False,
-                            linewidth=0,
-                            rstride=2, cstride=2)
-            # ax.view_init(*view_angles)
-
-            # Edit
-            if time_div == 1:
-                ax.set_xlabel('time (s)')
-            ax.set_ylabel(r'$\log_{10}(L)$ (L in $\mu m$)')
-            ax.set_zlabel(r'$f \left( \frac{\#}{m^3 \mu m} \right)$')
-
-            ax.dist = 11
-
-            # ax.invert_yaxis()
-
-        else:
-            time_ind = np.argmin(abs(time_eval - self.timeProf))
-
-            if vol_based:
-                csd_time = self.distribVolProf[time_ind]
-            else:
-                csd_time = self.distribProf[time_ind]
-
-            fig, ax = plt.subplots(figsize=fig_size)
-            if logx:
-                ax.semilogx(self.x_grid, csd_time, '-o', mfc='None')
-            else:
-                ax.plot(self.x_grid, csd_time, '-o', mfc='None')
-            # ax.set_xlabel(r'$x$ ($\mu m$)')
-            ax.set_xlabel(r'$x$ ($\mu m$)')
-
-            if 'vol' in self.states_uo:
-                distrib_name = '\\tilde{f}'
-                div = ''
-            else:
-                distrib_name = 'f'
-                div = 'm^3 \cdot '
-
-            if vol_based:
-                ax.set_ylabel(
-                    # r'$f$ $\left( \frac{m^3}{m^3 \cdot \mu m} \right)$')
-                    r'$%s_v$ $\left( \frac{m^3}{%s \mu m} \right)$' %
-                    (distrib_name, div))
-                # ax.set_xscale('log')
-            else:
-                ax.set_ylabel(
-                    # r'$f$ $\left( \frac{\#}{m^3 \cdot \mu m} \right)$')
-                    r'$%s$ $\left( \frac{\#}{%s \mu m} \right)$' %
-                    (distrib_name, div))
-
-            ax.spines['right'].set_visible(False)
-            ax.spines['top'].set_visible(False)
-
-            ax.text(1, 1.04, 't = {:.0f} s'.format(time_eval),
-                    transform=ax.transAxes, ha='right')
-
-        return fig, ax
-
-    def plot_csd_2d(self, fig_size=(5, 4), times=None, pallette='BuGn',
-                    logy=False, vol_based=False):
+    def plot_csd(self, times=(0,), logy=False, vol_based=False, **fig_kw):
 
         if vol_based:
-            distrib = self.distribVolPercProf
+            state_plot = ['vol_distrib']
+            y_lab = ('f_v', )
         else:
-            distrib = self.distribProf
+            state_plot = ['distrib']
+            y_lab = ('f', )
 
-        if times is not None:
-            time_idx = [np.argmin(abs(self.timeProf - time)) for time in times]
-            distrib = distrib[time_idx]
+        fig, axis = plot_distrib(self, state_plot, times=times,
+                                 x_name='x_cryst', ylabels=y_lab, legend=False,
+                                 **fig_kw)
 
-        fig, axis = plt.subplots(figsize=fig_size)
-
-        pal = getattr(plt.cm, pallette)
-        colors = pal(np.linspace(0.2, 1, len(distrib)))
-
-        for ind, color in enumerate(colors):
-            axis.semilogx(self.x_grid, distrib[ind], color=color)
-
-            if logy:
-                axis.set_yscale('symlog')
-
-        axis.set_xlabel('Crystal size ($\mathregular{\mu m}$)')
-        axis.set_ylabel('$f$')
+        axis.set_xscale('log')
 
         return fig, axis
 
