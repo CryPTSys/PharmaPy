@@ -120,6 +120,7 @@ def get_state_names(state_list):
 
     return out
 
+
 def get_state_distrib(result, *state_names, **kwargs_retrieve):
 
     states = get_state_names(state_names)
@@ -129,6 +130,10 @@ def get_state_distrib(result, *state_names, **kwargs_retrieve):
         idx = None
         if isinstance(name, (tuple, list, range)):
             state, idx = name
+            indexes = result.di_states[state]['index']
+            idx = [indexes[i]
+                   if isinstance(i, (int, np.int32, np.int64)) else i
+                   for i in idx]
         else:
             state = name
 
@@ -250,7 +255,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
 
 
 def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
-                 cm_names=None, **fig_kwargs):
+                 cm_names=None, ylabels=None, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
@@ -293,6 +298,13 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                     axis.plot(x_vals, y_plot[t], color=colors[0][t])
 
                 axis.set_ylabel(names[ind])
+
+                if ylabels is None:
+                    ylabel = names[ind]
+                else:
+                    ylabel = latexify_name(ylabels[ind])
+
+                axis.set_ylabel(ylabel)
 
         fig.text(0.5, 0, x_name)
 

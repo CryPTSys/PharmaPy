@@ -22,6 +22,7 @@ from PharmaPy.Commons import reorder_pde_outputs, eval_state_events, handle_even
 from PharmaPy.Connections import get_inputs_new
 # from pathlib import Path
 from PharmaPy.Results import DynamicResult
+from PharmaPy.Plotting import plot_distrib
 
 eps = np.finfo(float).eps
 
@@ -181,13 +182,11 @@ class Drying:
 
         return events
 
-    def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
-
-        Mw_liq = self.Liquid_1.mw[self.idx_volatiles]
-        x_liq_mole_frac = (x_liq / Mw_liq).T / np.dot(1/Mw_liq, x_liq.T)
+    def get_y_equilib(self, temp_cond, x_liq, p_gas):
+        mw_liq = self.Liquid_1.mw[self.idx_volatiles]
+        x_liq_mole_frac = (x_liq / mw_liq).T / np.dot(1/mw_liq, x_liq.T)
         x_liq_mole_frac = x_liq_mole_frac.T
 
-        y_gas_mole_frac = self.Vapor_1.frac_to_frac(mass_frac=y_gas)
         p_sat = self.Liquid_1.AntoineEquation(temp=temp_cond)
 
         gamma = self.Liquid_1.getActivityCoeff(mole_frac=x_liq_mole_frac)
@@ -196,13 +195,21 @@ class Drying:
         p_partial = (gamma * x_liq_mole_frac * p_sat[:, self.idx_volatiles]).T
         y_equil = p_partial / p_gas
 
+        return y_equil
+
+    def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
+
+        y_gas_mole_frac = self.Vapor_1.frac_to_frac(mass_frac=y_gas)
+        y_equil = self.get_y_equilib(temp_cond, x_liq, p_gas)
+
         y_volat = y_gas_mole_frac[:, self.idx_volatiles].T  # * p_gas
         dry_volatiles = self.k_y * self.a_V * (y_equil - y_volat).T
+
         # dry_volatiles = self.k_y * (y_equil - y_volat).T
         dry_rates = np.zeros_like(y_gas_mole_frac)
         dry_rates[:, self.idx_volatiles] = dry_volatiles
 
-        dry_rates[dry_rates<0] = 0
+        dry_rates[dry_rates < 0] = 0
 
         return dry_rates
 
@@ -589,13 +596,11 @@ class Drying:
         self.num_gas = num_gas
         self.num_liq = num_liq
 
-
     def flatten_states(self):
         pass
 
-
-    def plot_profiles(self, time=None, z_pos=None, fig_size=None, jump=5,
-                      pick_idx=None):
+    def plot_profiles(self, times=None, z_pos=None, fig_size=None, jump=5,
+                      pick_idx=None, **fig_kw):
         '''
 
         Parameters
@@ -623,32 +628,44 @@ class Drying:
         else:
             pick_liq, pick_vap = pick_idx
 
-        if time is not None:
-            fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
+        if times is not None:
 
-            idx_time = np.argmin(abs(time - self.timeProf))
-            w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
-            w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
+            states_plot = [('x_liq', pick_liq), ('y_gas', pick_vap),
+                           'temp_cond', 'temp_gas']
 
-            xliq_plot = np.hstack(w_liq)[idx_time].reshape(-1, self.num_nodes)
-            ygas_plot = np.hstack(w_vap)[idx_time].reshape(-1, self.num_nodes)
+            y_labels = ('x_liq', 'y_gas', 'T_cond', 'T_gas')
 
-            axes[0].plot(self.z_centers, xliq_plot.T)
-            axes[1].plot(self.z_centers, ygas_plot.T)
+            fig, axes = plot_distrib(self, states_plot, times=times,
+                                     x_name='z', ncols=2, nrows=2,
+                                     ylabels=y_labels, **fig_kw)
 
-            axes[0].text(1, 1.04, 'time = %.3f s' % time, ha='right',
-                         transform=axes[0].transAxes)
+            fig.tight_layout()
 
-            axes[1].set_xlabel('$z$ (m)')
+            # fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
 
-            label_liq = [self.Liquid_1.name_species[ind] for ind in pick_liq]
-            label_vap = [self.Liquid_1.name_species[ind] for ind in pick_vap]
+            # idx_time = np.argmin(abs(time - self.timeProf))
+            # w_liq = [self.xLiqProf_mole[ind] for ind in pick_liq]
+            # w_vap = [self.yGasProf_mole[ind] for ind in pick_vap]
 
-            axes[0].legend(label_liq)
-            axes[1].legend(label_vap)
+            # xliq_plot = np.hstack(w_liq)[idx_time].reshape(-1, self.num_nodes)
+            # ygas_plot = np.hstack(w_vap)[idx_time].reshape(-1, self.num_nodes)
 
-            axes[0].set_ylabel('$x_{liq}$')
-            axes[1].set_ylabel('$y_{gas}$')
+            # axes[0].plot(self.z_centers, xliq_plot.T)
+            # axes[1].plot(self.z_centers, ygas_plot.T)
+
+            # axes[0].text(1, 1.04, 'time = %.3f s' % time, ha='right',
+            #              transform=axes[0].transAxes)
+
+            # axes[1].set_xlabel('$z$ (m)')
+
+            # label_liq = [self.Liquid_1.name_species[ind] for ind in pick_liq]
+            # label_vap = [self.Liquid_1.name_species[ind] for ind in pick_vap]
+
+            # axes[0].legend(label_liq)
+            # axes[1].legend(label_vap)
+
+            # axes[0].set_ylabel('$x_{liq}$')
+            # axes[1].set_ylabel('$y_{gas}$')
 
         if z_pos is not None:
             fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
