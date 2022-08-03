@@ -631,12 +631,12 @@ class Drying:
         if times is not None:
 
             states_plot = [('x_liq', pick_liq), ('y_gas', pick_vap),
-                           'temp_cond', 'temp_gas']
+                           'temp_cond', 'temp_gas', 'saturation']
 
-            y_labels = ('x_liq', 'y_gas', 'T_cond', 'T_gas')
+            y_labels = ('x_liq', 'y_gas', 'T_cond', 'T_gas', 'sat')
 
             fig, axes = plot_distrib(self, states_plot, times=times,
-                                     x_name='z', ncols=2, nrows=2,
+                                     x_name='z', ncols=2, nrows=3,
                                      ylabels=y_labels, **fig_kw)
 
             fig.tight_layout()

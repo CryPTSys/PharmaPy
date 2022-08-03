@@ -195,6 +195,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     colors = plt.cm.tab10
 
     names = list(data.keys())
+    states_and_fstates = uo.states_di | uo.fstates_di
 
     for ind, idx in enumerate(fig_map):
         name = names[ind]
@@ -202,7 +203,6 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
         twin = False
 
         index_y = False
-        states_and_fstates = uo.states_di | uo.fstates_di
         index_y = states_and_fstates[name].get('index', False)
 
         if isinstance(state_names[ind], (tuple, list, range)):
@@ -251,6 +251,10 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if len(axes) == 1:
         axes = axes[0]
 
+    for ax in axes:
+        if len(ax.lines) == 0:
+            ax.remove()
+
     return fig, ax_orig
 
 
@@ -273,6 +277,8 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
     else:
         ax = ax.flatten()
 
+    states_and_fstates = uo.states_di | uo.fstates_di
+
     if times is not None:
         if len(times) == 1:
             ls = [0.99]
@@ -287,8 +293,9 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         x_vals = getattr(uo.result, x_name)
 
         for t, time in enumerate(times):
-            for ind, axis in enumerate(ax):
-                y_plot = y[names[ind]]
+            for ind, name in enumerate(names):
+                axis = ax[ind]
+                y_plot = y[name]
 
                 if isinstance(y_plot, list):
                     for st, ar in enumerate(y_plot):
@@ -299,12 +306,24 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
                 axis.set_ylabel(names[ind])
 
-                if ylabels is None:
-                    ylabel = names[ind]
-                else:
-                    ylabel = latexify_name(ylabels[ind])
 
-                axis.set_ylabel(ylabel)
+        for ind, name in enumerate(names):
+            axis = ax[ind]
+            if ylabels is None:
+                ylabel = names[ind]
+            else:
+                ylabel = latexify_name(ylabels[ind])
+
+            units = states_and_fstates[name].get('units', '')
+            if len(units) > 0:
+                unit_name = latexify_name(units, units=True)
+                ylabel = ylabel + ' (' + unit_name + ')'
+
+            axis.set_ylabel(ylabel)
+
+        for axis in ax:
+            if len(axis.lines) == 0:
+                axis.remove()
 
         fig.text(0.5, 0, x_name)
 
