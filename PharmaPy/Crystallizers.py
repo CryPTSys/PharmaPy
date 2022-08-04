@@ -1102,23 +1102,31 @@ class _BaseCryst:
                                  x_name='x_cryst', ylabels=y_lab, legend=False,
                                  **fig_kw)
 
+        # axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
         axis.set_xscale('log')
 
         return fig, axis
 
-    def plot_csd_heatmap(self, fig_size=(5, 4)):
+    def plot_csd_heatmap(self, vol_based=False, **fig_kw):
         self.flatten_states()
 
         if self.method != '1D-FVM':
             raise RuntimeError('No 3D data to show. Run crystallizer with the '
                                'FVM method')
 
-        x_mesh, t_mesh = np.meshgrid(self.x_grid, self.timeProf)
+        res = self.result
+        x_mesh, t_mesh = np.meshgrid(res.x_cryst, res.time)
 
-        fig, ax = plt.subplots(figsize=fig_size)
+        fig, ax = plt.subplots(**fig_kw)
 
-        cf = ax.contourf(x_mesh.T, t_mesh.T, self.distribProf.T,
-                         cmap=cm.coolwarm, levels=150)
+        if vol_based:
+            distrib = res.vol_distrib.T
+        else:
+            distrib = res.distrib.T
+
+        cf = ax.contourf(x_mesh.T, t_mesh.T, distrib, cmap=cm.Blues,
+                         levels=150)
+
         cbar = fig.colorbar(cf)
 
         if self.scale == 1:
@@ -1132,6 +1140,8 @@ class _BaseCryst:
         ax.set_xlabel(r'size ($\mu m$)')
         ax.set_ylabel('time (s)')
         ax.invert_yaxis()
+
+        ax.set_xscale('log')
 
         return fig, ax
 
