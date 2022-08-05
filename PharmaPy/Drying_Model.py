@@ -549,12 +549,11 @@ class Drying:
 
     def retrieve_results(self, time, states):
         time = np.array(time)
-        self.timeProf = time
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        inputs = self.get_inputs(self.timeProf)['Inlet']
+        inputs = self.get_inputs(time)['Inlet']
 
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
@@ -564,43 +563,12 @@ class Drying:
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
-        num_gas = self.Vapor_1.num_species
-        num_liq = self.num_volatiles
-
-        sizes = [1, num_gas, num_liq, 1, 1]
-
-        states_per_fv, states_reord = reorder_pde_outputs(
-            states, self.num_nodes, sizes, name_states=self.name_states)
-
-        self.SatProf = states_reord['saturation']
-
-        self.yGasProf = states_reord['y_gas']
-
-        self.yGas_mole = np.zeros_like(self.yGasProf) # convert mass_frac to mole_frac
-        for i in np.arange(num_gas):
-            self.yGas_mole[i] = self.yGasProf[i] / self.Vapor_1.mw[i]
-        self.yGasProf_mole = self.yGas_mole / np.sum(self.yGas_mole, axis=0) * 100
-
-        self.xLiqProf = states_reord['x_liq']
-        self.xLiq_mole = np.zeros_like(self.xLiqProf) # convert mass_frac to mole_frac
-        for i in self.idx_volatiles:
-            self.xLiq_mole[i] = self.xLiqProf[i] / self.Liquid_1.mw[i]
-        self.xLiqProf_mole = self.xLiq_mole / np.sum(self.xLiq_mole, axis=0) * 100
-
-        self.tempGasProf = states_reord['temp_gas']
-        self.tempLiqProf = states_reord['temp_cond']
         self.CakePhase.z_external = self.z_centers
-
-        self.statesPerFiniteVolume = states_per_fv
-
-        self.num_gas = num_gas
-        self.num_liq = num_liq
 
     def flatten_states(self):
         pass
 
-    def plot_profiles(self, times=None, z_pos=None, fig_size=None, jump=5,
-                      pick_idx=None, **fig_kw):
+    def plot_profiles(self, times=None, z_pos=None, pick_comp=None, **fig_kw):
         '''
 
         Parameters
@@ -611,22 +579,18 @@ class Drying:
         z_pos : int (optional, default=None)
             Integer value indicating the axial position of cake coordniate
             at which calculated drying outputs to be plotted.
-        fig_size : tuple (optional, default = None)
-            Size of the figure to be populated.
-        jump : int (optional, default=5)
-            Number of samples to be skipped in plotting.
-        pick_idx : tuple of lists (optional, default=None)
-            List of index of components to include in plotting.
-            Length of tuple is 2. Index 0 and 1 corresponds to index of compounds
-            in liquid phase and gas phase respectively.
+        pick_comp : list of lists (optional, default=None)
+            Lists containing indexes/names of components to include in the
+            x_liq and y_gas plots. First list contains indexes of compounds
+            in liquid phase, and second list those of the gas phase.
             If None, all the existing components are plotted.
 
         '''
-        if pick_idx is None:
+        if pick_comp is None:
             pick_liq = np.arange(self.num_liq)
             pick_vap = np.arange(self.num_gas)
         else:
-            pick_liq, pick_vap = pick_idx
+            pick_liq, pick_vap = pick_comp
 
         if times is not None:
 
@@ -641,8 +605,8 @@ class Drying:
 
             fig.tight_layout()
 
-        if z_pos is not None:
-            fig, axes = plt.subplots(2, figsize=fig_size, sharex=True)
+        if z_pos is not None:  # TODO: this needs to be implemented
+            fig, axes = plt.subplots(2, sharex=True, **fig_kw)
 
             idx_node = np.argmin(abs(z_pos - self.z_centers))
             w_liq = [self.xLiqProf[ind] for ind in pick_liq]

@@ -422,7 +422,7 @@ class SimulationExec:
                 if uo.oper_mode == 'Batch':
                     elapsed_time = 1
                 elif inlet.DynamicInlet is None:
-                    time = uo.timeProf[-1] - uo.timeProf[0]
+                    time = uo.result.time[-1] - uo.result.time[0]
                     if basis == 'mass':
                         flow = inlet.mass_flow
                         total = flow*time
