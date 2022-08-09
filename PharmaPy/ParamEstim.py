@@ -223,6 +223,8 @@ class ParameterEstimation:
             x_data = [x_data]
             y_data = [y_data]
 
+        y_data = [ar.reshape(-1, 1) if ar.ndim == 1 else ar for ar in y_data]
+
         x_model, x_masks, y_data = analyze_data(x_data, y_data)
 
         self.x_model = x_model
@@ -393,7 +395,7 @@ class ParameterEstimation:
                                         **self.kwargs_fun[ind])
 
             if y_prof.ndim == 1:
-                y_run = y_prof
+                y_run = y_prof.reshape(-1, 1)
                 sens_run = sens
 
             else:
@@ -441,12 +443,12 @@ class ParameterEstimation:
                                            for ar in weighted_residuals])
             return residual_out
         else:
-            residual = 1/2 * residuals.dot(residuals)
+            residual = 1/2 * residuals.T.dot(residuals)
             return residual
 
     def get_gradient(self, params, jac_matrix=False):
         if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
-            self.objective_fun(params)
+            self.get_objective(params)
 
         concat_sens = np.vstack(self.sens_runs)
         if not self.fit_spectra:
@@ -460,7 +462,7 @@ class ParameterEstimation:
         if jac_matrix:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
-            gradient = jacobian.dot(self.residuals)  # 1D
+            gradient = jacobian.T.dot(self.residuals)  # 1D
             return gradient
 
     def get_cond_number(self, sens_matrix):
@@ -544,7 +546,7 @@ class ParameterEstimation:
         hessian_approx = np.dot(jac, jac.T)
 
         dof = self.num_data_total - self.num_params
-        mse = 1 / dof * np.dot(resid, resid)
+        mse = 1 / dof * np.dot(resid.T, resid)
 
         covar = mse * np.linalg.inv(hessian_approx)
 
