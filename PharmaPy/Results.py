@@ -214,7 +214,15 @@ class SimulationResult:
                    'Model type': 's', 'PharmaPy type': 's'}
 
         for name in names_uos:
-            states_di = getattr(getattr(sim, name), 'states_di', None)
+            uo = getattr(sim, name)
+            states_di = getattr(uo, 'states_di', None)
+
+            num_discr = 1
+
+            if hasattr(uo, 'num_discr'):
+                num_discr = uo.num_discr
+            elif hasattr(uo, 'number_nodes'):
+                num_discr = uo.number_nodes
 
             if states_di is not None:
                 num_diff = []
@@ -224,6 +232,8 @@ class SimulationResult:
 
                     if isinstance(num, (list, tuple)):
                         num = len(num)
+
+                    num *= num_discr
 
                     if di['type'] == 'diff':
                         num_diff.append(num)

@@ -282,10 +282,11 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
     if times is not None:
         if len(times) == 1:
             ls = [0.99]
+            colors = [[None]] * len(cm)
         else:
             ls = np.linspace(0.2, 1, len(times))
+            colors = [cmap(ls) for cmap in cm]
 
-        colors = [cmap(ls) for cmap in cm]
         y = get_state_distrib(uo.result, *state_names, time=times,
                               x_name=x_name)
 

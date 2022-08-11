@@ -18,7 +18,7 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
-from PharmaPy.Plotting import plot_function
+from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
 
 import numpy as np
@@ -255,12 +255,14 @@ class _BaseReactor:
         self.mask_species = np.asarray(mask_species)
 
         if self.__class__.__name__ == 'BatchReactor':
-            dim_conc = self.mask_species.sum()
+            index_conc = self.Kinetics.partic_species
         else:
-            dim_conc = self.num_species
+            index_conc = self.name_species
+
+        dim_conc = len(index_conc)
 
         self.states_di = {
-            'mole_conc': {'index': self.name_species, 'dim': dim_conc,
+            'mole_conc': {'index': index_conc, 'dim': dim_conc,
                           'units': 'mol/L', 'type': 'diff'}
             }
 
@@ -285,9 +287,8 @@ class _BaseReactor:
         for key in self.states_di:
             self.states_di[key]['depends_on'] = ['time']
 
-
         if reactor_type == 'PlugFlowReactor':
-            for key in self.states_di:
+            for key, val in self.states_di.items():
                 self.states_di[key]['depends_on'].append('vol')
 
         self.name_states = list(self.states_di.keys())
@@ -1299,7 +1300,7 @@ class SemibatchReactor(CSTR):
 
 
 class PlugFlowReactor(_BaseReactor):
-    def __init__(self, diam_in,
+    def __init__(self, diam_in, num_discr,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=False, adiabatic=False,
@@ -1311,12 +1312,10 @@ class PlugFlowReactor(_BaseReactor):
         class.
         Parameters
         ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
         diam_in : float
             Diameter of the tubular reactor in meters.
+        num_discr : int
+            number of finite volumes to use to discretize the volume coordinate
         mask_params : list of bool (optional, default = None)
             Binary list of which parameters to exclude from the kinetics
             computations.
@@ -1360,6 +1359,8 @@ class PlugFlowReactor(_BaseReactor):
         self.oper_mode = 'Continuous'
         self.diam = diam_in
         self.vol_offset = 1
+
+        self.num_discr = num_discr
 
         self.adiabatic = adiabatic
 
@@ -1649,7 +1650,7 @@ class PlugFlowReactor(_BaseReactor):
 
         return tau
 
-    def solve_unit(self, num_discr, runtime=None, time_grid=None, verbose=True,
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True,
                    any_event=True, sundials_opts=None):
         """
         ToDo: Fill out this method's docstring comments
@@ -1670,12 +1671,11 @@ class PlugFlowReactor(_BaseReactor):
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
-        self.num_discr = num_discr
 
         vol_rxn = self.Liquid_1.vol
-        self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
+        self.vol_discr = np.linspace(0, vol_rxn, self.num_discr + 1)
 
-        c_init = np.ones((num_discr, self.num_species)) * \
+        c_init = np.ones((self.num_discr, self.num_species)) * \
             self.Liquid_1.mole_conc
 
         self.num_states = self.num_species
@@ -1818,66 +1818,34 @@ class PlugFlowReactor(_BaseReactor):
 
         return fig, axes
 
-    def plot_profiles(self, times=None, vol=None,
-                      fig_size=None, pick_idx=None):
+    def plot_profiles(self, times=None, vol=None, pick_comp=None, **fig_kw):
 
-        if pick_idx is None:
-            pick_idx = np.arange(self.num_species)
+        if pick_comp is None:
+            pick_comp = np.arange(self.num_species)
         else:
-            pick_idx = pick_idx
+            pick_comp = pick_comp
 
         if times is not None:
-            times = np.atleast_1d(times)
-            my_colors = plt.rcParams['axes.prop_cycle']()
 
-            if len(times) == 1:
-                alphas = [1]
-            else:
-                alphas = np.linspace(0.3, 1, len(times))
+            states_plot = [('mole_conc', pick_comp), 'temp']
 
-            fig, ax = plt.subplots(1, 2, figsize=fig_size)
+            y_labels = ('C_j', 'T')
 
-            for ind in pick_idx:
-                color = next(my_colors)
-                for ind_time, time in enumerate(times):
-                    time_loc = np.argmin(abs(time - self.timeProf))
-                    conc_species = self.concPerSpecies[ind][time_loc]
+            fig, ax = plot_distrib(self, states_plot, times=times,
+                                   x_name='vol', ncols=2,
+                                   ylabels=y_labels, **fig_kw)
 
-                    temp_inst = self.tempProf[time_loc]
-                    # Temperature
-                    ax[1].plot(self.vol_centers, temp_inst)
+            fig.tight_layout()
 
-                    # Concentration
-                    if ind_time == len(times) - 1:
-
-                        ax[0].plot(self.vol_centers, conc_species, **color,
-                                   alpha=alphas[ind_time], label=self.name_species[ind])
-
-                    else:
-                        ax[0].plot(self.vol_centers, conc_species, **color,
-                                   alpha=alphas[ind_time])
-
-            ax[0].legend()
-            ax[0].set_ylabel('$C_j$ ($\mathregular{mol \ L^{-1}}$)')
-
-            ax[1].set_ylabel('$T$ (K)')
-
-            fig.text(0.5, 0, '$V$ ($m^3$)', ha='center')
-
-            if len(times) == 1:
-                ax[1].text(1, 1.04, '$t = {:.1f}$ s'.format(
-                    self.timeProf[time_loc]), transform=ax[1].transAxes,
-                    ha='right')
-
-        elif vol is not None:
+        elif vol is not None:  # TODO: use new Plotting.py module
             if vol is None:
                 raise RuntimeError('Please provide a volume value using '
                                    "the argument 'vol'")
-            fig, ax = plt.subplots(1, 2, figsize=fig_size)
+            fig, ax = plt.subplots(1, 2, **fig_kw)
 
             vol_ind = np.argmin(abs(vol - self.vol_centers))
 
-            conc_vol = self.concPerVolElem[vol_ind][:, pick_idx]
+            conc_vol = self.concPerVolElem[vol_ind][:, pick_comp]
             ax[0].plot(self.timeProf, conc_vol)
 
             ax[1].text(1, 1.04, '$V = {:.4f} \, m^3$'.format(

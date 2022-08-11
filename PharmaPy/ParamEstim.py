@@ -663,9 +663,9 @@ class ParameterEstimation:
 
         return figs, axes
 
-    def plot_parity(self, fig_size=(4.5, 4.0), fig_kwargs=None):
-        if fig_kwargs is None:
-            fig_kwargs = {'alpha': 0.70}
+    def plot_parity(self, fig_size=(4.5, 4.0), **fig_kwargs):
+        if len(fig_kwargs) == 0:
+            fig_kwargs['alpha'] = 0.70
 
         fig, axis = plt.subplots(figsize=fig_size)
 
