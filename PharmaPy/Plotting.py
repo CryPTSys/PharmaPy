@@ -195,7 +195,7 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     colors = plt.cm.tab10
 
     names = list(data.keys())
-    states_and_fstates = uo.states_di | uo.fstates_di
+    states_and_fstates = {**uo.states_di, **uo.fstates_di}
 
     for ind, idx in enumerate(fig_map):
         name = names[ind]
@@ -277,7 +277,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
     else:
         ax = ax.flatten()
 
-    states_and_fstates = uo.states_di | uo.fstates_di
+    states_and_fstates = {**uo.states_di, **uo.fstates_di}
 
     if times is not None:
         if len(times) == 1:

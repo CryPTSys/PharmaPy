@@ -1543,7 +1543,7 @@ class BatchCryst(_BaseCryst):
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
 
         if heat_prof:
-            heat_components = np.array([source_term, ht_term])
+            heat_components = np.hstack([source_term, ht_term])
             return heat_components
         else:
             # Balance inside the tank

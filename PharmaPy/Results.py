@@ -54,7 +54,7 @@ def flatten_dict_fields(di, index=None):
     for key in target_keys:
         di.pop(key)
 
-    out = di | new_fields
+    out = {**di, **new_fields}
     return out
 
 
@@ -122,7 +122,7 @@ def pprint(di, name_items, fields, str_out=True):
         max_lens[field] = max(len_vals)
 
     # All fields
-    all_fields = {name_items: 's'} | fields
+    all_fields = {name_items: 's', **fields}
     for name in all_fields:
         le = max(len(name), max_lens[name]) + 2
 
