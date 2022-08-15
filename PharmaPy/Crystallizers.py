@@ -1309,11 +1309,8 @@ class BatchCryst(_BaseCryst):
             num_material = self.num_distr + self.num_species
             w_conc = states[self.num_distr:num_material]
 
-            # temp = self.controls['temp'](time, self.temp,
-            #                              *self.args_control['temp'],
-            #                              t_zero=self.elapsed_time)
-
-            temp = self.controls['temp'](time, *self.args_control['temp'])
+            # temp = self.controls['temp'](time, *self.args_control['temp'])
+            temp = self.controls['temp'](time)
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
@@ -1413,11 +1410,8 @@ class BatchCryst(_BaseCryst):
 
     def jac_params(self, time, states, params):
 
-        # temp = self.controls['temp'](time, self.temp,
-        #                              *self.args_control['temp'],
-        #                              t_zero=self.elapsed_time)
-
-        temp = self.controls['temp'](time, *self.args_control['temp'])
+        # temp = self.controls['temp'](time, *self.args_control['temp'])
+        temp = self.controls['temp'](time)
 
         num_states = len(states)
 
