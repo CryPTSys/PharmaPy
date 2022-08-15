@@ -120,7 +120,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
                         field = get_missing_field(
                             dict_states_in[phase][state], len(time))
 
-                        di_out[sub_phase][state] = getattr(sub_phase, state)
+                    di_out[phase][state] = field
     return di_out
 
 
@@ -172,7 +172,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
     remaining = get_remaining_states(dict_states_in, stream, inputs, time)
 
     for key in dict_states_in:
-        inputs[key] = inputs[key] | remaining[key]
+        inputs[key] = {**inputs[key], **remaining[key]}
 
     return inputs
 
