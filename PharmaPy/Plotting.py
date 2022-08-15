@@ -13,7 +13,7 @@ from PharmaPy.Commons import retrieve_pde_result
 
 
 special = ('alpha', 'beta', 'gamma', 'phi', 'rho', 'epsilon', 'sigma', 'mu',
-           'nu', 'psi', 'pi')
+           'nu', 'psi', 'pi', '#')
 
 
 def latexify_name(name, units=False):
@@ -111,13 +111,29 @@ def get_state_data(uo, *state_names):
     return time, di
 
 
+def get_state_names(state_list):
+    out = []
+    for state in state_list:
+        if isinstance(state, (list, tuple)):
+            state = state[0]
+        out.append(state)
+
+    return out
+
+
 def get_state_distrib(result, *state_names, **kwargs_retrieve):
-    di = retrieve_pde_result(result, **kwargs_retrieve)
+
+    states = get_state_names(state_names)
+    di = retrieve_pde_result(result, states=states, **kwargs_retrieve)
     out = {}
     for name in state_names:
         idx = None
         if isinstance(name, (tuple, list, range)):
             state, idx = name
+            indexes = result.di_states[state]['index']
+            idx = [indexes[i]
+                   if isinstance(i, (int, np.int32, np.int64)) else i
+                   for i in idx]
         else:
             state = name
 
@@ -159,10 +175,10 @@ def get_states_result(result, *state_names):
 
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    if hasattr(uo, 'result'):
-        time, data = get_states_result(uo.result, *state_names)
-    else:
-        time, data = get_state_data(uo, *state_names)
+    # if hasattr(uo, 'result'):
+    time, data = get_states_result(uo.result, *state_names)
+    # else:
+        # time, data = get_state_data(uo, *state_names)
 
     if fig_map is None:
         fig_map = range(len(data))
@@ -179,14 +195,14 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     colors = plt.cm.tab10
 
     names = list(data.keys())
+    states_and_fstates = {**uo.states_di, **uo.fstates_di}
 
     for ind, idx in enumerate(fig_map):
         name = names[ind]
         y = data[name]
         twin = False
 
-        index_y = False
-        states_and_fstates = uo.states_di | uo.fstates_di
+        # index_y = False
         index_y = states_and_fstates[name].get('index', False)
 
         if isinstance(state_names[ind], (tuple, list, range)):
@@ -235,11 +251,15 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     if len(axes) == 1:
         axes = axes[0]
 
+    # for ax in axes:
+    #     if len(ax.lines) == 0:
+    #         ax.remove()
+
     return fig, ax_orig
 
 
-def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
-                 cm_names=None, **fig_kwargs):
+def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
+                 cm_names=None, ylabels=None, legend=True, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
@@ -257,17 +277,26 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
     else:
         ax = ax.flatten()
 
+    states_and_fstates = {**uo.states_di, **uo.fstates_di}
+
     if times is not None:
-        colors = [cmap(np.linspace(0.2, 1, len(times))) for cmap in cm]
-        y = get_state_distrib(uo.dynamic_result, *state_names,
-                              time=times, x_name=x_name)
+        if len(times) == 1:
+            ls = [0.99]
+            colors = [[None]] * len(cm)
+        else:
+            ls = np.linspace(0.2, 1, len(times))
+            colors = [cmap(ls) for cmap in cm]
+
+        y = get_state_distrib(uo.result, *state_names, time=times,
+                              x_name=x_name)
 
         names = list(y.keys())
-        x_vals = getattr(uo.dynamic_result, x_name)
+        x_vals = getattr(uo.result, x_name)
 
         for t, time in enumerate(times):
-            for ind, axis in enumerate(ax):
-                y_plot = y[names[ind]]
+            for ind, name in enumerate(names):
+                axis = ax[ind]
+                y_plot = y[name]
 
                 if isinstance(y_plot, list):
                     for st, ar in enumerate(y_plot):
@@ -278,6 +307,37 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None, idx=None,
 
                 axis.set_ylabel(names[ind])
 
+        for ind, name in enumerate(names):
+            axis = ax[ind]
+            index_y = states_and_fstates[name].get('index', False)
+            if ylabels is None:
+                ylabel = names[ind]
+            else:
+                ylabel = latexify_name(ylabels[ind])
+
+            units = states_and_fstates[name].get('units', '')
+            if len(units) > 0:
+                unit_name = latexify_name(units, units=True)
+                ylabel = ylabel + ' (' + unit_name + ')'
+
+            axis.set_ylabel(ylabel)
+
+            if index_y and legend:
+                if isinstance(state_names[ind], (tuple, list)):
+                    picks = state_names[ind][1]
+                    picks = get_indexes(index_y, picks)
+
+                    index_y = [index_y[i] for i in picks]
+
+                axis.legend(index_y, loc='best')
+
+        for axis in ax:
+            if len(axis.lines) == 0:
+                axis.remove()
+
         fig.text(0.5, 0, x_name)
+
+        if len(ax) == 1:
+            ax = ax[0]
 
     return fig, ax

@@ -90,14 +90,14 @@ def unpack_discretized(states, num_states, name_states, indexes=None,
             if di_key is None:
                 state_data = state.reshape(-1, num_times).T
 
-                if inputs is not None:
+                if inputs is not None and name in inputs:
                     state_data = np.column_stack((inputs[name], state_data))
             else:
                 state_data = {}
                 for idx_col in range(state.shape[1]):
                     di_data = state[:, idx_col].reshape(-1, num_times).T
 
-                    if inputs is not None:
+                    if inputs is not None and name in inputs:
                         inpt = inputs[name]
                         di_data = np.column_stack((inpt[:, idx_col], di_data))
 
@@ -133,8 +133,8 @@ def unpack_states(states, num_states, name_states, state_map=None):
     return dict_states
 
 
-def retrieve_pde_result(data, x_name, time=None, x=None, idx_time=None,
-                        idx_vol=None):
+def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
+                        idx_time=None, idx_vol=None):
 
     if isinstance(data, dict):
         di = data
@@ -160,14 +160,18 @@ def retrieve_pde_result(data, x_name, time=None, x=None, idx_time=None,
             idx_vol = np.argmin(abs(x - di[x_name]))
             out[x_name] = di[x_name][idx_vol]
 
-    di_filtered = {key: di[key] for key in di
-                   if key != 'time' and key != x_name}
+    di_filtered = {key: di[key] for key in di if key != 'time' and key != x_name}
 
-    for key, val in di_filtered.items():
+    if states is None:
+        states = list(di_filtered.keys())
+
+    for key in states:
+        val = di_filtered[key]
         if isinstance(val, dict):
             out[key] = retrieve_pde_result(val, x_name, idx_time=idx_time,
                                            idx_vol=idx_vol)
         elif isinstance(val, np.ndarray):
+            # if x_name in di['di_states'][key]['depends_on']:
             out[key] = val[idx_time][:, idx_vol]
 
     return out

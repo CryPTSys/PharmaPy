@@ -18,7 +18,7 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
-from PharmaPy.Plotting import plot_function
+from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
 
 import numpy as np
@@ -255,13 +255,16 @@ class _BaseReactor:
         self.mask_species = np.asarray(mask_species)
 
         if self.__class__.__name__ == 'BatchReactor':
-            dim_conc = self.mask_species.sum()
+            index_conc = self.Kinetics.partic_species
         else:
-            dim_conc = self.num_species
+            index_conc = self.name_species
+
+        dim_conc = len(index_conc)
 
         self.states_di = {
-            'mole_conc': {'index': self.name_species, 'dim': dim_conc,
-                          'units': 'mol/L', 'type': 'diff'}}
+            'mole_conc': {'index': index_conc, 'dim': dim_conc,
+                          'units': 'mol/L', 'type': 'diff'}
+            }
 
         self.fstates_di = {
             'q_rxn': {'units': 'W', 'dim': 1},
@@ -280,6 +283,13 @@ class _BaseReactor:
 
         if reactor_type == 'SemibatchReactor':
             self.states_di['vol'] = {'units': 'm**3', 'dim': 1, 'type': 'diff'}
+
+        for key in self.states_di:
+            self.states_di[key]['depends_on'] = ['time']
+
+        if reactor_type == 'PlugFlowReactor':
+            for key, val in self.states_di.items():
+                self.states_di[key]['depends_on'].append('vol')
 
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
@@ -869,34 +879,37 @@ class CSTR(_BaseReactor):
         self.names_states_out += ['temp', 'vol_flow']
         self.names_states_in = self.names_states_out
 
-    def material_balances(self, time, conc, vol, temp, u_inputs):
-        inlet_flow = u_inputs['vol_flow']
-        inlet_conc = u_inputs['mole_conc']
+    def material_balances(self, time, mole_conc, vol, temp, temp_ht, inputs):
+        inputs = inputs['Inlet']
+        inlet_flow = inputs['vol_flow']
+        inlet_conc = inputs['mole_conc']
 
         if self.Kinetics.keq_params is None:
-            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+            rate = self.Kinetics.get_rxn_rates(mole_conc[self.mask_species],
                                                temp)
         else:
             deltah_rxn = self.Liquid_1.getHeatOfRxn(temp,
                                                     self.Kinetics.tref_hrxn)
 
-            rate = self.Kinetics.get_rxn_rates(conc[self.mask_species],
+            rate = self.Kinetics.get_rxn_rates(mole_conc[self.mask_species],
                                                temp,
                                                deltah_rxn)
 
-        rates = np.zeros_like(conc)
+        rates = np.zeros_like(mole_conc)
         rates[self.mask_species] = rate
 
-        dmaterial_dt = inlet_flow / vol * (inlet_conc - conc) + rates
+        dmaterial_dt = inlet_flow / vol * (inlet_conc - mole_conc) + rates
 
         return dmaterial_dt
 
-    def energy_balances(self, time, conc, vol, temp, temp_ht, u_inputs,
+    def energy_balances(self, time, mole_conc, vol, temp, temp_ht, inputs,
                         heat_prof=False):
 
-        inlet_flow = u_inputs['vol_flow']
-        inlet_conc = u_inputs['mole_conc']
-        inlet_temp = u_inputs['temp']
+        inputs = inputs['Inlet']
+
+        inlet_flow = inputs['vol_flow']
+        inlet_conc = inputs['mole_conc']
+        inlet_temp = inputs['temp']
 
         temp = np.atleast_1d(temp)
 
@@ -913,7 +926,7 @@ class CSTR(_BaseReactor):
             self.Kinetics.stoich_matrix, temp, self.mask_species,
             deltah_ref, tref_dh)  # J/mol
 
-        rates = self.Kinetics.get_rxn_rates(conc.T[self.mask_species].T,
+        rates = self.Kinetics.get_rxn_rates(mole_conc.T[self.mask_species].T,
                                             temp, overall_rates=False,
                                             delta_hrxn=deltah_rxn)
 
@@ -923,7 +936,7 @@ class CSTR(_BaseReactor):
                                    total_h=False, basis='mole')
 
         h_in = (inlet_conc * h_inj).sum(axis=1) * 1000  # J/m**3
-        h_temp = (conc * h_tempj).sum(axis=1) * 1000  # J/m**3
+        h_temp = (mole_conc * h_tempj).sum(axis=1) * 1000  # J/m**3
         flow_term = inlet_flow * (h_in - h_temp)  # W
 
         # Balance terms (W) - convert vol to L
@@ -941,7 +954,7 @@ class CSTR(_BaseReactor):
         else:
             ht_term = self.heat_transfer(temp, temp_ht, vol)
 
-            div = vol * np.dot(conc * 1000, cp_j)  # J/K (NCp)
+            div = vol * np.dot(mole_conc * 1000, cp_j)  # J/K (NCp)
             dtemp_dt = (flow_term + source_term - ht_term) / div  # K/s
 
             if 'temp_ht' in self.states_uo:
@@ -1033,70 +1046,46 @@ class CSTR(_BaseReactor):
         self.states = states[-1]
 
         self.retrieve_results(time, states)
-        self.flatten_states()
+        # self.flatten_states()
 
         return time, states
 
     def retrieve_results(self, time, states):
-        self.time_runs.append(time)
-        vol_prof = np.ones_like(time) * self.Liquid_1.vol
+        time = np.asarray(time)
 
-        if self.isothermal:
-            conc_prof = states
-            temp_prof = np.ones_like(time) * self.Liquid_1.temp
-            tht_prof = None
+        # ---------- Prepare dict of results
+        dp = unpack_states(states, self.dim_states, self.name_states)
+        dp['time'] = time
 
-        elif self.temp_control is not None:
-            conc_prof = states.copy()
-            temp_prof = self.temp_control(**self.params_control['temp'])
+        dp = complete_dict_states(time, dp, ('vol', 'temp'), self.Liquid_1,
+                                  self.controls)
 
+        inputs = self.get_inputs(time)
+
+        if 'temp_ht' in self.name_states:
+            heat_prof = self.energy_balances(**dp, inputs=inputs,
+                                             heat_prof=True)
         else:
-            conc_prof = states[:, :self.num_concentr]
-            temp_prof = states[:, self.num_concentr]
+            heat_prof = self.energy_balances(temp_ht=None, **dp, inputs=inputs,
+                                             heat_prof=True)
 
-            if 'temp_ht' in self.states_uo:
-                tht_prof = states[:, -1]
-            else:
-                tht_prof = None
+        dp['q_rxn'] = heat_prof[:, 0]
+        dp['q_ht'] = heat_prof[:, 1]
 
-        # Heat profile
-        inputs = get_inputs(self.time_runs[-1], *self.args_inputs)
-        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
-                                              temp_prof, tht_prof, inputs,
-                                              heat_prof=True)
+        self.profiles_runs.append(dp)
 
-        self.temp_runs.append(temp_prof)
-        self.conc_runs.append(conc_prof)
-        self.vol_runs.append(vol_prof)
-
-        if tht_prof is not None:
-            self.tempHt_runs.append(tht_prof)
-
-        # Final states
-        self.elapsed_time = time[-1]
-        self.concentr = self.conc_runs[-1][-1]
-        self.temp = self.temp_runs[-1][-1]
-        self.vol = self.vol_runs[-1][-1]
-
-        self.Liquid_1.temp = self.temp
-        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=self.concentr)
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # Outlet stream
         path = self.Inlet.path_data
-        self.Outlet = LiquidStream(path, temp=self.temp,
-                                   mole_conc=self.concentr,
-                                   vol_flow=self.Inlet.vol_flow)
-
-        self.Outlet.concProf = self.conc_runs[0]  # TODO
-        self.Outlet.timeProf = self.time_runs[0]
-        self.Outlet.tempProf = self.temp_runs[0]
+        self.Outlet = LiquidStream(path, temp=dp['temp'][-1],
+                                   mole_conc=dp['mole_conc'][-1],
+                                   vol_flow=inputs['Inlet']['vol_flow'][-1])
 
         # Output vector
-        vol_flow = inputs['vol_flow']
-        self.outputs = np.column_stack((conc_prof, temp_prof, vol_flow))
-
-        if self.isothermal:
-            self.outputs = np.column_stack((self.outputs, self.temp_runs[-1]))
+        outputs = {key: dp[key] for key in ('mole_conc', 'temp')}
+        outputs['vol_flow'] = inputs['Inlet']['vol_flow']
+        self.outputs = outputs
 
 
 class SemibatchReactor(CSTR):
@@ -1311,7 +1300,7 @@ class SemibatchReactor(CSTR):
 
 
 class PlugFlowReactor(_BaseReactor):
-    def __init__(self, diam_in,
+    def __init__(self, diam_in, num_discr,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=False, adiabatic=False,
@@ -1323,12 +1312,10 @@ class PlugFlowReactor(_BaseReactor):
         class.
         Parameters
         ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
         diam_in : float
             Diameter of the tubular reactor in meters.
+        num_discr : int
+            number of finite volumes to use to discretize the volume coordinate
         mask_params : list of bool (optional, default = None)
             Binary list of which parameters to exclude from the kinetics
             computations.
@@ -1372,6 +1359,8 @@ class PlugFlowReactor(_BaseReactor):
         self.oper_mode = 'Continuous'
         self.diam = diam_in
         self.vol_offset = 1
+
+        self.num_discr = num_discr
 
         self.adiabatic = adiabatic
 
@@ -1661,7 +1650,7 @@ class PlugFlowReactor(_BaseReactor):
 
         return tau
 
-    def solve_unit(self, num_discr, runtime=None, time_grid=None, verbose=True,
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True,
                    any_event=True, sundials_opts=None):
         """
         ToDo: Fill out this method's docstring comments
@@ -1682,12 +1671,11 @@ class PlugFlowReactor(_BaseReactor):
         self.set_names()
 
         c_inlet = self.Inlet.mole_conc
-        self.num_discr = num_discr
 
         vol_rxn = self.Liquid_1.vol
-        self.vol_discr = np.linspace(0, vol_rxn, num_discr + 1)
+        self.vol_discr = np.linspace(0, vol_rxn, self.num_discr + 1)
 
-        c_init = np.ones((num_discr, self.num_species)) * \
+        c_init = np.ones((self.num_discr, self.num_species)) * \
             self.Liquid_1.mole_conc
 
         self.num_states = self.num_species
@@ -1830,66 +1818,34 @@ class PlugFlowReactor(_BaseReactor):
 
         return fig, axes
 
-    def plot_profiles(self, times=None, vol=None,
-                      fig_size=None, pick_idx=None):
+    def plot_profiles(self, times=None, vol=None, pick_comp=None, **fig_kw):
 
-        if pick_idx is None:
-            pick_idx = np.arange(self.num_species)
+        if pick_comp is None:
+            pick_comp = np.arange(self.num_species)
         else:
-            pick_idx = pick_idx
+            pick_comp = pick_comp
 
         if times is not None:
-            times = np.atleast_1d(times)
-            my_colors = plt.rcParams['axes.prop_cycle']()
 
-            if len(times) == 1:
-                alphas = [1]
-            else:
-                alphas = np.linspace(0.3, 1, len(times))
+            states_plot = [('mole_conc', pick_comp), 'temp']
 
-            fig, ax = plt.subplots(1, 2, figsize=fig_size)
+            y_labels = ('C_j', 'T')
 
-            for ind in pick_idx:
-                color = next(my_colors)
-                for ind_time, time in enumerate(times):
-                    time_loc = np.argmin(abs(time - self.timeProf))
-                    conc_species = self.concPerSpecies[ind][time_loc]
+            fig, ax = plot_distrib(self, states_plot, times=times,
+                                   x_name='vol', ncols=2,
+                                   ylabels=y_labels, **fig_kw)
 
-                    temp_inst = self.tempProf[time_loc]
-                    # Temperature
-                    ax[1].plot(self.vol_centers, temp_inst)
+            fig.tight_layout()
 
-                    # Concentration
-                    if ind_time == len(times) - 1:
-
-                        ax[0].plot(self.vol_centers, conc_species, **color,
-                                   alpha=alphas[ind_time], label=self.name_species[ind])
-
-                    else:
-                        ax[0].plot(self.vol_centers, conc_species, **color,
-                                   alpha=alphas[ind_time])
-
-            ax[0].legend()
-            ax[0].set_ylabel('$C_j$ ($\mathregular{mol \ L^{-1}}$)')
-
-            ax[1].set_ylabel('$T$ (K)')
-
-            fig.text(0.5, 0, '$V$ ($m^3$)', ha='center')
-
-            if len(times) == 1:
-                ax[1].text(1, 1.04, '$t = {:.1f}$ s'.format(
-                    self.timeProf[time_loc]), transform=ax[1].transAxes,
-                    ha='right')
-
-        elif vol is not None:
+        elif vol is not None:  # TODO: use new Plotting.py module
             if vol is None:
                 raise RuntimeError('Please provide a volume value using '
                                    "the argument 'vol'")
-            fig, ax = plt.subplots(1, 2, figsize=fig_size)
+            fig, ax = plt.subplots(1, 2, **fig_kw)
 
             vol_ind = np.argmin(abs(vol - self.vol_centers))
 
-            conc_vol = self.concPerVolElem[vol_ind][:, pick_idx]
+            conc_vol = self.concPerVolElem[vol_ind][:, pick_comp]
             ax[0].plot(self.timeProf, conc_vol)
 
             ax[1].text(1, 1.04, '$V = {:.4f} \, m^3$'.format(

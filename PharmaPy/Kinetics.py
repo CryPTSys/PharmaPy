@@ -362,7 +362,7 @@ class RxnKinetics:
             self.order_map = self.stoich_matrix < 0
 
         else:
-            self.phi_1, self.phi_2 = np.split(params, 2)
+            self.phi_1, self.phi_2 = np.split(params[:self.num_paramsk], 2)
 
             if self.elem_flag:
                 # Reorganize rxn orders into a stoich_matrix-like structure

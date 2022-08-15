@@ -161,7 +161,7 @@ class LiquidPhase(ThermoPhysicalManager):
 
             self.mole_frac = np.array(mole_frac)
             self.mole_conc = mole_conc
-            
+
             if self.mole_frac.ndim == 1:
                 sum_fracs = sum(self.mole_frac)
                 less_than_one = sum_fracs < 0.99
@@ -177,7 +177,7 @@ class LiquidPhase(ThermoPhysicalManager):
                           '(sum(mass_frac) = %.4f) for %s object'
                           % (sum_fracs, self.__class__.__name__))
                     print()
-                    
+
             self.__calcComposition()
 
         elif mass_conc is not None:
@@ -605,10 +605,17 @@ class VaporPhase(ThermoPhysicalManager):
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
         deltahvap = np.zeros(delta_shape)
-        deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+
+        if num_temp > 1:
+            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+        else:
+            deltahvap[idx] = (watson * self.delta_hvap[idx])  # J/mole
 
         if basis == 'mass':
-            deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+            if num_temp > 1:
+                deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+            else:
+                deltahvap = deltahvap[idx] / self.mw[idx] * 1000  # J/kg
 
         return deltahvap
 
