@@ -989,7 +989,8 @@ class _BaseCryst:
             self.Solid_1.updatePhase(**solid_mod)
 
         if isinstance(modify_controls, dict):
-            self.args_control = modify_controls
+            for key, val in modify_controls.items():
+                self.controls[key].update(val)
 
         if self.param_wrapper is None:
             if self.method == 'moments':
@@ -997,7 +998,9 @@ class _BaseCryst:
                                                        eval_sens=True,
                                                        verbose=False)
 
-                result = reorder_sens(sens, separate_sens=False)
+                sens = reorder_sens(sens, separate_sens=False)
+
+                result = (states, sens)
             else:
                 t_prof, states_out = self.solve_unit(time_grid=t_vals,
                                                      eval_sens=False,

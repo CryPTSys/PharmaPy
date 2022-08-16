@@ -223,7 +223,9 @@ class ParameterEstimation:
             x_data = [x_data]
             y_data = [y_data]
 
-        y_data = [ar.reshape(-1, 1) if ar.ndim == 1 else ar for ar in y_data]
+        y_data = [ar.reshape(-1, 1)
+                  if isinstance(ar, np.ndarray) and ar.ndim == 1
+                  else ar for ar in y_data]
 
         x_model, x_masks, y_data = analyze_data(x_data, y_data)
 
@@ -404,8 +406,9 @@ class ParameterEstimation:
                 sens_run = self.select_sens(sens, num_states)
 
             y_data = self.y_data[ind].copy()
-            if self.x_masks[ind] is not None:
-                y_data[~self.x_masks[ind]] = y_run[~self.x_masks[ind]]
+            x_mask = self.x_masks[ind]
+            if x_mask is not None:
+                y_data[~x_mask] = y_run[~x_mask]
 
             resid_run = y_run - y_data
 
