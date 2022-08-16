@@ -182,7 +182,10 @@ def complete_dict_states(time, di, target_keys, phase, controls,
     for key in target_keys:
         if key not in di:
             if key in controls.keys():
-                di[key] = controls[key](time)
+                control = controls[key]
+                di[key] = control['fun'](time,
+                                         *control['args'],
+                                         **control['kwargs'])
             else:
                 val = getattr(phase, key, None)
 

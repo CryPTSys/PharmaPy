@@ -19,6 +19,8 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               unpack_states, complete_dict_states,
                               flatten_states)
 
+from PharmaPy.ProcessControl import analyze_controls
+
 from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
@@ -160,21 +162,9 @@ class _BaseCryst:
         if controls is None:
             self.controls = {}
             self.args_control = ()
+            self.kwargs_control = {}
         else:
-            self.controls = controls
-            if args_control is None:
-                self.args_control = {}
-                for key in self.controls.keys():
-                    self.args_control[key] = ()
-            else:
-                self.args_control = {key: list(val)
-                                     for key, val in args_control.items()}
-
-            for key, control in self.controls.items():
-                if not callable(control):
-                    raise RuntimeError(
-                        "'%s' control is not a callable. Provide a function "
-                        "to be evaluated" % key)
+            self.controls = analyze_controls(controls)
 
         self.method = method
         self.rad = rad_zero
@@ -1309,8 +1299,8 @@ class BatchCryst(_BaseCryst):
             num_material = self.num_distr + self.num_species
             w_conc = states[self.num_distr:num_material]
 
-            # temp = self.controls['temp'](time, *self.args_control['temp'])
-            temp = self.controls['temp'](time)
+            control = self.controls['temp']
+            temp = control['fun'](time, *control['args'], **control['kwargs'])
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
@@ -1410,8 +1400,8 @@ class BatchCryst(_BaseCryst):
 
     def jac_params(self, time, states, params):
 
-        # temp = self.controls['temp'](time, *self.args_control['temp'])
-        temp = self.controls['temp'](time)
+        control = self.controls['temp']
+        temp = control['fun'](time, *control['args'], **control['kwargs'])
 
         num_states = len(states)
 
@@ -1579,7 +1569,8 @@ class BatchCryst(_BaseCryst):
                 num_distr=dp['distrib'])
 
         if 'temp' in self.controls:
-            dp['temp'] = self.controls['temp'](time)
+            control = self.controls['temp']
+            dp['temp'] = control['fun'](time, *control['args'], **control['kwargs'])
 
         sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
 
