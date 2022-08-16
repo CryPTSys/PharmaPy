@@ -223,6 +223,8 @@ class ParameterEstimation:
             x_data = [x_data]
             y_data = [y_data]
 
+        y_data = [ar.reshape(-1, 1) if ar.ndim == 1 else ar for ar in y_data]
+
         x_model, x_masks, y_data = analyze_data(x_data, y_data)
 
         self.x_model = x_model
@@ -232,26 +234,30 @@ class ParameterEstimation:
         self.y_data = y_data
         self.num_datasets = len(self.y_data)
 
+        if self.experim_names is None:
+            self.experim_names = ['exp_%i' % (ind + 1)
+                                  for ind in range(self.num_datasets)]
+
         if measured_ind is None:
             measured_ind = list(range(y_data[0].shape[1]))
 
         self.measured_ind = measured_ind
-
-        if self.experim_names is None:
-            self.experim_names = ['exp_%i' % (ind + 1)
-                                  for ind in range(self.num_datasets)]
 
         # ---------- Arguments
         if args_fun is None:
             args_fun = [()] * self.num_datasets
         elif self.num_datasets == 1:
             args_fun = [args_fun]
+        else:
+            args_fun = list(args_fun.values())
 
         if kwargs_fun is None:
             kwargs_fun = [{}] * self.num_datasets
         elif self.num_datasets == 1:
-            if not isinstance(kwargs_fun, list):
-                kwargs_fun = [kwargs_fun]
+            # if not isinstance(kwargs_fun, list):
+            kwargs_fun = [kwargs_fun]
+        else:
+            kwargs_fun = list(kwargs_fun.values())
 
         self.args_fun = args_fun
         self.kwargs_fun = kwargs_fun
@@ -389,7 +395,7 @@ class ParameterEstimation:
                                         **self.kwargs_fun[ind])
 
             if y_prof.ndim == 1:
-                y_run = y_prof
+                y_run = y_prof.reshape(-1, 1)
                 sens_run = sens
 
             else:
@@ -437,12 +443,12 @@ class ParameterEstimation:
                                            for ar in weighted_residuals])
             return residual_out
         else:
-            residual = 1/2 * residuals.dot(residuals)
+            residual = 1/2 * residuals.T.dot(residuals)
             return residual
 
     def get_gradient(self, params, jac_matrix=False):
         if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
-            self.objective_fun(params)
+            self.get_objective(params)
 
         concat_sens = np.vstack(self.sens_runs)
         if not self.fit_spectra:
@@ -456,7 +462,7 @@ class ParameterEstimation:
         if jac_matrix:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
-            gradient = jacobian.dot(self.residuals)  # 1D
+            gradient = jacobian.T.dot(self.residuals)  # 1D
             return gradient
 
     def get_cond_number(self, sens_matrix):
@@ -540,7 +546,7 @@ class ParameterEstimation:
         hessian_approx = np.dot(jac, jac.T)
 
         dof = self.num_data_total - self.num_params
-        mse = 1 / dof * np.dot(resid, resid)
+        mse = 1 / dof * np.dot(resid.T, resid)
 
         covar = mse * np.linalg.inv(hessian_approx)
 
@@ -554,24 +560,22 @@ class ParameterEstimation:
 
         return covar
 
-    def plot_data_model(self, fig_size=None, fig_grid=None, fig_kwargs=None):
+    def plot_data_model(self, **fig_kwargs):
 
         num_plots = self.num_datasets
 
-        if fig_grid is None:
+        if 'ncols' not in fig_kwargs and 'nrows' not in fig_kwargs:
             num_cols = bool(num_plots // 2) + 1
             num_rows = num_plots // 2 + num_plots % 2
-        else:
-            num_cols = fig_grid[1]
-            num_rows = fig_grid[0]
 
-        fig, axes = plt.subplots(num_rows, num_cols, figsize=fig_size)
+            fig_kwargs.update({'nrows': num_rows, 'ncols': num_cols})
+
+        fig, axes = plt.subplots(**fig_kwargs)
 
         if num_plots == 1:
             axes = np.asarray(axes)[np.newaxis]
 
-        if fig_kwargs is None:
-            fig_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
+        ax_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
 
         ax_flatten = axes.flatten()
 
@@ -579,8 +583,6 @@ class ParameterEstimation:
         y_data = self.y_data
 
         for ind in range(self.num_datasets):  # experiment loop
-            markers = cycle(['o', 's', '^', '*', 'P', 'X'])
-
             mask_nan = np.isfinite(self.y_model[ind])
             y_model = self.y_model[ind]
 
@@ -591,16 +593,17 @@ class ParameterEstimation:
             lines = ax_flatten[ind].lines
             colors = [line.get_color() for line in lines]
 
+            markers = cycle(['o', 's', '^', '*', 'P', 'X'])
             for color, y in zip(colors, y_data[ind].T):
                 ax_flatten[ind].plot(x_data[ind], y, color=color,
                                      marker=next(markers),
-                                     **fig_kwargs)
+                                     **ax_kwargs)
 
             # Edit
             ax_flatten[ind].spines['right'].set_visible(False)
             ax_flatten[ind].spines['top'].set_visible(False)
 
-            ax_flatten[ind].set_xlabel('$x$')
+            # ax_flatten[ind].set_xlabel('$x$')
             ax_flatten[ind].set_ylabel(r'$\mathbf{y}$')
 
             ax_flatten[ind].xaxis.set_minor_locator(AutoMinorLocator(2))
@@ -611,6 +614,9 @@ class ParameterEstimation:
 
         if len(axes) == 1:
             axes = axes[0]
+            axes.set_xlabel('$x$')
+        else:
+            fig.text(0.5, 0, '$x$', ha='center')
 
         fig.tight_layout()
 
@@ -657,9 +663,9 @@ class ParameterEstimation:
 
         return figs, axes
 
-    def plot_parity(self, fig_size=(4.5, 4.0), fig_kwargs=None):
-        if fig_kwargs is None:
-            fig_kwargs = {'alpha': 0.70}
+    def plot_parity(self, fig_size=(4.5, 4.0), **fig_kwargs):
+        if len(fig_kwargs) == 0:
+            fig_kwargs['alpha'] = 0.70
 
         fig, axis = plt.subplots(figsize=fig_size)
 
@@ -671,11 +677,13 @@ class ParameterEstimation:
         else:
             experim_names = self.experim_names
 
+        markers = cycle(['o', 's', '^', '*', 'P', 'X'])
         for ind, y_model in enumerate(y_model):
             y_data = self.y_data[ind]
 
             axis.scatter(y_model.T.flatten(), y_data.T.flatten(),
-                         label=experim_names[ind], **fig_kwargs)
+                         label=experim_names[ind], marker=next(markers),
+                         **fig_kwargs)
 
         axis.set_xlabel('Model')
         axis.set_ylabel('Data')

@@ -88,7 +88,7 @@ class LiquidPhase(ThermoPhysicalManager):
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None,
                  mass_conc=None, mole_conc=None,
-                 ind_solv=None, verbose=True):
+                 name_solv=None, verbose=True):
 
         super().__init__(path_thermo)
 
@@ -107,6 +107,12 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
+
+        if name_solv is None:
+            ind_solv = name_solv
+        else:
+            ind_solv = self.name_species.index(name_solv)
+
         self.ind_solv = ind_solv
 
         self.temp = np.float(temp)
@@ -155,7 +161,7 @@ class LiquidPhase(ThermoPhysicalManager):
 
             self.mole_frac = np.array(mole_frac)
             self.mole_conc = mole_conc
-            
+
             if self.mole_frac.ndim == 1:
                 sum_fracs = sum(self.mole_frac)
                 less_than_one = sum_fracs < 0.99
@@ -171,7 +177,7 @@ class LiquidPhase(ThermoPhysicalManager):
                           '(sum(mass_frac) = %.4f) for %s object'
                           % (sum_fracs, self.__class__.__name__))
                     print()
-                    
+
             self.__calcComposition()
 
         elif mass_conc is not None:
@@ -195,6 +201,7 @@ class LiquidPhase(ThermoPhysicalManager):
         self.y_upstream = None
 
         self._name = None
+        self.transferred_from_uo = False
 
     @property
     def name(self):
@@ -316,7 +323,7 @@ class LiquidPhase(ThermoPhysicalManager):
         if temp is not None:
             self.temp = temp
 
-        if pres is None:
+        if pres is not None:
             self.pres = pres
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
@@ -488,6 +495,8 @@ class VaporPhase(ThermoPhysicalManager):
         self.y_upstream = None
         self._name = None
 
+        self.transferred_from_uo = False
+
     @property
     def name(self):
         return self._name
@@ -596,10 +605,17 @@ class VaporPhase(ThermoPhysicalManager):
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
 
         deltahvap = np.zeros(delta_shape)
-        deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+
+        if num_temp > 1:
+            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+        else:
+            deltahvap[idx] = (watson * self.delta_hvap[idx])  # J/mole
 
         if basis == 'mass':
-            deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+            if num_temp > 1:
+                deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+            else:
+                deltahvap = deltahvap[idx] / self.mw[idx] * 1000  # J/kg
 
         return deltahvap
 
@@ -704,7 +720,7 @@ class VaporPhase(ThermoPhysicalManager):
             return temp_sat
 
     def getDewPoint(self, pres=None, mass_frac=None, mole_frac=None,
-                    thermo_method='ideal', y_vap=False):
+                    thermo_method='ideal', x_liq=False):
 
         if mass_frac is None and mole_frac is None:
             mole_frac = self.mole_frac
@@ -722,6 +738,19 @@ class VaporPhase(ThermoPhysicalManager):
             obj = np.dot(mole_frac, 1/k_vals) - 1
 
             return obj
+        temp_pure = self.AntoineEquation(pres=pres)
+        temp_seed = np.dot(mole_frac, temp_pure)
+        temp_dew = newton(dew_fn, temp_seed, full_output=False)
+
+        if x_liq:
+            k_vals = self.getKeqVLE(temp_dew, pres, mole_frac,
+                                    gamma_model=thermo_method)
+
+            x_frac = mole_frac/k_vals
+
+            return temp_dew, x_frac
+        else:
+            return temp_dew
 
     def getViscosity(self, temp=None, mass_frac=None, mole_frac=None):
         viscosity = self.getViscosityMix(temp, mass_frac, mole_frac,
@@ -823,6 +852,7 @@ class SolidPhase(ThermoPhysicalManager):
         self.distribProf = None
 
         self._name = None
+        self.transferred_from_uo = False
 
     @property
     def name(self):
@@ -841,6 +871,9 @@ class SolidPhase(ThermoPhysicalManager):
             self.moments = self.getMoments()
             self.num_distrib = len(distrib)
 
+            self.vol = self.moments[3]
+            self.mass = self.moments[3] * self.getDensity()
+
         if mass is not None:
             self.mass = mass
             self.vol = mass / self.getDensity()
@@ -855,7 +888,8 @@ class SolidPhase(ThermoPhysicalManager):
                              "not both")
         elif num_distr is not None:  # convert to vol perc
             mom_three = self.getMoments(distrib=num_distr, mom_num=3)
-            mom_three[mom_three==0] = eps
+            mom_three[mom_three == 0] = eps
+
             distrib_out = num_distr * self.dx * x_distrib**3 * self.kv / \
                 mom_three / 1e18
         elif vol_distr is not None:

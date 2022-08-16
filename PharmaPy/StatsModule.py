@@ -57,7 +57,7 @@ class StatisticsClass:
         self.dof = inst.num_data_total - inst.num_params
 
         residuals = inst.info_opt['fun'].copy()
-        resid_squared = np.dot(residuals, residuals)  # SSE
+        resid_squared = np.dot(residuals.T, residuals)  # SSE
         self.var_fun = resid_squared / self.dof
 
         self.num_par = len(self.params)

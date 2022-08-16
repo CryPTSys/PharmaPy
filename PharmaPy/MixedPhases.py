@@ -67,16 +67,23 @@ class Slurry:
 
         self.temp = None
 
+        self.transferred_from_uo = False
+
     @property
     def Phases(self):
         return self._Phases
 
     @Phases.setter
     def Phases(self, phases_list):
-        if isinstance(phases_list, tuple):
+        if isinstance(phases_list, (list, tuple)):
             phases_list = list(phases_list)
 
         self._Phases = phases_list
+
+        for phase in self._Phases:
+            if phase.transferred_from_uo:
+                self.transferred_from_uo = True
+                break
 
         classify_phases(self)
 
@@ -299,7 +306,7 @@ class SlurryStream(Slurry):
 
         super().__init__(vol_flow, x_distrib, distrib)
 
-        self.mass_flow = self.mass_slurry
+        self.mass_flow = self.mass_slurry  # TODO (this doesn't seem fine)
         # self.mole_flow = self.moles
         self.vol_flow = self.vol_slurry
 
@@ -371,6 +378,7 @@ class SlurryStream(Slurry):
 
                 mass_liq, mass_sol = vol_phases * dens_phases
                 self.mass_slurry = np.dot(vol_phases, dens_phases)
+                self.mass_flow = self.mass_slurry
 
             elif self.mass_slurry > 0:
                 mass_share = self.getFractions(vol_basis=False)
@@ -383,8 +391,10 @@ class SlurryStream(Slurry):
             f_distr = self.vol_slurry * self.distrib
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
-            self.Solid_1.updatePhase(x_distrib=self.x_distrib, distrib=f_distr,
-                                     mass=mass_sol)
+
+            self.Solid_1.updatePhase(x_distrib=self.x_distrib, distrib=f_distr)
+            self.Solid_1.mass_flow = mass_sol
+            self.Solid_1.vol_flow = vol_phases[1]
 
         self.num_species = self.Liquid_1.num_species
         self.temp = energy_balance(self, 'mass_flow')

@@ -7,8 +7,6 @@ This is a temporary script file.
 """
 
 import numpy as np
-# import jax.numpy as jnp
-# import autograd.numpy as jnp
 from numpy.linalg import norm
 
 eps = np.sqrt(np.finfo(float).eps)
@@ -138,15 +136,6 @@ def numerical_jacv(func, x, v, args=()):
     jac_v = (func(x + sig*v, *args) - f_eval) / sig
 
     return jac_v
-
-
-def fun(x):
-    f1 = x[0]**2 - 1/2*x[1]**3
-    f2 = x[0] + jnp.sqrt(x[1])
-
-    fx = jnp.array([f1, f2])
-
-    return fx
 
 
 def jac_fun(x):

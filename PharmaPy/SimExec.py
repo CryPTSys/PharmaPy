@@ -10,275 +10,160 @@ import pandas as pd
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.ParamEstim import ParameterEstimation, MultipleCurveResolution
 from PharmaPy.StatsModule import StatisticsClass
-from collections import OrderedDict
-import time
-from PharmaPy.Connections import Graph, get_inputs
+
+from PharmaPy.Connections import Connection, convert_str_flowsheet, topological_bfs
+from PharmaPy.Errors import PharmaPyNonImplementedError
+from PharmaPy.Results import SimulationResult, flatten_dict_fields, get_name_object
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
 
+import time
+
 
 class SimulationExec:
-    def __init__(self, pure_path, time_limits={}):
+    def __init__(self, pure_path, flowsheet):
 
         # Interfaces
-        self.ThermoInstance = ThermoPhysicalManager(pure_path)
-        self.NamesSpecies = self.ThermoInstance.name_species
+        thermo_instance = ThermoPhysicalManager(pure_path)
+        self.NamesSpecies = thermo_instance.name_species
 
         # Outputs
-        # self.NumSpecies = len(self.NamesSpecies)
-        # self.NumStreams = len(self.Streams)
         self.StreamTable = None
-        self.UnitOperations = OrderedDict()
-        self.UOCounter = 0
 
-        self.uos_instances = {}
+        self.uos_instances = {}  # TODO: check this under the new graph implem
         self.oper_mode = []
-        self.connection_instances = []
-        self.connection_names = []
 
-        self.time_limits = time_limits
+        if isinstance(flowsheet, dict):
+            graph = flowsheet
+        elif isinstance(flowsheet, str):
+            graph = convert_str_flowsheet(flowsheet)
 
-    def LoadUOs(self):
-        uos_modules = ('Reactors', 'Crystallizers', 'Containers',
-                       'Evaporators', 'SolidLiquidSep', 'Drying_Model')
+        self.graph = graph
+        self.in_degree, self.execution_names = topological_bfs(graph)
 
-        modules_ids = ['PharmaPy.' + elem for elem in uos_modules]
-        for key, value in self.__dict__.items():
-            type_val = getattr(value, '__module__', None)
-            if type_val in modules_ids:
-                value.id_uo = key
-                value.name_species = self.NamesSpecies
-                self.uos_instances[key] = value
-                # self.oper_mode.append(value.oper_mode)
-
-    def LoadConnections(self):
-        for key, value in self.__dict__.items():
-            module_name = getattr(value, '__module__', None)
-
-            if module_name == 'PharmaPy.Connections':
-                value.ThermoInstance = self.ThermoInstance
-
-                self.connection_instances.append(value)
-                self.connection_names.append(key)
-
-                value.name = key
-
-    def _get_ordered_uos_names(self, execution_order, uos_dict):
-        names = []
-        for obj in execution_order:
-            for key, uo in uos_dict.items():
-                if uo is obj:
-                    names.append(key)
-
-        return names
+        if len(self.execution_names) < len(self.graph):
+            raise PharmaPyNonImplementedError(
+                "Provided flowsheet contains recycle stream(s)")
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        uos_steady_state=None, tolerances_ss=None, ss_time=0,
                        kwargs_ss=None):
 
-        if len(self.uos_instances) == 0:
-            self.LoadUOs()
-            self.LoadConnections()
-
-        # Pick specific units, if given
         if kwargs_run is None:
-            if pick_units is None:
-                keys = self.uos_instances.keys()
-            else:
-                keys = pick_units
-
-            kwargs_run = {key: {} for key in keys}
+            kwargs_run = {}
 
         if kwargs_ss is None:
             kwargs_ss = {}
 
-        # isbatch = [elem == 'Batch' for elem in self.oper_mode]
-
-        # Create graph and define execution order
-        if len(self.uos_instances) == 1:
-            execution_order = list(self.uos_instances.values())
-        else:
-            graph = Graph(self.connection_instances)
-            execution_order = graph.topologicalSort()
-
-        uos = self.uos_instances
-
-        execution_order = [x for x in execution_order if x is not None]
-        execution_names = self._get_ordered_uos_names(execution_order,
-                                                      self.uos_instances)
-
-        if pick_units is not None:
-            ordered_names = []
-            ordered_uos = []
-            for name in pick_units:
-                if name in execution_names:
-                    ordered_names.append(name)
-                    ind = execution_names.index(name)
-                    ordered_uos.append(execution_order[ind])
-
-            execution_order = ordered_uos
-            execution_names = ordered_names
+        if pick_units is None:
+            pick_units = self.execution_names
 
         if tolerances_ss is None:
             tolerances_ss = {}
 
+        time_processing = {}
+
         # Run loop
-        for ind, instance in enumerate(execution_order):
-            uo_id = list(uos.keys())[list(uos.values()).index(instance)]
+        connections = {}
+        count = 1
+        for ind, name in enumerate(self.execution_names):
+            instance = getattr(self, name)
 
-            if verbose:
-                print()
-                print('{}'.format('-'*30))
-                print('Running {}'.format(uo_id))
-                print('{}'.format('-'*30))
-                print()
+            if name in pick_units:
+                self.uos_instances[name] = instance
 
-            for conn in self.connection_instances:
-                if conn.destination_uo is instance:
-                    conn.ReceiveData()  # receive phases from upstream uo
-                    conn.TransferData()
+                if verbose:
+                    print()
+                    print('{}'.format('-'*30))
+                    print('Running {}'.format(name))
+                    print('{}'.format('-'*30))
+                    print()
 
-            kwargs_uo = kwargs_run.get(uo_id, {})
+                kwargs_uo = kwargs_run.get(name, {})
 
-            tau = 0
-            if hasattr(instance, '_get_tau'):
-                tau = instance._get_tau()
+                tau = 0
+                if hasattr(instance, '_get_tau'):
+                    tau = instance._get_tau()
 
-            ss_time += tau
+                ss_time += tau
 
-            if uos_steady_state is not None:
-                if execution_names[ind] in uos_steady_state:
-                    if instance.__class__.__name__ == 'Mixer':
-                        pass
-                    else:
-                        tolerances = tolerances_ss.get(execution_names[ind],
-                                                       1e-6)
-
-                        kw_ss = kwargs_ss.get(execution_names[ind], None)
-
-                        if kw_ss is None:
-                            kw_ss = {'tau': tau, 'time_stop': ss_time,
-                                     'threshold': tolerances}
-
+                if uos_steady_state is not None:
+                    if name in uos_steady_state:
+                        if instance.__class__.__name__ == 'Mixer':
+                            pass
                         else:
-                            # TODO: should we keep this?
-                            kw_ss['threshold'] = tolerances
+                            tolerances = tolerances_ss.get(name, 1e-6)
 
-                            if 'tau' not in kw_ss.keys():
-                                kw_ss['tau'] = tau
+                            kw_ss = kwargs_ss.get(name, None)
 
-                        ss_event = {'callable': check_steady_state,
-                                    'num_conditions': 1,
-                                    'event_name': 'steady state',
-                                    'kwargs': kw_ss
-                                    }
+                            if kw_ss is None:
+                                kw_ss = {'tau': tau, 'time_stop': ss_time,
+                                         'threshold': tolerances}
 
-                        instance.state_event_list = [ss_event]
-                        kwargs_uo['any_event'] = False
+                            else:
+                                # TODO: should we keep this?
+                                kw_ss['threshold'] = tolerances
 
-            instance.solve_unit(**kwargs_uo)
+                                if 'tau' not in kw_ss.keys():
+                                    kw_ss['tau'] = tau
 
-            uo_type = instance.__module__
-            if uo_type != 'PharmaPy.Containers':
-                instance.flatten_states()
+                            ss_event = {'callable': check_steady_state,
+                                        'num_conditions': 1,
+                                        'event_name': 'steady state',
+                                        'kwargs': kw_ss
+                                        }
 
-            if verbose:
-                print()
-                print('Done!')
-                print()
+                            instance.state_event_list = [ss_event]
+                            kwargs_uo['any_event'] = False
 
-            # # Connectivity
-            # for conn in self.connection_instances:
-            #     if conn.source_uo is instance:
-            #         conn.ReceiveData()  # receive phases from upstream uo
-            #         conn.TransferData()
+                instance.solve_unit(**kwargs_uo)
 
-        self.execution_order = execution_order
+                uo_type = instance.__module__
+                if uo_type != 'PharmaPy.Containers':
+                    instance.flatten_states()
 
-        time_processing = np.zeros(len(execution_order))
-        for ind, uo in enumerate(execution_order):
-            if hasattr(uo, 'timeProf'):
-                time_processing[ind] = uo.timeProf[-1] - uo.timeProf[0]
+                if verbose:
+                    print()
+                    print('Done!')
+                    print()
+
+                # Create connection object if needed
+                neighbors = self.graph[name]
+                if len(neighbors) > 0 and self.execution_names[ind + 1] in pick_units:
+                    uo_next = self.execution_names[ind + 1]
+                    connection = Connection(
+                        source_uo=getattr(self, name),
+                        destination_uo=getattr(self, uo_next))
+
+                    conn_name = 'CONN%i' % count
+                    connections[conn_name] = connection
+
+                    connection.transfer_data()
+
+                    count += 1
+
+                # Processing times
+                time_prof = instance.result.time
+                time_processing[name] = time_prof[-1] - time_prof[0]
+
+            # instance is already solved, pass data to connection
+            elif isinstance(instance.outputs, dict):
+                connection = Connection(
+                    source_uo=getattr(self, name),
+                    destination_uo=getattr(self,
+                                           self.execution_names[ind + 1]))
+
+                conn_name = 'CONN%i' % count
+                connections[conn_name] = connection
+
+                connection.transfer_data()
+
+                count += 1
 
         self.time_processing = time_processing
 
-
-    def GetStreamTable(self, basis='mass'):
-
-        # # TODO: include inlets and holdups in the stream table
-        # inlets, holdups, _, inlets_id, holdups_id = self.get_raw_objects()
-
-        if basis == 'mass':
-            fields_phase = ['temp', 'pres', 'mass', 'vol', 'mass_frac']
-            fields_stream = ['mass_flow', 'vol_flow']
-
-            frac_preffix = 'w_{}'
-        elif basis == 'mole':
-            fields_phase = ['temp', 'pres', 'moles', 'vol', 'mole_frac']
-            fields_stream = ['mole_flow', 'vol_flow']
-
-            frac_preffix = 'x_{}'
-
-        stream_cont = []
-        index_stream = []
-        index_phase = []
-        for ind, stream in enumerate(self.connection_instances):
-            matter_obj = stream.Matter
-
-            if matter_obj is None:
-                index_stream.append(self.connection_names[ind])
-                index_phase.append(None)
-                stream_info = [np.nan] * (len(fields_phase) +
-                                          len(fields_stream))
-
-                stream_cont.append(stream_info)
-            else:
-
-                if matter_obj.__module__ == 'PharmaPy.MixedPhases':
-                    phase_list = matter_obj.Phases  # TODO: change this
-                else:
-                    phase_list = [matter_obj]
-
-                for phase in phase_list:
-                    index_stream.append(self.connection_names[ind])
-                    index_phase.append(phase.__class__.__name__)
-                    stream_info = []
-                    for field in fields_phase:
-                        value_phase = getattr(phase, field, None)
-                        stream_info.append(np.atleast_1d(value_phase))
-
-                    for field in fields_stream:
-                        value_stream = getattr(phase, field, None)
-                        stream_info.append(np.atleast_1d(value_stream))
-
-                    stream_info = np.concatenate(stream_info)
-                    stream_cont.append(stream_info)
-
-        cols = fields_phase[:-1] + \
-            [frac_preffix.format(ind) for ind in self.NamesSpecies] + \
-            fields_stream
-
-        indexes = zip(*(index_stream, index_phase))
-        idx = pd.MultiIndex.from_tuples(indexes, names=('Stream', 'Phase'))
-        stream_table = pd.DataFrame(stream_cont, index=idx, columns=cols)
-
-        cols_reorder = fields_phase[:-1] + fields_stream + \
-            [frac_preffix.format(ind) for ind in self.NamesSpecies]
-
-        stream_table = stream_table[cols_reorder]
-        # stream_table[stream_table == 0] = None
-
-        return stream_table
-
-    # def SetParamEstimation(self, x_data, y_data=None, param_seed=None,
-    #                        wrapper_kwargs=None,
-    #                        spectra=None,
-    #                        fit_spectra=False, global_analysis=True,
-    #                        phase_modifiers=None, control_modifiers=None,
-    #                        measured_ind=None, optimize_flags=None,
-    #                        jac_fun=None,
-    #                        covar_data=None,
-    #                        pick_unit=None):
+        self.result = SimulationResult(self)
+        self.connections = connections
 
     def SetParamEstimation(self, x_data, y_data=None, spectra=None,
                            fit_spectra=False,
@@ -286,10 +171,10 @@ class SimulationExec:
                            phase_modifiers=None, control_modifiers=None,
                            pick_unit=None, **inputs_paramest):
 
-        self.LoadUOs()
+        # self.LoadUOs()
 
-        if len(self.uos_instances) == 1:
-            target_unit = list(self.uos_instances.values())[0]
+        if len(self.graph) == 1:
+            target_unit = getattr(self, list(self.graph.keys())[0])
             # target_unit.reset_states = True
         else:
             if pick_unit is None:
@@ -299,28 +184,33 @@ class SimulationExec:
                 pass  # remember setting reset_states to True!!
 
         if phase_modifiers is None:
-            if control_modifiers is None:
-                phase_modifiers = [phase_modifiers]
+            if isinstance(x_data, dict):
+                phase_modifiers = {key: {} for key in x_data}
             else:
-                phase_modifiers = [phase_modifiers] * len(control_modifiers)
+                phase_modifiers = {}
 
         if control_modifiers is None:
-            if phase_modifiers is None:
-                control_modifiers = [control_modifiers]
+            if isinstance(x_data, dict):
+                control_modifiers = {key: {} for key in x_data}
             else:
-                control_modifiers = [control_modifiers] * len(phase_modifiers)
+                control_modifiers = {}
 
         if wrapper_kwargs is None:
             wrapper_kwargs = {}
 
-        keys = ['modify_phase', 'modify_controls']
+        if isinstance(x_data, dict):
+            kwargs_wrapper = {
+                key: {'modify_phase': phase_modifiers[key],
+                      'modify_controls': control_modifiers[key]}
+                for key in x_data}
 
-        kwargs_wrapper = list(zip(phase_modifiers, control_modifiers))
+            for di in kwargs_wrapper.values():
+                di.update({'run_args': wrapper_kwargs})
+        else:
+            kwargs_wrapper = {'modify_phase': phase_modifiers,
+                              'modify_controls': control_modifiers}
 
-        kwargs_wrapper = [dict(zip(keys, item)) for item in kwargs_wrapper]
-
-        for di in kwargs_wrapper:
-            di.update({'run_args': wrapper_kwargs})
+            kwargs_wrapper['run_args'] = wrapper_kwargs
 
         # Get 1D array of parameters from the UO class
         param_seed = inputs_paramest.pop('param_seed', None)
@@ -481,160 +371,191 @@ class SimulationExec:
                                          'num_workers', 'labor_cost'))
         return labor_df
 
-    def get_raw_objects(self):
-        raw_inlets = []
-        inlets_ids = []
+    def get_from_phases(self, phases, fields):
+        if phases.__module__ == 'PharmaPy.MixedPhases':
+            phases = phases.Phases
+        else:
+            phases = [phases]
 
-        raw_holdups = []
-        holdups_ids = []
+        out = {}
+        for phase in phases:
+            di = {}
+            for field in fields:
+                di[field] = getattr(phase, field)
 
-        time_inlets = []
+            name_phase = get_name_object(phase)
+            out[name_phase] = di
 
-        for uo in self.uos_instances.values():
-            # Inlets (flows)
-            if hasattr(uo, 'Inlet'):
-                if uo.Inlet is not None:
-                    if uo.Inlet.y_upstream is None:
-                        inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
-                        raw_inlets.append(inlet)
+        return out
 
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        elif uo.Inlet.DynamicInlet is not None:
-                            time_inlets.append(uo.timeProf)
-                        else:
-                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
-                            time_inlets.append(elapsed)
+    def get_raw_inlets(self, uo, basis='mass'):
+        if hasattr(uo, 'Inlet'):
+            inlets = [uo.Inlet]
+        elif uo.__class__.__name__ == 'Mixer':
+            inlets = uo.Inlets
+        else:
+            inlets = [None]
 
-                        inlets_ids.append(uo.id_uo)
+        inlets = [inlet for inlet in inlets if inlet is not None]
+        inlets = [inlet for inlet in inlets if inlet.y_upstream is None]
 
-            elif uo.__class__.__name__ == 'Mixer':
-            # hasattr(uo, 'Inlets'):
-                for inlet in uo.Inlets:
-                    if inlet.y_upstream is None:
-                        raw_inlets.append(inlet)
+        inlet_count = 1
+        out = {}
 
-                        if uo.oper_mode == 'Batch':
-                            time_inlets.append(1)
-                        elif inlet.DynamicInlet is not None:
-                            time_inlets.append(uo.timeProf)
-                        else:
-                            elapsed = uo.timeProf[-1] - uo.timeProf[0]
-                            time_inlets.append(elapsed)
-
-                        inlets_ids.append(uo.id_uo)
-
-            # Initial holdups
-            if hasattr(uo, '__original_phase__'):
-                if uo.oper_mode == 'Continuous':
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-                elif not uo.material_from_upstream:
-                    raw_holdups.append(uo.__original_phase__)
-                    holdups_ids.append(uo.id_uo)
-
-        return (raw_inlets, raw_holdups, time_inlets, inlets_ids,
-                holdups_ids)
-
-    def GetRawMaterials(self, include_holdups=True, steady_state=False):
-        name_equip = self.uos_instances.keys()
-
-        # Raw materials
-        (raw_flows, raw_holdups, time_flows,
-         flow_idx, holdup_idx) = self.get_raw_objects()
-
-        # Flows
-        fracs = []
-        masses_inlets = np.zeros(len(raw_flows))
-        for ind, obj in enumerate(raw_flows):
-            if hasattr(obj, 'DynamicInlet') and obj.DynamicInlet is not None:
-                # qty_str = ('mass_flow', 'mole_flow')
-                inputs = obj.evaluate_inputs(time_flows[ind])
-
-                if 'mole_flow' in inputs:
-                    flow_profile = inputs['mole_flow'] * obj.mw_av / 1000
-                else:
-                    flow_profile = inputs['mass_flow']
-                # for string in qty_str:
-                #     massprof = mass_profile[string]
-                #     isarray = isinstance(massprof, np.ndarray)
-
-                #     if isarray:
-                #         qty_unit = string
-                #         mass_profile = massprof
-                #         break
-                # if qty_unit == 'mole_flow':
-
-                if steady_state:
-                    masses_inlets[ind] = flow_profile[-1] * \
-                        (time_flows[ind][-1] - time_flows[ind][0])
-                else:
-                    masses_inlets[ind] = trapezoidal_rule(time_flows[ind],
-                                                          flow_profile)
-
-                # pass
-
+        for inlet in inlets:
+            if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
+                streams = inlet.Phases
             else:
-                try:
-                    masses_inlets[ind] = obj.mass_flow * time_flows[ind]
-                except:
-                    masses_inlets[ind] = obj.mass
+                streams = [inlet]
 
-                # masses_inlets[ind] *= time_flows
+            di = {}
+            for stream in streams:
+                fields = ['temp', 'pres']
 
-            fracs.append(obj.mass_frac)
+                name_stream = get_name_object(stream)
 
-        fracs = np.array(fracs)
+                di[name_stream] = {}
+                inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
 
-        inlet_comp_mass = (fracs.T * masses_inlets).T
+                dens = stream.getDensity(basis=basis)
 
-        holdup_comp_mass = []
-        if include_holdups:
-            fracs = []
-            masses_holdups = np.zeros(len(raw_holdups))
-            for ind, obj in enumerate(raw_holdups):
-                if isinstance(obj, list):
-                    masa = [elem.mass for elem in obj]
-                    masa = np.array(masa)
+                if uo.oper_mode == 'Batch':
+                    elapsed_time = 1
+                elif inlet.DynamicInlet is None:
+                    time = uo.result.time[-1] - uo.result.time[0]
+                    if basis == 'mass':
+                        flow = inlet.mass_flow
+                        total = flow*time
 
-                    frac = [elem.mass_frac for elem in obj]
-                    frac = (np.array(frac).T * masa).T
-                    frac = frac.sum(axis=0)
+                        di[name_stream] = {'mass': total}
+                        fields += ['mass_frac', 'mass_flow', 'vol_flow']
 
-                    mass = 1
+                    else:
+                        flow = inlet.mole_flow
+                        total = flow*time
+
+                        di[name_stream] = {'moles': total}
+                        fields += ['mole_frac', 'mole_flow', 'vol_flow']
+
                 else:
-                    mass = obj.mass
-                    frac = obj.mass_frac
+                    time = uo.result.time
+                    inputs = uo.Inlet.DynamicInlet.evaluate_inputs(time)
 
-                masses_holdups[ind] = mass
-                fracs.append(frac)
+                    if basis == 'mass':
+                        if 'mass_flow' in inputs:
+                            flow = inputs['mass_flow']
+                        else:
+                            flow = inputs['mole_flow'] * inlet.mw_av / 1000
 
-            fracs = np.array(fracs)
+                        total = trapezoidal_rule(time, flow)
 
-            holdup_comp_mass = (fracs.T * masses_holdups).T
+                        di[name_stream] = {'mass': total}
 
-        if len(holdup_comp_mass) == 0:
-            holdup_comp_mass = np.zeros((len(name_equip),
-                                         len(self.NamesSpecies))
-                                        )
+                        fields += ['mass_frac']
 
-            holdup_idx = name_equip
+                    elif basis == 'mole':
+                        if 'mole_flow' in inputs:
+                            flow = inputs['mole_flow']
+                        else:
+                            flow = inputs['mass_flow'] / inlet.mw_av * 1000
 
-        if len(inlet_comp_mass) == 0:
-            inlet_comp_mass = np.zeros((len(name_equip),
-                                        len(self.NamesSpecies))
-                                       )
+                        total = trapezoidal_rule(time, flow)
 
-            flow_idx = name_equip
+                        di[name_stream] = {'moles': total}
+                        fields += ['mole_frac']
 
-        flow_df = pd.DataFrame(inlet_comp_mass, index=flow_idx,
-                               columns=self.NamesSpecies)
+                vol = total / dens
+                if basis == 'mole':
+                    vol *= 1/1000
 
-        holdup_df = pd.DataFrame(holdup_comp_mass, index=holdup_idx,
-                                 columns=self.NamesSpecies)
+                di[name_stream]['vol'] = vol
 
-        raw_df = pd.concat((flow_df, holdup_df), axis=0,
-                           keys=('inlets', 'holdups'))
+            from_inlet = self.get_from_phases(inlet, fields)
+
+            for key in from_inlet:
+                di[key].update(from_inlet[key])
+
+            out['Inlet_%i' % inlet_count] = di
+
+            inlet_count += 1
+
+        return out
+
+    def get_holdup(self, uo, basis='mass'):
+        out = {}
+
+        if hasattr(uo, '__original_phase__'):
+            phases = uo.__original_phase__
+
+            if basis == 'mass':
+                fields = ['mass', 'mass_frac']
+            elif basis == 'mole':
+                fields = ['moles', 'mole_frac']
+
+            fields += ['temp', 'pres', 'vol']
+
+            if not phases.transferred_from_uo:
+                out = self.get_from_phases(phases, fields)
+                out = {'Initial_holdup': out}
+
+        return out
+
+    def GetRawMaterials(self, basis='mass', totals=True, steady_state=False):
+
+        out = {}
+        for name, uo in self.uos_instances.items():
+            out[name] = {}
+
+            raw_inlets = self.get_raw_inlets(uo, basis=basis)
+            raw_holdup = self.get_holdup(uo, basis=basis)
+
+            for second in raw_inlets:  # flatten multidimensional states
+                for third in raw_inlets[second]:
+                    di_raw = flatten_dict_fields(raw_inlets[second][third],
+                                                 index=self.NamesSpecies)
+                    raw_inlets[second][third] = di_raw
+
+            for second in raw_holdup:
+                for third in raw_holdup[second]:
+                    di_hold = flatten_dict_fields(raw_holdup[second][third],
+                                                  index=self.NamesSpecies)
+                    raw_holdup[second][third] = di_hold
+
+            out[name].update(raw_inlets)
+            out[name].update(raw_holdup)
+
+        di_multiindex = {(i, j, k): out[i][j][k]
+                         for i in out
+                         for j in out[i]
+                         for k in out[i][j]}
+
+        multi_index = pd.MultiIndex.from_tuples(di_multiindex)
+        raw_df = pd.DataFrame(list(di_multiindex.values()), index=multi_index)
+
+        if totals:
+            if basis == 'mass':
+                mass_frac = raw_df.filter(regex='mass_frac').values
+
+                mass = raw_df['mass'].values[:, np.newaxis]
+                mass_comp = mass_frac * mass
+
+                cols = ['mass_%s' % comp for comp in self.NamesSpecies]
+                cols = ['mass'] + cols
+
+                raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
+                                      columns=cols, index=raw_df.index)
+
+            elif basis == 'moles':
+                mole_frac = raw_df.filter(regex='mole_frac').values
+                moles = raw_df['moles'].values[:, np.newaxis]
+                moles_comp = mole_frac * moles
+
+                cols = ['moles_%s' % comp for comp in self.NamesSpecies]
+                cols = ['moles'] + cols
+
+                raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
+                                      columns=cols, index=raw_df.index)
+
         return raw_df
 
     def GetDuties(self, full_output=False):
