@@ -11,8 +11,10 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.general_interpolation import define_initial_state
 
-from PharmaPy.Commons import unpack_states
+from PharmaPy.Commons import unpack_states, reorder_pde_outputs, eval_state_events, handle_events
+from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Results import DynamicResult
+from PharmaPy.NameAnalysis import get_dict_states
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
@@ -172,11 +174,17 @@ class DeliquoringStep:
         self.delta_z = np.diff(z_grid_red)
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
-
+        
+        self.name_species = self.Liquid_1.name_species
+        
+        self.nonmenclature()
+        
     def nomenclature(self):
         self.names_states_in = ['mass_conc', 'temp']
         self.names_states_out = self.names_states_in
-
+        
+        
+        
     def unit_model(self, theta, states):
         states_reord = states.reshape(-1, self.Liquid_1.num_species + 1)
         sat_red = states_reord[:, 0]
