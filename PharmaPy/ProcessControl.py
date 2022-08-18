@@ -13,18 +13,18 @@ def analyze_controls(di):
     for key, val in di.items():
         if isinstance(val, dict) and key != 'kwargs':
             if 'fun' not in val:
-                raise ValueError("'%s' dictionary must have a 'function' field")
+                raise KeyError("'%s' dictionary must have a 'fun' field")
             elif not callable(val['fun']):
                 raise TypeError(
                     "Object passed to the 'fun' field must be a "
-                    "callable with signature fun(time, args, kwargs)")
+                    "callable with signature fun(time, *args, **kwargs)")
 
             out = val
         else:
             if not callable(val):
                 raise TypeError(
-                    "Object passed to the 'function' field must be a "
-                    "callable with signature fun(time, args, kwargs)")
+                    "Object passed to the 'fun' field must be a "
+                    "callable with signature fun(time, *args, **kwargs)")
 
             out = {'fun': val}
 

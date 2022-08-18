@@ -60,8 +60,7 @@ class _BaseCryst:
     # @decor_states
 
     def __init__(self, mask_params,
-                 method, target_comp, scale, vol_tank,
-                 controls, args_control, cfun_solub,
+                 method, target_comp, scale, vol_tank, controls,
                  adiabatic, rad_zero,
                  reset_states,
                  h_conv, vol_ht, basis, jac_type,
@@ -87,9 +86,6 @@ class _BaseCryst:
             controlled and the value indicating the function to use
             while computing the variable. Functions are of the form
             f(time) = state_value
-        args_control : TODO (Maybe no longer used?)
-        cfun_solub: callable
-            User defined function for the solubility fucntion : func(conc)
         adiabatic : bool (optional, default=True)
             Boolean value indicating whether the heat transfer of
             the crystallization is considered.
@@ -136,11 +132,6 @@ class _BaseCryst:
         self.basis = basis
         self.adiabatic = adiabatic
 
-        if cfun_solub is None:
-            self.cfun_solub = lambda conc: 1
-        else:
-            self.cfun_solub = cfun_solub
-
         # ---------- Building objects
         self._Phases = None
         self._Kinetics = None
@@ -161,8 +152,6 @@ class _BaseCryst:
         # Controls
         if controls is None:
             self.controls = {}
-            self.args_control = ()
-            self.kwargs_control = {}
         else:
             self.controls = analyze_controls(controls)
 
@@ -1168,7 +1157,7 @@ class _BaseCryst:
                        enumerate(self.Kinetics.name_params)
                        if self.mask_params[ind]]
 
-        fig, axis = plot_sens(self.timeProf, sens_data,
+        fig, axis = plot_sens(self.result.time, sens_data,
                               name_states=name_states,
                               name_params=name_params,
                               mode=mode)
@@ -1230,9 +1219,7 @@ class _BaseCryst:
 class BatchCryst(_BaseCryst):
     def __init__(self, target_comp, mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
-                 controls=None, params_control=None,
-                 cfun_solub=None,
-                 adiabatic=False,
+                 controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None, state_events=None, param_wrapper=None):
@@ -1255,8 +1242,6 @@ class BatchCryst(_BaseCryst):
             which is controlled and the value indicating the function
             to use while computing the varible. Functions are of the form
             f(time) = state_value
-        params_control :
-            TODO
         cfun_solub: callable
             User defined function for the solubility function :
             func(conc)
@@ -1281,8 +1266,7 @@ class BatchCryst(_BaseCryst):
         """
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
-                         controls, params_control, cfun_solub,
-                         adiabatic,
+                         controls, adiabatic,
                          rad_zero, reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events, param_wrapper)
 
@@ -1402,6 +1386,8 @@ class BatchCryst(_BaseCryst):
             return jacobian
 
     def jac_params(self, time, states, params):
+
+        state_di = unpack_states(states, self.dim_states, self.name_states)
 
         control = self.controls['temp']
         temp = control['fun'](time, *control['args'], **control['kwargs'])
@@ -1649,16 +1635,14 @@ class MSMPR(_BaseCryst):
     def __init__(self, target_comp,
                  mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
-                 controls=None, params_control=None,
-                 cfun_solub=None, adiabatic=False, rad_zero=0,
+                 controls=None, adiabatic=False, rad_zero=0,
                  reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None, num_interp_points=3, state_events=None,
                  param_wrapper=None):
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
-                         controls, params_control,
-                         cfun_solub, adiabatic, rad_zero,
+                         controls, adiabatic, rad_zero,
                          reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events, param_wrapper)
 
@@ -1990,8 +1974,7 @@ class MSMPR(_BaseCryst):
 
 class SemibatchCryst(MSMPR):
     def __init__(self, target_comp, vol_tank=None, mask_params=None,
-                 method='1D-FVM', scale=1, controls=None,
-                 params_control=None, cfun_solub=None, adiabatic=False,
+                 method='1D-FVM', scale=1, controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
                  state_events=None, param_wrapper=None):
@@ -2017,9 +2000,6 @@ class SemibatchCryst(MSMPR):
             f(time) = state_value
         params_control :
             TODO
-        cfun_solub: callable
-            User defined function for the solubility function :
-            func(conc)
         adiabatic : bool (optional, default =True)
             Boolean value indicating whether the heat transfer of
             the crystallization is considered.
@@ -2041,8 +2021,7 @@ class SemibatchCryst(MSMPR):
         """
         super().__init__(target_comp, mask_params,
                          method, scale, vol_tank,
-                         controls, params_control,
-                         cfun_solub, adiabatic, rad_zero,
+                         controls, adiabatic, rad_zero,
                          reset_states,
                          h_conv, vol_ht, basis,
                          jac_type, num_interp_points, state_events,
