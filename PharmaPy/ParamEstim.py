@@ -441,13 +441,14 @@ class ParameterEstimation:
             self.residuals = residuals
 
         # Return objective
+        residual_out = np.concatenate([ar.T.ravel()
+                                       for ar in weighted_residuals])
         if residual_vec:
-            residual_out = np.concatenate([ar.T.ravel()
-                                           for ar in weighted_residuals])
             return residual_out
         else:
-            residual = 1/2 * residuals.T.dot(residuals)
-            return residual
+            residual_out = 1/2 * np.dot(residual_out, residual_out)
+
+        return residual_out
 
     def get_gradient(self, params, jac_matrix=False):
         if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
@@ -465,7 +466,9 @@ class ParameterEstimation:
         if jac_matrix:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
-            gradient = jacobian.T.dot(self.residuals)  # 1D
+            res = np.concatenate([a.T.ravel() for a in self.residuals])
+            # gradient = jacobian.T.dot(self.residuals)  # 1D
+            gradient = jacobian.T.dot(res)  # 1D
             return gradient
 
     def get_cond_number(self, sens_matrix):
@@ -509,7 +512,8 @@ class ParameterEstimation:
 
             opt_par = result['x']
 
-            final_sens = np.vstack(self.sens_runs)[:, self.map_variable].T
+            # final_sens = np.vstack(self.sens_runs)[:, self.map_variable].T
+            final_sens = np.vstack(self.sens_runs)
             final_fun = np.concatenate(self.resid_runs)
             info = {'jac': final_sens, 'fun': final_fun}
 

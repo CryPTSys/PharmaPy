@@ -971,6 +971,12 @@ class _BaseCryst:
 
         if isinstance(modify_phase, dict):
 
+            if 'Liquid' not in modify_phase and 'Solid' not in modify_phase:
+                raise ValueError(
+                    "Phase modifier must specify the targeted phase, i.e. "
+                    "must have an additional layer with keys 'Liquid_1' "
+                    "and/or 'Solid_1'")
+
             liquid_mod = modify_phase.get('Liquid', {})
             solid_mod = modify_phase.get('Solid', {})
 
