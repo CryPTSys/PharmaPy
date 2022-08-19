@@ -113,19 +113,19 @@ class Carousel:
 class DeliquoringStep:
     def __init__(self, num_nodes, diam_unit=0.01,
                  resist_medium=1e9):
-        
+
         """
-        
+
         Parameters
         ----------
         number_nodes : float
-            Number of apatial discretization of the cake along the axial 
+            Number of apatial discretization of the cake along the axial
             coordinate.
         diam_unit : float (optional, default=0.01)
             Diameter of the dryer's cross section [m]
         resist_medium : float (optional, default=1e9)
             Mesh resistance of filter in dryer. [m**-1]
-            
+
         """
 
         self.num_nodes = num_nodes
@@ -174,7 +174,7 @@ class DeliquoringStep:
         self.delta_z = np.diff(z_grid_red)
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
-        
+
         self.states_di = {
             'mass_conc' : {# 'index': index_z,
                          'dim':2, 'units': 'kg/m3', 'type':'diff'},
@@ -182,25 +182,25 @@ class DeliquoringStep:
                            'dim': 1,
                            'units': '', 'type': 'diff'},
                 }
-        
+
         self.fstates_di = {
             'mean_saturation_value' : {# 'index': index_z,
                      'dim': 1, 'units': '',}}
-        
+
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
-        
+
         self.name_species = self.Liquid_1.name_species
-        
+
         self.nonmenclature()
-        
+
     def nomenclature(self):
-        self.names_states_in = ['mass', 'temp', 
+        self.names_states_in = ['mass', 'temp',
                                 'mass_frac', 'total_distrib']  #from filter states_out
         self.names_states_out = self.names_states_in
-        
+
         self.name_states = ['mass_conc', 'saturation', 'mean_saturation_value']
-        
+
     def unit_model(self, theta, states):
         states_reord = states.reshape(-1, self.Liquid_1.num_species + 1)
         sat_red = states_reord[:, 0]
@@ -211,12 +211,12 @@ class DeliquoringStep:
         return model_eqns
 
     def material_balance(self, theta, sat_star, conc_star):
-        
+
         """
-        
+
         Calculate material balance for a non-dimensional version of the
         governing equations. Based on Wakeman
-        
+
         """
 
         lambd = 5
@@ -352,17 +352,17 @@ class DeliquoringStep:
 
     def retrieve_results(self, theta, states):
         num_species = self.Liquid_1.num_species
-        
+
         time = theta/ self.theta_conv
-        
+
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
-        
+
         inputs = self.get_inputs(time)['Inlet']
-        
+
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
-        
+
         s_red = states[:, ::num_species + 1]
         satProf = s_red * (1 - self.sat_inf) + self.sat_inf
 
@@ -388,15 +388,15 @@ class DeliquoringStep:
 
         self.timeProf = time
         self.satProf = satProf
-        
+
         dp['time'] = time
         dp['z'] = self.z_centers
 
         self.mean_sat = trapezoidal_rule(self.z_centers, s_red.T) * \
             (1 - self.sat_inf) + self.sat_inf
-            
+
         # dp['mean_saturation_value'] = self.mean_sat
-        
+
         concPerVolElement = np.split(states, self.num_nodes, axis=1)
         concPerVolElement = [
             array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
@@ -406,9 +406,9 @@ class DeliquoringStep:
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
-        
+
         dp['mass_conc'] = self.concPerSpecies
-        
+
         last_state = []
         for array in self.concPerSpecies:
             last_state.append(array[-1])
@@ -436,22 +436,22 @@ class DeliquoringStep:
         fig_size : tuple (optional, default = None)
             Size of the figure to be populated.
         mean_sat : bool (optional, default = True)
-            Boolean value indicating whether the 
+            Boolean value indicating whether the
             averaged saturation value is plotted over the time.
         time : float (optional, default = None)
-            Integer value indicating the time in which 
+            Integer value indicating the time in which
             axial saturation value is calculated.
         z_star : float (optional, default = None)
             The axial coordinate of cake of interest to be calculated.
         jump : int (optional, default = 20)
             The number of sample to be skipped on the plot.
         pick_comp : list (optional, default = None)
-            List contains the index of compounds of interest 
+            List contains the index of compounds of interest
             in the liquid phase to be calculated.
 
         """
         fig, axis = plt.subplots(2, 1, figsize=fig_size, sharex=True)
-        
+
         if pick_comp is None:
             pick_comp = np.arange(len(self.Liquid_1.name_species))
 
@@ -606,22 +606,22 @@ class DeliquoringStep:
 class Filter:
     def __init__(self, station_diam, alpha=None, resist_medium=1e9,
                  log_params=False):
-        
+
         """
-        
+
         Parameters
         ----------
-        
-        station_diam : float 
+
+        station_diam : float
             Diameter of the filter's cross section [m]
         alpha : float
-            Specific cake resistance of filter cake. [m kg**-1] 
+            Specific cake resistance of filter cake. [m kg**-1]
         resist_medium : float (optional, default=1e9)
             Mesh resistance in filter. [m**-1]
         log_params : bool (optional, default = False)
-            If true, alpha and resist_medium keyword should be 
+            If true, alpha and resist_medium keyword should be
             provided in logarithmic scale.
-        
+
         """
         self._Phases = None
         self.material_from_upstream = False
@@ -695,8 +695,8 @@ class Filter:
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
 
-        self.nonmenclature()
-        
+        self.nomenclature()
+
     def nomenclature(self):
         self.names_states_in = ['mass', 'temp', 'mass_frac', 'total_distrib']
         self.names_states_out = self.names_states_in
@@ -890,21 +890,21 @@ class Filter:
 
     def plot_profiles(self, time_div=1, black_white=False, **fig_kwargs):
         """
-        
+
         Parameters
         ----------
-        
+
         fig_size : tuple (optional, default = None)
             Size of the figure to be populated.
         time_div : float (optional, default = 1)
-            The float value used to scale time value in 
+            The float value used to scale time value in
             plotting by dividing the simulated time.
         black_white : bool (optional, default = False)
-            Boolean value indicating whether the figure 
+            Boolean value indicating whether the figure
             is presented in black and white style.
-            
+
         """
-            
+
         mass_filtr, mass_up = self.massProf.T
         time_plot = self.timeProf / time_div
 
@@ -945,29 +945,29 @@ class Filter:
 class DisplacementWashing:
     def __init__(self, solvent_idx, num_nodes, diam_unit=None,
                  resist_medium=1e9, k_ads=0):
-        
+
         """
-        
+
         Parameters
         ----------
-        
-        solvent_idx : int 
-            Integer value indicating the index of the compounds 
-            used as solvent. Index correpond to the coumpounds 
+
+        solvent_idx : int
+            Integer value indicating the index of the compounds
+            used as solvent. Index correpond to the coumpounds
             order in the physical properties .json file.
         number_nodes : float
-            Number of apatial discretization of the cake along the axial 
+            Number of apatial discretization of the cake along the axial
             coordinate.
         diam_unit : float (optional, default=0.01)
             Diameter of the dryer's cross section [m]
         resist_medium : float (optional, default=2.22e9)
             Mesh resistance of filter in dryer. [m**-1]
         k_ads : float (optional, default = 0)
-            Equilibirum coefficient between main flow concentration 
-            and overall partical concentration.Used to calculate adsoprtion 
+            Equilibirum coefficient between main flow concentration
+            and overall partical concentration.Used to calculate adsoprtion
             factor.The default value '0' means no adsorption occurs on the solid phase.
             (Lapidus and Amundson, 1952)
-            
+
         """
         self.max_exp = np.log(np.finfo('d').max)
         self.satur = 1
@@ -1198,28 +1198,28 @@ class DisplacementWashing:
 
     def plot_profiles(self, fig_size=None, z_val=None, time=None,
                       pick_idx=None):
-        
+
         """
-        
+
         Parameters
         ----------
-        
+
         fig_size : tuple (optional, default = None)
             Size of the figure to be populated.
         z_val : int (optional, default=None)
-            Integer value indicating the axial position of cake coordniate 
+            Integer value indicating the axial position of cake coordniate
             at which calculated washing outputs to be plotted.
         time : int (optional, default=None)
-            Integer value indicating the time on which calculated washing 
+            Integer value indicating the time on which calculated washing
             outputs to be plotted.
         pick_idx : tuple of lists (optional, default=None)
             List of index of components to include in plotting.
             Length of tuple is 2. Index 0 and 1 corresponds to index of compounds
-            in liquid phase and gas phase respectively. 
+            in liquid phase and gas phase respectively.
             If None, all the existing components are plotted
-        
+
         """
-        
+
         fig, ax = plt.subplots(figsize=fig_size)
 
         if pick_idx is None:

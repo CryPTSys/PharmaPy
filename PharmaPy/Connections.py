@@ -172,7 +172,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
     remaining = get_remaining_states(dict_states_in, stream, inputs, time)
 
     for key in dict_states_in:
-        inputs[key] = inputs[key] | remaining[key]
+        inputs[key] = {**inputs[key], **remaining[key]}
 
     return inputs
 
