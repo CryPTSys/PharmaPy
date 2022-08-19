@@ -114,7 +114,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
             for state in di:
                 if state not in inlets[phase]:
                     sub_phase = getattr(stream, phase)
-                    field = getattr(sub_phase, state)
+                    field = getattr(sub_phase, state, None)
 
                     if field is None:
                         field = get_missing_field(

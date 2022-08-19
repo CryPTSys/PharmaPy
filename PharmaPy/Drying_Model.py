@@ -71,6 +71,7 @@ class Drying:
         self.k_y = 1e-3  # mol/s/m**2 (Seader, Separation process)
         # self.h_T_j = 30  # W/m**2/K
         self.h_T_j = 10  # W/m**2/K
+        self.h_T_loss = 30
 
         self._Phases = None
         self._Inlet = None
@@ -349,8 +350,8 @@ class Drying:
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = rho_gas / self.rho_liq * cpg_mix
-        # heat_loss = 14626 * (temp_gas - (273+22))
-        heat_loss = 0  # This line is for assumption of no heat loss
+        heat_loss = self.h_T_loss * self.a_V * (temp_gas - (273+22))
+        # heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
 
@@ -373,7 +374,7 @@ class Drying:
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
-        dTcond_dt = (-drying_terms + heat_transf) / denom_cond
+        dTcond_dt = (-drying_terms + heat_transf - heat_loss) / denom_cond
 
 
         if return_terms:
@@ -485,12 +486,12 @@ class Drying:
         # self.a_V = 6 / sauter_diam  # m**2/m**3
         self.a_V = moments[2] * (1 - porosity) / moments[3]
         # Gas pressure
-        deltaP_media = deltaP*self.resist_medium / \
-            (alpha*rho_sol*self.cake_height + self.resist_medium)
-
         # deltaP_media = deltaP*self.resist_medium / \
-        #     (alpha*rho_sol*(1 - porosity)*self.cake_height +
-        #      self.resist_medium)
+        #     (alpha*rho_sol*self.cake_height + self.resist_medium)
+
+        deltaP_media = deltaP*self.resist_medium / \
+            (alpha*rho_sol*(1 - porosity)*self.cake_height +
+              self.resist_medium)
         deltaP -= deltaP_media
         self.deltaP = deltaP
         p_top = p_atm + deltaP
