@@ -176,7 +176,7 @@ class DeliquoringStep:
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
         
         self.states_di = {
-            'mass_con' : {# 'index': index_z,
+            'mass_conc' : {# 'index': index_z,
                          'dim':2, 'units': 'kg/m3', 'type':'diff'},
             'saturation' :{# 'index': index_z,
                            'dim': 1,
@@ -391,7 +391,6 @@ class DeliquoringStep:
         
         dp['time'] = time
         dp['z'] = self.z_centers
-        dp['saturation'] = self.satProf
 
         self.mean_sat = trapezoidal_rule(self.z_centers, s_red.T) * \
             (1 - self.sat_inf) + self.sat_inf
