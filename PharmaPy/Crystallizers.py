@@ -1738,7 +1738,7 @@ class MSMPR(_BaseCryst):
         self._Inlet.num_interpolation_points = self.num_interp_points
 
     def _get_tau(self):
-        time_upstream = getattr(self.Inlet, 'time_upstream')
+        time_upstream = getattr(self.Inlet, 'time_upstream', None)
         if time_upstream is None:
             time_upstream = [0]
 

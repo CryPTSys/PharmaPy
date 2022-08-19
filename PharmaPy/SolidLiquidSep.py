@@ -11,7 +11,7 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.general_interpolation import define_initial_state
 
-from PharmaPy.Commons import unpack_states, reorder_pde_outputs, eval_state_events, handle_events
+from PharmaPy.Commons import unpack_states, reorder_pde_outputs, eval_state_events, handle_events, unpack_discretized
 from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Results import DynamicResult
 from PharmaPy.NameAnalysis import get_dict_states
@@ -175,15 +175,31 @@ class DeliquoringStep:
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
         
+        self.states_di = {
+            'mass_con' : {# 'index': index_z,
+                         'dim':2, 'units': 'kg/m3', 'type':'diff'},
+            'saturation' :{# 'index': index_z,
+                           'dim': 1,
+                           'units': '', 'type': 'diff'},
+                }
+        
+        self.fstates_di = {
+            'mean_saturation_value' : {# 'index': index_z,
+                     'dim': 1, 'units': '',}}
+        
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+        
         self.name_species = self.Liquid_1.name_species
         
         self.nonmenclature()
         
     def nomenclature(self):
-        self.names_states_in = ['mass_conc', 'temp']
+        self.names_states_in = ['mass', 'temp', 
+                                'mass_frac', 'total_distrib']  #from filter states_out
         self.names_states_out = self.names_states_in
         
-        
+        self.name_states = ['mass_conc', 'saturation', 'mean_saturation_value']
         
     def unit_model(self, theta, states):
         states_reord = states.reshape(-1, self.Liquid_1.num_species + 1)
@@ -336,6 +352,17 @@ class DeliquoringStep:
 
     def retrieve_results(self, theta, states):
         num_species = self.Liquid_1.num_species
+        
+        time = theta/ self.theta_conv
+        
+        indexes = {key: self.states_di[key].get('index', None)
+                   for key in self.name_states}
+        
+        inputs = self.get_inputs(time)['Inlet']
+        
+        dp = unpack_discretized(states, self.dim_states, self.name_states,
+                                indexes=indexes, inputs=inputs)
+        
         s_red = states[:, ::num_species + 1]
         satProf = s_red * (1 - self.sat_inf) + self.sat_inf
 
@@ -359,14 +386,18 @@ class DeliquoringStep:
             mass_j.append(mass_sp)
             mass_bar_j.append(massbar)
 
-        timeProf = theta / self.theta_conv
-
-        self.timeProf = timeProf
+        self.timeProf = time
         self.satProf = satProf
+        
+        dp['time'] = time
+        dp['z'] = self.z_centers
+        dp['saturation'] = self.satProf
 
         self.mean_sat = trapezoidal_rule(self.z_centers, s_red.T) * \
             (1 - self.sat_inf) + self.sat_inf
-
+            
+        # dp['mean_saturation_value'] = self.mean_sat
+        
         concPerVolElement = np.split(states, self.num_nodes, axis=1)
         concPerVolElement = [
             array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
@@ -376,7 +407,9 @@ class DeliquoringStep:
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
-
+        
+        dp['mass_conc'] = self.concPerSpecies
+        
         last_state = []
         for array in self.concPerSpecies:
             last_state.append(array[-1])
@@ -663,6 +696,8 @@ class Filter:
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
 
+        self.nonmenclature()
+        
     def nomenclature(self):
         self.names_states_in = ['mass', 'temp', 'mass_frac', 'total_distrib']
         self.names_states_out = self.names_states_in
