@@ -884,26 +884,27 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, spectra=None,
+    def __init__(self, func, param_seed, time_data, spectra,
                  global_analysis=True,
-                 args_fun=None,
+                 args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
                  measured_ind=None, weight_matrix=None,
                  name_params=None, name_states=None):
 
-        super().__init__(func, param_seed, time_data, spectra,
-                         args_fun, optimize_flags, jac_fun,
-                         dx_finitediff, measured_ind, weight_matrix,
+        super().__init__(func, param_seed, time_data, spectra, measured_ind,
+                         args_fun, kwargs_fun, optimize_flags, jac_fun,
+                         dx_finitediff, weight_matrix,
                          name_params, name_states)
 
         self.fit_spectra = True
-        self.spectra = [data.T for data in self.y_data]
+        self.spectra = [data for data in self.y_data]
         self.len_spectra = [data.shape[0] for data in self.spectra]
         self.size_spectra = [data.size for data in self.spectra]
 
         self.spectra_tot = np.vstack(self.spectra)
-        self.stdev_tot = np.concatenate(self.stdev_data)
+        # self.stdev_tot = np.concatenate(self.stdev_data)
+        self.sigma_inv = np.eye(self.spectra[0].shape[1])
 
         self.global_analysis = global_analysis
 
@@ -934,7 +935,7 @@ class MultipleCurveResolution(ParameterEstimation):
         c_runs = []
         sens_conc = []
         for ind in range(self.num_datasets):
-            result = self.function(params, self.x_fit[ind],
+            result = self.function(params, self.x_model[ind],
                                    reorder=False,
                                    *self.args_fun[ind])
 
@@ -968,21 +969,27 @@ class MultipleCurveResolution(ParameterEstimation):
             sens = self.get_sens_projection(conc_tot, conc_plus,
                                             sens_tot, spectra_pred)
 
-        residuals = (spectra_pred - self.spectra_tot).T.ravel() / \
-            self.stdev_tot
+        residuals = (spectra_pred - self.spectra_tot)
+        weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
         trim_sens = np.cumsum(self.size_spectra)[:-1]
 
         y_runs = np.split(spectra_pred, trim_y, axis=0)
-        y_runs = [array.T.ravel() for array in y_runs]
+        # y_runs = [array.T.ravel() for array in y_runs]
 
         sens_runs = np.split(sens, trim_sens, axis=0)
-        resid_runs = np.split(residuals, trim_sens)
+        resid_runs = np.split(residuals, trim_y, axis=0)
+
+        self.resid_runs = resid_runs
+        self.y_runs = y_runs
+        self.sens_runs = sens_runs
 
         self.epsilon_mcr = absorptivity_pure
 
-        return y_runs, resid_runs, sens_runs
+        weighted_resid = weighted_resid.T.ravel()
+
+        return y_runs, weighted_resid , sens_runs
 
     def get_local_analysis(self, params):
         y_runs = []
@@ -990,6 +997,8 @@ class MultipleCurveResolution(ParameterEstimation):
         sens_runs = []
         c_runs = []
         epsilon_mcr = []
+
+        weighted_resid = []
 
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_fit[ind],
@@ -1021,46 +1030,50 @@ class MultipleCurveResolution(ParameterEstimation):
                 sens = self.get_sens_projection(conc_target, conc_plus,
                                                 sens_states, spectra_pred)
 
-            resid = (spectra_pred - self.spectra[ind]).T.ravel()
-            resid_run = resid / self.stdev_data[ind]
+            resid_run = spectra_pred - self.spectra[ind]
+            weighted_resid = np.dot(resid_run, self.sigma_inv)
 
             y_runs.append(spectra_pred.T.ravel())
             resid_runs.append(resid_run)
             sens_runs.append(sens)
 
+        self.resid_runs = resid_runs
+        self.y_runs = y_runs
+        self.sens_runs = sens_runs
+
         self.epsilon_mcr = epsilon_mcr
 
-        return y_runs, resid_runs, sens_runs
+        weighted_resid = [elem.T.ravel() for elem in weighted_resid]
+        weighted_resid = np.concatenate(weighted_resid)
+
+        return y_runs, weighted_resid, sens_runs
 
     def get_objective(self, params, residual_vec=False):
-        # Reconstruct parameter set with fixed and non-fixed indexes
-        params = self.reconstruct_params(params)
 
         if type(self.params_iter) is list:
             self.params_iter.append(params)
 
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
+
         if self.global_analysis:
-            y_runs, resid_runs, sens_runs = self.get_global_analysis(params)
+            y_runs, weighted_resid, sens_runs = self.get_global_analysis(params)
 
         else:
-            y_runs, resid_runs, sens_runs = self.get_local_analysis(params)
-
-        self.y_runs = y_runs
-        self.sens_runs = sens_runs
-        self.resid_runs = resid_runs
+            y_runs, weighted_resid, sens_runs = self.get_local_analysis(params)
 
         if type(self.objfun_iter) is list:
             objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
             self.objfun_iter.append(objfun_val)
 
-        residuals = np.concatenate(resid_runs)
-        self.residuals = residuals
+        # residuals = np.concatenate(resid_runs)
+        self.residuals = weighted_resid
 
         # Return objective
         if residual_vec:
-            return residuals
+            return weighted_resid
         else:
-            residual = 1/2 * residuals.dot(residuals)
+            residual = 1/2 * np.dot(weighted_resid, weighted_resid)
             return residual
 
 

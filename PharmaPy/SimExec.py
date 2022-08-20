@@ -302,7 +302,7 @@ class SimulationExec:
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed=param_seed, x_data=x_data, spectra=spectra,
+                param_seed=param_seed, time_data=x_data, spectra=spectra,
                 kwargs_fun=kwargs_wrapper,
                 **inputs_paramest)
         else:
