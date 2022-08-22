@@ -755,12 +755,12 @@ class BatchReactor(_BaseReactor):
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
 
-        self.derivatives = call_fn(self.elapsed_time, states_init,
-                                   *list(kw_problem.values()))
-
         vol_tank = self.Liquid_1.vol / self.vol_offset
         self.diam = (4 / np.pi * vol_tank)**(1/3)
         self.area_base = np.pi/4 * self.diam**2
+
+        self.derivatives = call_fn(self.elapsed_time, states_init,
+                                   *list(kw_problem.values()))
 
         # Set solver
         solver = CVode(problem)
