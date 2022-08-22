@@ -358,38 +358,44 @@ class DeliquoringStep:
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
-
+        
+        dp = {}
+        
         dp_reduced= unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes)
-
-        s_red = states[:, ::num_species + 1]
+        
+        s_red = dp_reduced['saturation']
+    
+        # s_red = states[:, ::num_species + 1]
         satProf = s_red * (1 - self.sat_inf) + self.sat_inf
 
         conc_diff = self.rho_j - self.conc_mean_init
 
-        concPerSpecies = []
-        mass_j = []
-        mass_bar_j = []
+        concPerSpecies = {}
+        mass_j = {}
+        mass_bar_j = {}
 
         porosity = self.CakePhase.porosity
 
-        for ind in range(num_species):
-            conc_sp = states[:, (ind + 1)::(num_species + 1)]
+        for ind, name in enumerate(indexes['mass_conc']):
+            conc_sp = dp_reduced['mass_conc'][name]
 
             conc_sp = conc_sp * conc_diff[:,ind] + self.conc_mean_init[:,ind]
             mass_sp = porosity * satProf * conc_sp
             massbar = porosity * satProf * conc_sp / \
                 ((1 - porosity)*self.rho_s + porosity*satProf*self.rho_j[ind])
 
-            concPerSpecies.append(conc_sp)
-            mass_j.append(mass_sp)
-            mass_bar_j.append(massbar)
+            concPerSpecies[name] = conc_sp
+            mass_j[name] = mass_sp
+            mass_bar_j[name] = massbar
 
         self.timeProf = time
         self.satProf = satProf
 
         dp['time'] = time
         dp['z'] = self.z_centers
+        dp['saturation'] = self.satProf
+        dp['mass_conc'] =  concPerSpecies       
         
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
         
@@ -397,24 +403,27 @@ class DeliquoringStep:
             (1 - self.sat_inf) + self.sat_inf
 
         # dp['mean_saturation_value'] = self.mean_sat
-
-        concPerVolElement = np.split(states, self.num_nodes, axis=1)
-        concPerVolElement = [
-            array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
-            for ind, array in enumerate(concPerVolElement)]
+        
+        
+        concPerVolElement = {}
+        concPerVolElement = dp_reduced['mass_conc']
+        
+        for name in indexes['mass_conc']:
+            concPerVolElement[name] = concPerSpecies[name] * conc_diff[:, ind] \
+                + self.conc_mean_init[:,ind]
 
         self.concPerSpecies = concPerSpecies
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
 
-        last_state = []
-        for array in self.concPerSpecies:
-            last_state.append(array[-1])
+        last_state = {}
+        for name in self.concPerSpecies.keys():
+            last_state[name] = self.concPerSpecies[name][-1][-1]
 
-        self.mass_conc_T = np.array(last_state).transpose()
-
-        self.Liquid_1.updatePhase(mass_conc=self.mass_conc_T)
+        self.mass_conc= list(last_state.values())
+        
+        self.Liquid_1.updatePhase(mass_conc=self.mass_conc)
 
 
         liquid_out = copy.deepcopy(self.Liquid_1)
@@ -1010,7 +1019,25 @@ class DisplacementWashing:
         classify_phases(self)  # Enumerate phases: Liquid_1,..., Solid_1, ...
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        
+        self.name_species = self.Liquid_1.name_species
+        
+        self.states_di = {
+            'saturation' :{# 'index': index_z,
+                           'dim': 1,
+                           'units': '', 'type': 'diff'},
+            'mass_conc' : {'index': self.name_species,
+                         'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'diff'} # Order of the states matters
+                }
 
+        self.fstates_di = {
+            'mean_saturation_value' : {# 'index': index_z,
+                     'dim': 1, 'units': '',}}
+
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+
+        self.nomenclature()
     @property
     def Inlet(self):
         return self._Inlet
