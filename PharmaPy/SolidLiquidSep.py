@@ -1023,16 +1023,14 @@ class DisplacementWashing:
         self.name_species = self.Liquid_1.name_species
         
         self.states_di = {
-            'saturation' :{# 'index': index_z,
-                           'dim': 1,
-                           'units': '', 'type': 'diff'},
             'mass_conc' : {'index': self.name_species,
-                         'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'diff'} # Order of the states matters
-                }
+                         'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'algebraic'}} # Order of the states matters
 
         self.fstates_di = {
-            'mean_saturation_value' : {# 'index': index_z,
-                     'dim': 1, 'units': '',}}
+            'mean_mass_conc' : {'index': self.name_species, 
+                     'dim': len(self.name_species), 'units': 'kg/m**3', 'type': 'alg'},
+            'washing_time' : {#'index': index_z,
+                              'dim':1, 'units': 's', 'type': 'alg'}}
 
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
@@ -1063,8 +1061,12 @@ class DisplacementWashing:
         return diff_eff
 
     def nomenclature(self):
-        self.names_states_in = ['mass_conc', 'temp']
+        self.names_states_in = ['mass_conc', 'temp',
+                                'mass_frac', 'total_distrib']  #from filter states_out
         self.names_states_out = self.names_states_in
+
+    def get_inputs(self, time):
+        pass
 
     def material_balance(self, z_pos, time, vel, diff, lambd):
 
@@ -1111,7 +1113,7 @@ class DisplacementWashing:
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         lambd_ads = 1 / (1 - self.k_ads + self.k_ads/epsilon)
 
-        c_zero = self.CakePhase.Liquid_1.mass_conc
+        c_zero = np.array(self.CakePhase.Liquid_1.mass_conc)
 
         # Solid
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
@@ -1167,7 +1169,11 @@ class DisplacementWashing:
             conc_star = conc_adim
 
         conc = conc_star * (c_zero - c_inlet) + c_inlet
-        conc_all = conc_adim * (c_zero - c_inlet) + c_inlet
+        conc_all = np.zeros_like(conc_adim)
+        
+        for i in range(self.num_t):
+            conc_all[:,i] = conc_adim[:,i] * (c_zero - c_inlet) + c_inlet
+        # conc_all = conc_adim * (c_zero - c_inlet) + c_inlet
 
         # Average final concentration and material balance
         integral = trapezoidal_rule(z_vals, conc_star)
@@ -1189,10 +1195,24 @@ class DisplacementWashing:
         return conc, conc_star, c_cake, c_effl
 
     def retrieve_results(self, z_coord, time_coord, conc):
+        num_species = self.Liquid_1.num_species
+        
+        indexes = {key: self.states_di[key].get('index', None)
+                   for key in self.name_states}
+        
+        conc_T = np.transpose(conc, (1, 0, 2))
+        dp= unpack_discretized(conc, self.dim_states, self.name_states,
+                               indexes=indexes)
+                
         self.zProf = z_coord
         self.timeProf = time_coord
         self.concProf = conc
-
+        
+        dp['time'] = np.asarray(self.timeProf)
+        dp['z'] = self.zProf
+        
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
+        
         if conc.ndim == 3:
             concPerVolElem = []
             for ind in range(self.num_z):
