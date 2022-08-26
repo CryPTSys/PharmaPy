@@ -37,7 +37,9 @@ class DistillationColumn:
         return
     
     def nomenclature(self):
-        self.name_states = []
+        # self.name_states = []
+        self.names_states_out = []
+        self.names_states_in = self.names_states_out
 
     @property
     def Inlet(self):
@@ -49,6 +51,15 @@ class DistillationColumn:
         self._Inlet.pres = self.col_P
         self.feed_flowrate = inlet.mole_flow
         self.z_feed = inlet.mole_frac
+        
+        num_comp = len(self.Inlet.name_species)
+        len_in = [num_comp, 1]
+        
+        if self.names_states_in:
+            states_in_dict = dict(zip(self.names_states_in, len_in))
+        else:
+            states_in_dict = []
+        self.states_in_dict = {'Inlet': states_in_dict}
 
     @property
     def Phases(self):
