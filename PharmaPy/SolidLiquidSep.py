@@ -1147,8 +1147,6 @@ class DisplacementWashing:
         # ---------- Solve
         time_total = wash_ratio * cake_height / vel_liq
 
-
-
         if time_vals is None:
             time_vals = np.linspace(eps, time_total)
         elif time_vals[-1] > time_total:
@@ -1201,7 +1199,8 @@ class DisplacementWashing:
                    for key in self.name_states}
         
         conc_T = np.transpose(conc, (1, 0, 2))
-        dp= unpack_discretized(conc, self.dim_states, self.name_states,
+        
+        dp= unpack_discretized(conc_T, self.dim_states, self.name_states,
                                indexes=indexes)
                 
         self.zProf = z_coord

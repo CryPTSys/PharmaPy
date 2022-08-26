@@ -550,6 +550,7 @@ class Drying:
 
     def retrieve_results(self, time, states):
         time = np.array(time)
+        self.timeProf = time
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
