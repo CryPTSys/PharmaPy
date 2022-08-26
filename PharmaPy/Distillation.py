@@ -2,6 +2,14 @@ import numpy as np
 from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
+from PharmaPy.Connections import get_inputs, get_inputs_new
+from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
+                              eval_state_events, handle_events,
+                              unpack_states, unpack_discretized,
+                              complete_dict_states, flatten_states,
+                              retrieve_pde_result)
+from PharmaPy.Streams import LiquidStream
+from PharmaPy.Results import DynamicResult, pprint
 from assimulo.solvers import IDA
 #Import connectivity
 
@@ -60,6 +68,11 @@ class DistillationColumn:
         else:
             states_in_dict = []
         self.states_in_dict = {'Inlet': states_in_dict}
+        
+    def get_inputs(self, time):
+        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return inputs
 
     @property
     def Phases(self):
@@ -349,9 +362,53 @@ class DistillationColumn:
                         T[i] = T_new
                                         
         self.N_feed = N_feed
+        
+        self.retrive_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
         return num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min
     
-    
+    def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
+        
+        dist_result = {'num_plates':num_plates, 'x':x.T, 'y':y.T, 'T':T, 
+                       'bot_flowrate':bot_flowrate, 'dist_flowrate':dist_flowrate, 'reflux':reflux, 
+                       'N_feed':N_feed, 'x_dist':x_dist, 'x_bot':x_bot, 'min_reflux':min_reflux, 'N_min':N_min
+            }
+        
+        self.result = pprint(dist_result)
+
+        outlet_states = retrieve_pde_result(self.result, x_name='vol',
+                                            x=self.vol_discr[-1])
+
+        outlet_states['mole_conc'] = np.column_stack(
+            list(outlet_states['mole_conc'].values()))
+
+        # dm_dt = 0
+        # mole_frac = self.Liquid_1.conc_to_frac(outlet_states['mole_conc'],
+        #                                        basis='mole')
+        # dens = self.Liquid_1.getDensity(mole_frac=mole_frac, basis='mole')
+
+        # mole_frac_in = self.Liquid_1.conc_to_frac(inputs['mole_conc'],
+        #                                           basis='mole')
+        # dens_in = self.Liquid_1.getDensity(mole_frac=mole_frac_in,
+        #                                    basis='mole')
+
+        outlet_states['vol_flow'] = np.ones_like(time) * inputs['vol_flow']
+
+        self.outputs = outlet_states
+
+        # Outlet stream
+        path = self.Inlet.path_data
+        self.Outlet = LiquidStream(path, temp=outlet_states['temp'][-1],
+                                   mole_conc=outlet_states['mole_conc'][-1],
+                                   vol_flow=outlet_states['vol_flow'][-1])
+
+        # Energy balance
+        ht_time = np.zeros_like(time)
+        for ind, row in enumerate(states):
+            ht_time[ind] = -self.unit_model(time[ind], row, enrgy_bce=True)
+
+        self.heat_profile = ht_time
+        self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
+        self.duty_type = [0, 0]
 class DynamicDistillation():
     def __init__(self, name_species, col_P, q_feed, LK, HK, 
                  per_LK, per_HK, reflux=None, num_plates=None, 
