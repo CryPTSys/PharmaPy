@@ -1093,6 +1093,9 @@ class _BaseCryst:
         # axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
         axis.set_xscale('log')
 
+        fig.texts[0].remove()
+        axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
+
         return fig, axis
 
     def plot_csd_heatmap(self, vol_based=False, **fig_kw):
