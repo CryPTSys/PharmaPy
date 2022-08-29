@@ -363,7 +363,7 @@ class DistillationColumn:
                                         
         self.N_feed = N_feed
         
-        self.retrive_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
+        #self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
         return num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min
     
     def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
@@ -373,42 +373,16 @@ class DistillationColumn:
                        'N_feed':N_feed, 'x_dist':x_dist, 'x_bot':x_bot, 'min_reflux':min_reflux, 'N_min':N_min
             }
         
-        self.result = pprint(dist_result)
+        self.result = pprint(di=dist_result, name_items=dist_result.keys(), fields=dist_result)
 
-        outlet_states = retrieve_pde_result(self.result, x_name='vol',
-                                            x=self.vol_discr[-1])
-
-        outlet_states['mole_conc'] = np.column_stack(
-            list(outlet_states['mole_conc'].values()))
-
-        # dm_dt = 0
-        # mole_frac = self.Liquid_1.conc_to_frac(outlet_states['mole_conc'],
-        #                                        basis='mole')
-        # dens = self.Liquid_1.getDensity(mole_frac=mole_frac, basis='mole')
-
-        # mole_frac_in = self.Liquid_1.conc_to_frac(inputs['mole_conc'],
-        #                                           basis='mole')
-        # dens_in = self.Liquid_1.getDensity(mole_frac=mole_frac_in,
-        #                                    basis='mole')
-
-        outlet_states['vol_flow'] = np.ones_like(time) * inputs['vol_flow']
-
-        self.outputs = outlet_states
-
-        # Outlet stream
         path = self.Inlet.path_data
-        self.Outlet = LiquidStream(path, temp=outlet_states['temp'][-1],
-                                   mole_conc=outlet_states['mole_conc'][-1],
-                                   vol_flow=outlet_states['vol_flow'][-1])
-
-        # Energy balance
-        ht_time = np.zeros_like(time)
-        for ind, row in enumerate(states):
-            ht_time[ind] = -self.unit_model(time[ind], row, enrgy_bce=True)
-
-        self.heat_profile = ht_time
-        self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
-        self.duty_type = [0, 0]
+        self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
+                                   mole_conc=dist_result['x_dist'], 
+                                   vol_flow=dist_result['dist_flowrate'])
+        self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][-1],
+                                   mole_conc=dist_result['x_bot'], 
+                                   vol_flow=dist_result['bot_flowrate'])
+        
 class DynamicDistillation():
     def __init__(self, name_species, col_P, q_feed, LK, HK, 
                  per_LK, per_HK, reflux=None, num_plates=None, 
@@ -435,10 +409,12 @@ class DynamicDistillation():
         self.N_feed=N_feed #Num plate from bottom
         
         return
-    
+        
     def nomenclature(self):
         self.name_states = ['Temp', 'x_liq']
-
+        self.names_states_out = ['Temp', 'x_liq']
+        self.names_states_in = self.names_states_out
+        
     @property
     def Inlet(self):
         return self._Inlet
@@ -449,6 +425,19 @@ class DynamicDistillation():
         self.feed_flowrate = inlet.mole_flow
         self.z_feed = inlet.mole_frac
         
+        num_comp = self.num_species
+        len_in = [1, num_comp]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+        
+        self.states_in_dict = {'Inlet': states_in_dict}
+        self.column_startup()
+    
+    def get_inputs(self, time):
+        inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
+
+        return inputs
+        
+    def column_startup(self):
         #Total reflux conditions (Startup)
         ### Steady state values (Based on steady state column)
         column_user_inputs = {'name_species': self.name_species,
@@ -464,7 +453,7 @@ class DynamicDistillation():
                               'N_feed': self.N_feed
                               }
         steady_col = DistillationColumn(**column_user_inputs)
-        steady_col.Inlet = inlet
+        steady_col.Inlet = self._Inlet
         (num_plates, x_ss, y_ss, T_ss, bot_flowrate, dist_flowrate, 
          reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = steady_col.calc_plates(reflux = column_user_inputs['reflux'], 
                                                                                     num_plates = column_user_inputs['num_plates'])
@@ -489,7 +478,7 @@ class DynamicDistillation():
                               }
         
         total_reflux_col = DistillationColumn(**column_total_reflux)
-        total_reflux_col.Inlet = inlet
+        total_reflux_col.Inlet = self._Inlet
         (num_plates, x0, y0, T0, bot_flowrate, dist_flowrate, 
           reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = total_reflux_col.calc_plates(reflux = column_total_reflux['reflux'], 
                                                                                             num_plates = column_total_reflux['num_plates'])
@@ -499,7 +488,7 @@ class DynamicDistillation():
         T0 = (T0.T).ravel()
         ## Set all values to original steady state
         steady_col = DistillationColumn(**column_user_inputs)
-        steady_col.Inlet = inlet
+        steady_col.Inlet = self._Inlet
         (num_plates, x_ss, y_ss, T_ss, bot_flowrate, dist_flowrate, 
           reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = steady_col.calc_plates(reflux = column_user_inputs['reflux'], 
                                                                                     num_plates = column_user_inputs['num_plates'])
@@ -531,14 +520,15 @@ class DynamicDistillation():
 
         '''This method will work by itself and does not need any user manipulation.
         Fill material and energy balances with your model.'''
-
+        
+        inputs = self.get_inputs(time)['Inlet']
         states_reord = np.reshape(states, (self.num_plates + 1, self.len_states))
         states_split = [states_reord[:,0], states_reord[:,1:]] #first column in temperature, others are compositions
         dict_states = dict(zip(self.name_states, states_split))
         material = self.material_balances(time, **dict_states)
         
         d_states = np.reshape(d_states, ((self.num_plates + 1, self.len_states)))
-        material[:,1:] = material[:,1:] - d_states[:,1:] #N_plates(N_components), only for xompositions
+        material[:,1:] = material[:,1:] - d_states[:,1:] #N_plates(N_components), only for compositions
         balances = material.ravel()
         return balances
     
