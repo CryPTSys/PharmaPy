@@ -3,14 +3,10 @@ from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import (trapezoidal_rule, unpack_discretized,
-                              retrieve_pde_result)
+from PharmaPy.Commons import unpack_discretized
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
 from assimulo.solvers import IDA
-#Import connectivity
-
-from PharmaPy.Commons import reorder_pde_outputs
 
 import scipy.optimize
 import scipy.sparse
