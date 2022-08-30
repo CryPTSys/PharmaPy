@@ -2,14 +2,11 @@ import numpy as np
 from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
-from PharmaPy.Connections import get_inputs, get_inputs_new
-from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
-                              eval_state_events, handle_events,
-                              unpack_states, unpack_discretized,
-                              complete_dict_states, flatten_states,
+from PharmaPy.Connections import get_inputs_new
+from PharmaPy.Commons import (trapezoidal_rule, unpack_discretized,
                               retrieve_pde_result)
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.Results import DynamicResult, pprint
+from PharmaPy.Results import DynamicResult
 from assimulo.solvers import IDA
 #Import connectivity
 
@@ -384,10 +381,10 @@ class DistillationColumn:
         path = self.Inlet.path_data
         self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
                                    mole_conc=dist_result['x_dist'], 
-                                   vol_flow=dist_result['dist_flowrate'])
+                                   mole_flow=dist_result['dist_flowrate'])
         self.OutletBottom = LiquidStream(path, temp=dist_result['T'][-1],
                                    mole_conc=dist_result['x_bot'], 
-                                   vol_flow=dist_result['bot_flowrate'])
+                                   mole_flow=dist_result['bot_flowrate'])
         self.Outlet = self.OutletBottom
         
 class DynamicDistillation():
@@ -589,7 +586,7 @@ class DynamicDistillation():
         pass
         return
     
-    def solve_model(self, runtime=None, t0=0):
+    def solve_unit(self, runtime=None, t0=0):
         self.len_states = len(self.name_species) + 1 # 3 compositions + 1 temperature per plate
         
         init_states = np.column_stack((self.T0, self.x0))
@@ -600,9 +597,34 @@ class DynamicDistillation():
         solver.rtol=10**-2
         solver.atol=10**-2
         time, states, d_states = solver.simulate(runtime)
-        model_outputs= self.retrieve_results(time, states)
-        return time, states, d_states, model_outputs
+        self.retrieve_results(time, states)
+        return time, states, d_states
 
     def retrieve_results(self, time, states):
-        model_outputs = reorder_pde_outputs(states, self.num_plates + 1, np.array([self.len_states]))
-        return model_outputs
+        time = np.asarray(time)
+        self.timeProf = time
+        
+        indexes = {key: self.states_di[key].get('index', None)
+                   for key in self.name_states}
+
+        inputs = self.get_inputs(self.timeProf)['Inlet']
+
+        dp = unpack_discretized(states, self.len_out, self.name_states,
+                                indexes=indexes, inputs=inputs)
+
+        dp['time'] = time
+        
+        self.result = DynamicResult(di_states=self.states_di, di_fstates=None, **dp)
+
+        self.outputs = dp
+        x_comp = np.array(list(dp['mole_frac'].values())) #[component_index, time, plate]
+        
+        # Outlet stream
+        path = self.Inlet.path_data
+        self.OutletBottom = LiquidStream(path, temp=dp['temp'][-1][-1], #[time, plate]
+                                   mole_frac=x_comp.T[-1][-1], #[plate, time, component_index]
+                                   mole_flow = self.bot_flowrate)
+        self.OutletDistillate = LiquidStream(path, temp=dp['temp'][-1][0], #[time,plate]
+                                   mole_frac=x_comp.T[0][-1],
+                                   mole_flow = self.dist_flowrate)
+        self.Outlet = self.OutletBottom
