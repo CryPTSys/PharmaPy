@@ -385,9 +385,10 @@ class DistillationColumn:
         self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
                                    mole_conc=dist_result['x_dist'], 
                                    vol_flow=dist_result['dist_flowrate'])
-        self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][-1],
+        self.OutletBottom = LiquidStream(path, temp=dist_result['T'][-1],
                                    mole_conc=dist_result['x_bot'], 
                                    vol_flow=dist_result['bot_flowrate'])
+        self.Outlet = self.OutletBottom
         
 class DynamicDistillation():
     def __init__(self, name_species, col_P, q_feed, LK, HK, 
@@ -416,12 +417,13 @@ class DynamicDistillation():
         return
         
     def nomenclature(self):
-        self.name_states = ['Temp', 'x_liq']
-        self.names_states_out = ['Temp', 'x_liq']
+        self.name_states = ['temp', 'mole_frac']
+        self.names_states_out = ['temp', 'mole_frac']
         self.names_states_in = self.names_states_out
+        #self.names_states_in.append('vol_flow')
         self.states_di = {
-            'Temp':{'dim':1, 'units': 'K'}, 
-            'x_liq':{'dim':len(self.name_species), 'index': self.name_species}
+            'temp':{'dim':1, 'units': 'K'}, 
+            'mole_frac':{'dim':len(self.name_species), 'index': self.name_species},
             }
         
     @property
@@ -435,15 +437,17 @@ class DynamicDistillation():
         self.z_feed = inlet.mole_frac
         
         num_comp = self.num_species
-        len_in = [1, num_comp]
-        states_in_dict = dict(zip(self.names_states_in, len_in))
+        self.len_in = [1, num_comp]#, 1]
+        self.len_out = [1, num_comp]
+        states_in_dict = dict(zip(self.names_states_in, self.len_in))
+        states_out_dict = dict(zip(self.names_states_out, self.len_out))
         
         self.states_in_dict = {'Inlet': states_in_dict}
+        self.states_out_dict = {'Outlet': states_out_dict}
         self.column_startup()
     
     def get_inputs(self, time):
         inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
-
         return inputs
         
     def column_startup(self):
@@ -522,27 +526,32 @@ class DynamicDistillation():
 
     @Phases.setter
     def Phases(self, phases):
-
         classify_phases(self)
     
     def unit_model(self, time, states, d_states):
 
         '''This method will work by itself and does not need any user manipulation.
         Fill material and energy balances with your model.'''
+        di_states = unpack_discretized(states, self.len_out,
+                                       self.name_states)
+
+        #states_reord = np.reshape(states, (self.num_plates + 1, self.len_states))
+        #states_split = [states_reord[:,0], states_reord[:,1:]] #first column in temperature, others are compositions
+        #dict_states = dict(zip(self.name_states, states_split))
+        material = self.material_balances(time, **di_states)
         
-        inputs = self.get_inputs(time)['Inlet']
-        states_reord = np.reshape(states, (self.num_plates + 1, self.len_states))
-        states_split = [states_reord[:,0], states_reord[:,1:]] #first column in temperature, others are compositions
-        dict_states = dict(zip(self.name_states, states_split))
-        material = self.material_balances(time, **dict_states)
+        di_d_states = unpack_discretized(d_states, self.len_out,
+                                       self.name_states)
+        #d_states = np.reshape(d_states, ((self.num_plates + 1, self.len_states)))
         
-        d_states = np.reshape(d_states, ((self.num_plates + 1, self.len_states)))
-        material[:,1:] = material[:,1:] - d_states[:,1:] #N_plates(N_components), only for compositions
+        material[:,1:] = material[:,1:] - di_d_states['mole_frac'] #N_plates(N_components), only for compositions
         balances = material.ravel()
         return balances
     
-    def material_balances(self, time, x_liq, Temp):
-        x = x_liq
+    def material_balances(self, time, temp, mole_frac):
+        x = mole_frac
+        inputs = self.get_inputs(time)['Inlet']
+        z_feed = inputs['mole_frac']
         ##GET STARTUP CONDITIONS
         (bot_flowrate, dist_flowrate, 
          reflux, N_feed, M_const) = (self.bot_flowrate, self.dist_flowrate, 
@@ -557,10 +566,10 @@ class DynamicDistillation():
         Vm  = Lm  - bot_flowrate
         
         dxdt = np.zeros_like(x)
-        p_vap = self._Inlet.AntoineEquation(Temp)
+        p_vap = self._Inlet.AntoineEquation(temp)
         residuals_temp = (self.col_P - (x*p_vap).sum(axis=1))
         
-        k_vals = self._Inlet.getKeqVLE(pres = self.col_P, temp=Temp,
+        k_vals = self._Inlet.getKeqVLE(pres = self.col_P, temp=temp,
                                        x_liq = x)
         alpha = k_vals/k_vals[self.HK_index]
         
@@ -570,13 +579,13 @@ class DynamicDistillation():
         dxdt[0] = (1/M_const)*(Vn*y[1] + Ln*y[0] - Vn*y[0] - Ln*x[0]) #Distillate plate
         dxdt[1:N_feed-1] = (1/M_const)*(Vn*y[2:N_feed] + Ln*x[0:N_feed-2] - Vn*y[1:N_feed-1] - Ln*x[1:N_feed-1])
         #Stripping section
-        dxdt[N_feed-1] = (1/M_const)*(Vm*y[N_feed] + Ln*x[N_feed-2] + self.feed_flowrate*self.z_feed - Vn*y[N_feed-1] - Lm*x[N_feed-1]) #Feed plate
+        dxdt[N_feed-1] = (1/M_const)*(Vm*y[N_feed] + Ln*x[N_feed-2] + self.feed_flowrate*z_feed - Vn*y[N_feed-1] - Lm*x[N_feed-1]) #Feed plate
         dxdt[N_feed:-1] = (1/M_const)*(Vm*y[N_feed+1:] + Lm*x[N_feed-1:-2] -Vm*y[N_feed:-1] - Lm*x[N_feed:-1])
         dxdt[-1] = (1/M_const)*(Vm*x[-1] + Lm*x[-2] -Vm*y[-1] - Lm*x[-1]) #Reboiler, y_in for reboiler is the same as x_out
         mat_bal = np.column_stack((residuals_temp, dxdt))
         return mat_bal
         
-    def energy_balances(self, time, x_liq, Temp):
+    def energy_balances(self, time, temp, mole_frac):
         pass
         return
     
@@ -584,7 +593,7 @@ class DynamicDistillation():
         self.len_states = len(self.name_species) + 1 # 3 compositions + 1 temperature per plate
         
         init_states = np.column_stack((self.T0, self.x0))
-        init_derivative = self.material_balances(time=0, x_liq=self.x0, Temp=self.T0)
+        init_derivative = self.material_balances(time=0, mole_frac=self.x0, temp=self.T0)
         
         problem = Implicit_Problem(self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
         solver = IDA(problem)
