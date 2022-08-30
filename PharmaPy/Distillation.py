@@ -23,10 +23,6 @@ class DistillationColumn:
                  per_LK, per_HK, reflux=None, num_plates=None, 
                  holdup=None, gamma_model='ideal', N_feed=None):
 
-        self.nomenclature()
-        self._Phases = None
-        self._Inlet = None
-        
         self.num_plates = num_plates
         self.name_species = name_species
         self.reflux = reflux
@@ -42,12 +38,21 @@ class DistillationColumn:
         self.N_feed=N_feed #Num plate from bottom
         self.per_NLK=100 #Sharp split all NLK recovred in distillate
         self.per_NHK = 0 #Sharp split no NHK in distillate
+        
+        self.nomenclature()
+        self._Inlet = None
+        self._Phases = None
         return
     
     def nomenclature(self):
-        # self.name_states = []
+        self.name_states = []
         self.names_states_out = []
         self.names_states_in = self.names_states_out
+        self.states_di = {
+            'num_plates':{'dim':1}, 'x':{'dim':len(self.name_species), 'index': self.name_species}, 'y':{'dim':len(self.name_species),  'index': self.name_species}, 'T':{'dim':1, 'units': 'K'}, 
+                       'bot_flowrate':{'dim':1, 'units': 'mole/sec'}, 'dist_flowrate':{'dim':1, 'units': 'mole/sec'}, 'reflux':{'dim':1}, 
+                       'N_feed':{'dim':1}, 'x_dist':{'dim':len(self.name_species)}, 'x_bot':{'dim':len(self.name_species)}, 'min_reflux':{'dim':1}, 'N_min':{'dim':1}
+            }
 
     @property
     def Inlet(self):
@@ -61,7 +66,7 @@ class DistillationColumn:
         self.z_feed = inlet.mole_frac
         
         num_comp = len(self.Inlet.name_species)
-        len_in = [num_comp, 1]
+        len_in = [1, num_comp]
         
         if self.names_states_in:
             states_in_dict = dict(zip(self.names_states_in, len_in))
@@ -81,7 +86,8 @@ class DistillationColumn:
     @Phases.setter
     def Phases(self, phases):
         classify_phases(self)
-    
+        #self.nomenclature()
+        
     def estimate_comp (self):
         ### Determine Light Key and Heavy Key component numbers
         # Assume z_feed and name species are in the order- lightest to heaviest
@@ -363,7 +369,7 @@ class DistillationColumn:
                                         
         self.N_feed = N_feed
         
-        #self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
+        self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
         return num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min
     
     def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
@@ -373,7 +379,7 @@ class DistillationColumn:
                        'N_feed':N_feed, 'x_dist':x_dist, 'x_bot':x_bot, 'min_reflux':min_reflux, 'N_min':N_min
             }
         
-        self.result = pprint(di=dist_result, name_items=dist_result.keys(), fields=dist_result)
+        self.result = DynamicResult(self.states_di, **dist_result)
 
         path = self.Inlet.path_data
         self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
@@ -387,10 +393,6 @@ class DynamicDistillation():
     def __init__(self, name_species, col_P, q_feed, LK, HK, 
                  per_LK, per_HK, reflux=None, num_plates=None, 
                  holdup=None, gamma_model='ideal', N_feed=None):
-        
-        self.nomenclature()
-        self._Phases = None
-        self._Inlet = None
         
         self.M_const = holdup
         self.num_plates = num_plates
@@ -408,12 +410,19 @@ class DynamicDistillation():
         self.gamma_model= gamma_model
         self.N_feed=N_feed #Num plate from bottom
         
+        self.nomenclature()
+        self._Phases = None
+        self._Inlet = None
         return
         
     def nomenclature(self):
         self.name_states = ['Temp', 'x_liq']
         self.names_states_out = ['Temp', 'x_liq']
         self.names_states_in = self.names_states_out
+        self.states_di = {
+            'Temp':{'dim':1, 'units': 'K'}, 
+            'x_liq':{'dim':len(self.name_species), 'index': self.name_species}
+            }
         
     @property
     def Inlet(self):
