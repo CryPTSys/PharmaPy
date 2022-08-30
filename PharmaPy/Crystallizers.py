@@ -961,7 +961,7 @@ class _BaseCryst:
 
     def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None,
-                         scale_factor=1e-3, run_args=None):
+                         scale_factor=1e-3, run_args=None, reord_sens=True):
         self.reset()
         self.params_iter = params
 
@@ -993,7 +993,10 @@ class _BaseCryst:
                                                        eval_sens=True,
                                                        verbose=False)
 
-                sens = reorder_sens(sens, separate_sens=False)
+                if reord_sens:
+                    sens = reorder_sens(sens, separate_sens=False)
+                else:
+                    sens = np.stack(sens)
 
                 result = (states, sens)
             else:
@@ -1019,7 +1022,8 @@ class _BaseCryst:
 
                 sens_sep = dict(zip(di_keys, sens_sep))
 
-                result = self.param_wrapper(self.result, sens_sep)
+                result = self.param_wrapper(self.result, sens_sep,
+                                            reord_sens=reord_sens)
 
         return result
 

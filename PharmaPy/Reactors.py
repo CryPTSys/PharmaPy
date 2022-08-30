@@ -398,7 +398,7 @@ class _BaseReactor:
         return di_out
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
-                         modify_controls=None, reorder=True, run_args={}):
+                         modify_controls=None, reord_sens=True, run_args={}):
 
         self.reset()
 
@@ -416,7 +416,7 @@ class _BaseReactor:
                                                    verbose=False,
                                                    eval_sens=True, **run_args)
 
-            if reorder:
+            if reord_sens:
                 sens = reorder_sens(sens)
             else:
                 sens = np.stack(sens)

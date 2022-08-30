@@ -59,40 +59,112 @@ def mcr_spectra(conc, spectra):
     return conc_plus, absortivity_pred, absorbance_pred
 
 
-def get_masked_ydata(y_list, masks, assign_missing=None):
-    nrow, ncol = masks.shape
-    y_out = np.zeros((nrow, ncol))
+def enforce_two_d(ar):
+    if isinstance(ar, np.ndarray) and ar.ndim == 1:
+        ar = ar.reshape(-1, 1)
 
-    for col, mask in enumerate(masks.T):
-        y_out[mask, col] = y_list[col]
+    return ar
+
+
+def convert_types(data, two_d=False):
+    if isinstance(data, dict):
+        data = list(data.values())
+    elif isinstance(data, np.ndarray):
+        data = [data]
+
+    out = []
+    for val in data:
+        if isinstance(val, dict):
+            proc = convert_types(val, two_d)
+            val = dict(zip(val.keys(), proc))
+
+        elif isinstance(val, (list, tuple)):
+            val = convert_types(val, two_d)
+        else:
+            if two_d:
+                val = enforce_two_d(val)
+
+        out.append(val)
+
+    return out
+
+
+def get_masked_ydata(y_list, masks, assign_missing=None, merge=True):
+    y_out = []
+
+    for y, mask in zip(y_list, masks):
+        nrow = len(mask)
+        ncol = y.shape[1]
+
+        y_ar = np.zeros((nrow, ncol))
+
+        y_ar[mask] = y
 
         if assign_missing is not None:
 
             if isinstance(assign_missing, (np.ndarray, list)):
-                y_out[~mask] = assign_missing[~mask]
+                y_ar[~mask] = assign_missing[~mask]
             else:
-                y_out[~mask] = assign_missing
+                y_ar[~mask] = assign_missing
+
+        y_out.append(y_ar)
+
+    if merge:
+        y_out = np.hstack(y_out)
 
     return y_out
 
 
-def analyze_data(x_list, y_list):
+def get_array_list(values):
+    out = []
+    for val in values:
+        if isinstance(val, list):
+            out += val
+        elif isinstance(val, tuple):
+            out += list(val)
+        elif isinstance(val, np.ndarray):
+            out.append(val)
+
+    return out
+
+
+def analyze_data(x, y, merge_y=True):
+
+    def get_di(keys, data):
+        return dict(zip(keys, data))
+
     x_model = []
     x_mask = []
 
     y_masked = []
-    for x_data, y_data in zip(x_list, y_list):  # experiment loop
-        if isinstance(x_data, (list, tuple)):
+    for x_data, y_data in zip(x, y):  # experiment loop
+        if isinstance(y_data, dict) and isinstance(y_data, dict):
+            pass_x = get_array_list(x_data.values())
+            pass_y = list(y_data.values())
+
+            x_unif, x_ma, y_ma = analyze_data([pass_x], [pass_y],
+                                              merge_y=False)
+
+            # Save data
+            x_model.append(x_unif[0])
+
+            keys = y_data.keys()
+            x_masks = [row for row in x_ma[0].T]
+            x_mask.append(get_di(keys, x_masks))
+
+            y_masked.append(get_di(keys, y_ma[0]))
+
+        elif isinstance(x_data, (list, tuple)):
             x_all = np.sort(np.hstack(x_data))
             x_unique = np.unique(x_all)
 
             x_common = [np.isin(x_unique, data) for data in x_data]
-            x_common = np.column_stack(x_common)
+            # x_common = np.column_stack(x_common)
 
             x_model.append(x_unique)
-            x_mask.append(x_common)
+            x_mask.append(np.column_stack(x_common))
 
-            y_mask = get_masked_ydata(y_data, x_common, np.nan)
+            y_mask = get_masked_ydata(y_data, x_common, np.nan, merge=merge_y)
             y_masked.append(y_mask)
         else:
             x_model.append(x_data)
@@ -235,19 +307,8 @@ class ParameterEstimation:
         # --------------- Data
         self.experim_names = None
 
-        if isinstance(x_data, dict) and isinstance(y_data, dict):
-            self.experim_names = list(x_data.keys())
-
-            x_data = list(x_data.values())
-            y_data = list(y_data.values())
-
-        elif isinstance(y_data, np.ndarray):
-            x_data = [x_data]
-            y_data = [y_data]
-
-        y_data = [ar.reshape(-1, 1)
-                  if isinstance(ar, np.ndarray) and ar.ndim == 1
-                  else ar for ar in y_data]
+        x_data = convert_types(x_data)
+        y_data = convert_types(y_data, two_d=True)
 
         x_model, x_masks, y_data = analyze_data(x_data, y_data)
 
@@ -291,7 +352,11 @@ class ParameterEstimation:
             if self.x_masks[ind] is None:
                 num_data.append(self.y_data[ind].size)
             else:
-                num_data.append(self.x_masks[ind].sum())
+                if isinstance(self.x_masks[ind], dict):
+                    num = [sum(mask) for mask in self.x_masks[ind].values()]
+                    num_data.append(sum(num))
+                else:
+                    num_data.append(self.x_masks[ind].sum())
 
         self.num_data_total = sum(num_data)
         self.num_data = num_data
@@ -427,6 +492,8 @@ class ParameterEstimation:
                 num_states = y_prof.shape[1]
                 sens_run = self.select_sens(sens, num_states)
 
+            # Replace missing data with model values so as residuals are zero
+            # for those entries
             y_data = self.y_data[ind].copy()
             x_mask = self.x_masks[ind]
             if x_mask is not None:
@@ -935,7 +1002,7 @@ class MultipleCurveResolution(ParameterEstimation):
                 y_di = {'spectra': y}
                 y_spectral.append(y_di)
 
-        self.y_data = [np.column_stack(list(di.values())) for di in y_spectral]
+        # self.y_data = [np.column_stack(list(di.values())) for di in y_spectral]
 
         # self.spectra = [data for data in self.y_data]
         self.len_spectra = [data['spectra'].shape[0] for data in y_spectral]
@@ -951,16 +1018,15 @@ class MultipleCurveResolution(ParameterEstimation):
             y_concat[key] = np.vstack(li)
 
         self.spectra_tot = y_concat['spectra']
-        self.y_concat = np.vstack(list(y_concat.values()))
+        self.y_concat = np.hstack(list(y_concat.values()))
 
         self.global_analysis = global_analysis
 
         if isinstance(measured_ind, (tuple, list, range)):
-            self.measured_ind = {'spectral': measured_ind}
+            self.measured_ind = {'spectra': measured_ind}
 
         size_sigma = y_spectral[0]['spectra'].shape[1]
-        if 'non_spectral' in self.measured_ind:
-            size_sigma += len(self.non_spectral_ind)
+        size_sigma += len(self.measured_ind.get('non_spectra', []))
 
         self.sigma_inv = np.eye(size_sigma)
 
@@ -968,7 +1034,10 @@ class MultipleCurveResolution(ParameterEstimation):
         eye = np.eye(c_target.shape[0])
         proj_orthogonal = eye - np.dot(c_target, c_plus)
 
-        sens_pick = sens_states[self.map_variable]
+        if sens_states.shape[0] == sum(self.map_variable):
+            sens_pick = sens_states
+        else:
+            sens_pick = sens_states[self.map_variable]
 
         first_term = proj_orthogonal @ sens_pick @ c_plus
         second_term = first_term.transpose((0, 2, 1))
@@ -991,10 +1060,11 @@ class MultipleCurveResolution(ParameterEstimation):
         states_non = []
         sens_conc = []
 
-        has_non = 'non_spectral' in self.measured_ind
+        has_non = 'non_spectra' in self.measured_ind
+        y_data_non = []
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_model[ind],
-                                   reorder=False,
+                                   reord_sens=False,
                                    *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, tuple):
@@ -1003,22 +1073,38 @@ class MultipleCurveResolution(ParameterEstimation):
             else:
                 states = result
 
-            conc_target = states[:, self.measured_ind['spectral']]
+            conc_target = states[:, self.measured_ind['spectra']]
 
             if has_non:
-                states_non.append(states[:, self.measured_ind['non_spectral']])
+                non_spectra = states[:, self.measured_ind['non_spectra']]
+
+                y_non = self.y_data[ind]['non_spectra'].copy()
+                x_mask = self.x_masks[ind]['non_spectra']
+                if x_mask is not None:
+                    y_non[~x_mask] = non_spectra[~x_mask]
+
+                states_non.append(non_spectra)
+                y_data_non.append(y_non)
 
             # MCR
             c_runs.append(conc_target)
 
         conc_tot = np.vstack(c_runs)
 
+        if has_non:
+            states_non = np.vstack(states_non)
+            y_data_non = np.vstack(y_data_non)
+
+            resid_non = states_non - y_data_non
+
+        else:
+            resid_non = []
+
         # MCR
         conc_plus = np.linalg.pinv(conc_tot)
         absorptivity_pure = np.dot(conc_plus, self.spectra_tot)
 
         spectra_pred = np.dot(conc_tot, absorptivity_pure)
-        states_pred = np.hstack([spectra_pred] + states_non)
 
         if len(sens_conc) == 0:  # TODO: it won't work like this
             args_merged = [self.x_data[ind],
@@ -1028,14 +1114,14 @@ class MultipleCurveResolution(ParameterEstimation):
                                       dx=self.dx_fd)[:, self.map_variable]
         else:
             sens_tot = np.concatenate(sens_conc, axis=1)  # (n_par x n_times x n_states)
-            sens_mcr = sens_tot[:, :, self.measured_ind['spectral']]
+            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
 
             sens_spectra = self.get_sens_projection(conc_tot, conc_plus,
                                                     sens_mcr, spectra_pred)
 
             if has_non:
                 sens_regular = sens_tot[:, :,
-                                        self.measured_ind['non_spectral']]
+                                        self.measured_ind['non_spectra']]
 
                 sens_regular = flatten_spectral_sens(sens_regular)
 
@@ -1043,7 +1129,10 @@ class MultipleCurveResolution(ParameterEstimation):
             else:
                 sens = sens_spectra
 
-        residuals = (states_pred - self.y_concat)
+        residuals = spectra_pred - self.spectra_tot
+        if has_non:
+            residuals = np.hstack((residuals, resid_non))
+
         weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
