@@ -906,7 +906,7 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, spectra,
+    def __init__(self, func, param_seed, time_data, y_spectra,
                  global_analysis=True,
                  args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
@@ -914,24 +914,51 @@ class MultipleCurveResolution(ParameterEstimation):
                  measured_ind=None, non_spectral_ind=None, weight_matrix=None,
                  name_params=None, name_states=None):
 
-        super().__init__(func, param_seed, time_data, spectra, measured_ind,
+        super().__init__(func, param_seed, time_data, y_spectra, measured_ind,
                          args_fun, kwargs_fun, optimize_flags, jac_fun,
                          dx_finitediff, weight_matrix,
                          name_params, name_states)
 
         self.fit_spectra = True
-        self.spectra = [data for data in self.y_data]
-        self.len_spectra = [data.shape[0] for data in self.spectra]
-        self.size_spectra = [data.size for data in self.spectra]
 
-        self.spectra_tot = np.vstack(self.spectra)
+        y_spectral = []
+        y_data = []
+        for y in self.y_data:
+            if isinstance(y, dict):
+                if 'spectra' not in y:
+                    raise ValueError(
+                        "Data dictionary must have the 'spectra' key")
+
+                y_spectral.append(y)
+
+            elif isinstance(y, np.ndarray):
+                y_di = {'spectra': y}
+                y_spectral.append(y_di)
+
+        self.y_data = [np.column_stack(list(di.values())) for di in y_spectral]
+
+        # self.spectra = [data for data in self.y_data]
+        self.len_spectra = [data['spectra'].shape[0] for data in y_spectral]
+        self.size_spectra = [data['spectra'].size for data in y_spectral]
+
+        # self.spectra_tot = np.vstack([di['spectra'] for di in y_spectral])
+
+        keys = list(set().union(*[di.keys() for di in y_spectral]))
+
+        y_concat = {}
+        for key in keys:
+            li = [di[key] for di in y_spectral if key in di]
+            y_concat[key] = np.vstack(li)
+
+        self.spectra_tot = y_concat['spectra']
+        self.y_concat = np.vstack(list(y_concat.values()))
 
         self.global_analysis = global_analysis
 
         if isinstance(measured_ind, (tuple, list, range)):
             self.measured_ind = {'spectral': measured_ind}
 
-        size_sigma = self.spectra[0].shape[1]
+        size_sigma = y_spectral[0]['spectra'].shape[1]
         if 'non_spectral' in self.measured_ind:
             size_sigma += len(self.non_spectral_ind)
 
@@ -963,6 +990,8 @@ class MultipleCurveResolution(ParameterEstimation):
         c_runs = []
         states_non = []
         sens_conc = []
+
+        has_non = 'non_spectral' in self.measured_ind
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_model[ind],
                                    reorder=False,
@@ -975,7 +1004,8 @@ class MultipleCurveResolution(ParameterEstimation):
                 states = result
 
             conc_target = states[:, self.measured_ind['spectral']]
-            if 'non_spectral' in self.measured_ind:
+
+            if has_non:
                 states_non.append(states[:, self.measured_ind['non_spectral']])
 
             # MCR
@@ -1003,18 +1033,17 @@ class MultipleCurveResolution(ParameterEstimation):
             sens_spectra = self.get_sens_projection(conc_tot, conc_plus,
                                                     sens_mcr, spectra_pred)
 
-            if 'non_spectral' in self.measured_ind:
+            if has_non:
                 sens_regular = sens_tot[:, :,
                                         self.measured_ind['non_spectral']]
 
                 sens_regular = flatten_spectral_sens(sens_regular)
-                sens_regular = [sens_regular]
+
+                sens = np.vstack([sens_spectra, sens_regular])
             else:
-                sens_regular = []
+                sens = sens_spectra
 
-            sens = np.vstack([sens_spectra] + sens_regular)
-
-        residuals = (states_pred - self.spectra_tot)
+        residuals = (states_pred - self.y_concat)
         weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
