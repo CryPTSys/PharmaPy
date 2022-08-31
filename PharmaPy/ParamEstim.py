@@ -628,7 +628,11 @@ class ParameterEstimation:
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):
-            y_model = self.resid_runs[ind] + self.y_data[ind]
+            y_data = self.y_data[ind]
+            if isinstance(y_data, dict):
+                y_data = np.hstack(list(y_data.values()))
+
+            y_model = self.resid_runs[ind] + y_data
             self.y_model.append(y_model)
 
         covar_params = self.get_covariance()
@@ -776,6 +780,9 @@ class ParameterEstimation:
         markers = cycle(['o', 's', '^', '*', 'P', 'X'])
         for ind, y_model in enumerate(y_model):
             y_data = self.y_data[ind]
+
+            if isinstance(y_data, dict):
+                y_data = np.hstack(list(y_data.values()))
 
             axis.scatter(y_model.T.flatten(), y_data.T.flatten(),
                          label=experim_names[ind], marker=next(markers),
