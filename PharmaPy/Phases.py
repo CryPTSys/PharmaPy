@@ -1052,7 +1052,7 @@ class SolidPhase(ThermoPhysicalManager):
 
         porosity = 1 - 1/V_T
 
-        return porosity
+        return porosity + 0.1
 
     # def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
     #     if distrib is None:

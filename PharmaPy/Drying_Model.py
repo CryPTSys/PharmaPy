@@ -194,7 +194,7 @@ class Drying:
         # p_gas_total = np.sum(x_liq_mole_frac * p_sat[:, self.idx_volatiles],
         #                      axis=1)
         p_partial = (gamma * x_liq_mole_frac * p_sat[:, self.idx_volatiles]).T
-        y_equil = p_partial / p_gas
+        y_equil = p_partial  / p_gas
 
         return y_equil
 
@@ -350,7 +350,7 @@ class Drying:
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = rho_gas / self.rho_liq * cpg_mix
-        heat_loss = self.h_T_loss * self.a_V * (temp_gas - (273+22))
+        heat_loss = self.h_T_loss * self.a_V * (temp_gas - self.T_ambient)
         # heat_loss = 0  # This line is for assumption of no heat loss
         # fluxes_Tg = high_resolution_fvm(temp_gas,
         #                                 boundary_cond=temp_gas_inputs)
@@ -369,12 +369,12 @@ class Drying:
 
         # ----- Condensed phases equations
         dens_liq = self.rho_liq
-
+        heat_loss_cond = self.h_T_loss * self.a_V * (temp_sol - self.T_ambient)
         drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat).sum(axis=1)
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
-        dTcond_dt = (-drying_terms + heat_transf - heat_loss) / denom_cond
+        dTcond_dt = (-drying_terms + heat_transf - heat_loss_cond) / denom_cond
 
 
         if return_terms:
@@ -603,6 +603,19 @@ class Drying:
 
             fig, axes = plot_distrib(self, states_plot, times=times,
                                      x_name='z', ncols=2, nrows=3,
+                                     ylabels=y_labels, **fig_kw)
+
+            fig.tight_layout()
+            
+        if z_pos is not None:
+            
+            states_plot = [('x_liq', pick_liq), ('y_gas', pick_vap),
+                           'temp_cond', 'temp_gas', 'saturation']
+
+            y_labels = ('x_liq', 'y_gas', 'T_cond', 'T_gas', 'sat')
+
+            fig, axes = plot_distrib(self, states_plot, x_vals=z_pos,
+                                     x_name='time', ncols=2, nrows=3,
                                      ylabels=y_labels, **fig_kw)
 
             fig.tight_layout()

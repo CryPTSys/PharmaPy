@@ -843,7 +843,7 @@ class Filter:
         self.time_filt = visc_liq/self.deltaP * (
             self.alpha*self.c_solids/2 * (vol_filtrate/self.area_filt)**2 +
             self.r_medium * (vol_filtrate/self.area_filt))
-        # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
+        # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc * vol_slurry\
         #     / (2 * self.area_filt**2 * self.deltaP)\
         #     + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
         self.retrieve_results(time, states, dens_liq, dens_sol, epsilon)
