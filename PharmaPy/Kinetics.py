@@ -11,6 +11,9 @@ import numpy as np
 import json
 import re
 
+import warnings
+warnings.filterwarnings('error', category=RuntimeWarning)
+
 from PharmaPy.Commons import get_permutation_indexes
 # from autograd import numpy as np
 

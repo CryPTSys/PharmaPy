@@ -10,6 +10,13 @@ from numpy import ones_like, inner, diag, asarray, maximum
 from numpy.linalg import solve, norm, inv
 
 
+lm_header = [
+    '\n',
+    '{:<40}'.format('-'*60),
+    "{:<7} {:<10} {:<10} {:<10} {:<10}".format('eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'),
+    '{:<40}'.format('-'*60)]
+
+
 def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                         eps_1=1e-8, eps_2=1e-8, tol_fun=1e-12,
                         full_output=False,
@@ -84,11 +91,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     num_feval = 0
 
     if verbose:
-        print()
-        print('{:<40}'.format('-'*60))
-        print("{:<7} {:<10} {:<10} {:<10} {:<10}".format(
-            'eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'))
-        print('{:<40}'.format('-'*60))
+        print('\n'.join(lm_header))
         print("{:<7} {:<10.3e} {:<10} {:<10.3e} {:<10.3e}".format(
             num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
@@ -138,6 +141,9 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         # print(nu)
 
         if verbose:
+            if num_feval % 50 == 0:
+                print('\n'.join(lm_header))
+
             print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}".format(
                 num_feval, sq_new, norm(lm_step), norm(b_vector), mu))
 

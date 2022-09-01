@@ -1009,13 +1009,8 @@ class MultipleCurveResolution(ParameterEstimation):
                 y_di = {'spectra': y}
                 y_spectral.append(y_di)
 
-        # self.y_data = [np.column_stack(list(di.values())) for di in y_spectral]
-
-        # self.spectra = [data for data in self.y_data]
         self.len_spectra = [data['spectra'].shape[0] for data in y_spectral]
         self.size_spectra = [data['spectra'].size for data in y_spectral]
-
-        # self.spectra_tot = np.vstack([di['spectra'] for di in y_spectral])
 
         keys = list(set().union(*[di.keys() for di in y_spectral]))
 
@@ -1032,10 +1027,11 @@ class MultipleCurveResolution(ParameterEstimation):
         if isinstance(measured_ind, (tuple, list, range)):
             self.measured_ind = {'spectra': measured_ind}
 
-        size_sigma = y_spectral[0]['spectra'].shape[1]
-        size_sigma += len(self.measured_ind.get('non_spectra', []))
+        if weight_matrix is None:
+            size_sigma = y_spectral[0]['spectra'].shape[1]
+            size_sigma += len(self.measured_ind.get('non_spectra', []))
 
-        self.sigma_inv = np.eye(size_sigma)
+            self.sigma_inv = np.eye(size_sigma)
 
     def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
         eye = np.eye(c_target.shape[0])

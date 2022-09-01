@@ -310,13 +310,6 @@ class _BaseCryst:
 
         self.mask_params = np.array(self.mask_params)
 
-        ind_true = np.where(self.mask_params)[0]
-        ind_false = np.where(~self.mask_params)[0]
-
-        self.params_fixed = self.Kinetics.concat_params()[ind_false]
-
-        self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
-
     @property
     def Utility(self):
         return self._Utility
@@ -533,17 +526,8 @@ class _BaseCryst:
 
             return dcsd_dt, np.array(mass_transfer)
 
-    def unit_model(self, time, states, params, sw=None,
+    def unit_model(self, time, states, params=None, sw=None,
                    mat_bce=False, enrgy_bce=False):
-
-        # ---------- Prepare inputs
-        if len(self.params_fixed) > 1:
-            params_all = np.concatenate((params, self.params_fixed))
-            params_all = params_all[self.ind_maskpar]
-        else:
-            params_all = params
-
-        self.Kinetics.set_params(params_all)
 
         di_states = unpack_states(states, self.dim_states, self.name_states)
 
