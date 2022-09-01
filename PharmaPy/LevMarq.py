@@ -18,8 +18,7 @@ lm_header = [
 
 def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                         eps_1=1e-8, eps_2=1e-8, tol_fun=1e-12,
-                        full_output=False,
-                        lambd_zero=1e-2,
+                        full_output=False, lambd_zero=1e-2, d_scaling=None,
                         args=(), verbose=False):
     """
     Optimize function using the Levenberg-Marquardt algorithm
@@ -78,11 +77,13 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     a_matrix = inner(jac, jac)  # Hessian approximation
     b_vector = inner(jac, fun)  # gradient
 
-    if fletcher_modif:
-        d_scaling = norm(jac, axis=1)
-        d_scaling = max(d_scaling) * ones_like(x)
-    else:
-        d_scaling = ones_like(x)
+    if d_scaling is None:
+        if fletcher_modif:
+            d_scaling = norm(jac, axis=1)
+            d_scaling = max(d_scaling) * ones_like(x)
+        else:
+            d_scaling = ones_like(x)
+
 
     mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
     # mu = lambd_zero
@@ -137,8 +138,6 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
         beta = nu
 
-        # print(nu)
-
         if verbose:
             if num_feval % 50 == 0:
                 print('\n'.join(lm_header))
@@ -162,12 +161,13 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     if full_output:
         if max_fun_eval == 0:
             output_dict = {'x': x, 'fun': fun, 'jac': jac,
-                           'num_iter': num_iter, 'num_fun_eval': num_feval}
+                           'num_iter': num_iter, 'num_fun_eval': num_feval,
+                           'd_scaling': d_scaling}
         else:
             output_dict = {'x': x, 'fun': fun, 'jac': jac,
                            'norm_step': norm(lm_step),
                            'stop_criterion': reason, 'num_iter': num_iter,
-                           'num_fun_eval': num_feval}
+                           'num_fun_eval': num_feval, 'd_scaling': d_scaling}
 
         return x, covar_x, output_dict
     else:

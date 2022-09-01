@@ -47,17 +47,31 @@ def check_stoichiometry(stoich, mws):
               "aggregated Kinetic instance.")
 
 
-def get_sundials_callable(events, eval_sens, param_vals, unit_model):
+def get_sundials_callable(events, eval_sens, param_vals, unit_model, get_jac):
     flag_events = len(events) > 0
 
     if not flag_events and not eval_sens:
-        def call_fun(t, y):
-            return unit_model(t, y, None, None)
+        def call_fun(t, y): return unit_model(t, y, None, None)
+
+        def jac_fun(t, y): return get_jac(t, y, None, None, param_vals)
 
         kwargs_problem = {}
+
+    # This is redundant but helps with readability
+    elif flag_events and eval_sens:
+        def call_fun(t, y, sw, params):
+            return unit_model(t, y, sw=sw, params=params)
+
+        def jac_fun(t, y, sw, params):
+            return get_jac(t, y, sw, None, params)
+
+        kwargs_problem = {'sw0': [True] * len(events), 'p0': param_vals}
+
     elif flag_events:
         def call_fun(t, y, sw):
             return unit_model(t, y, sw=sw, params=param_vals)
+
+        def jac_fun(t, y, sw): return get_jac(t, y, sw, None, param_vals)
 
         kwargs_problem = {'sw0': [True] * len(events)}
 
@@ -65,9 +79,11 @@ def get_sundials_callable(events, eval_sens, param_vals, unit_model):
         def call_fun(t, y, params):
             return unit_model(t, y, params=params)
 
+        def jac_fun(t, y, params): return get_jac(t, y, None, None, param_vals)
+
         kwargs_problem = {'p0': param_vals}
 
-    return call_fun, kwargs_problem
+    return call_fun, jac_fun, kwargs_problem
 
 
 class _BaseReactor:
@@ -364,6 +380,33 @@ class _BaseReactor:
         return balances
 
     def get_jacobians(self, time, states, sw, sens, params, wrt_states=True):
+        """
+        Function that calculates df/dy (jac_states) or the rhs of the
+        sensitivity system, i.e. df/dy * sens + df/dtheta
+        where df/dtheta is jac_params
+
+        Parameters
+        ----------
+        time : float
+            integration time.
+        states : array-like
+            states of the ODE system.
+        sw : list of bools
+            list indicating the states of the switches.
+        sens : array-like
+            current sensitivities of the system.
+        params : array-like
+            value of the kinetic parameters.
+        wrt_states : bool, optional
+            if True, jac_states is returned (function called by problem.jac).
+            Otherwise, the rhs of the sensitivity system is returned
+            (function called by problem.rhs). The default is True.
+
+        Returns
+        -------
+        See 'wrt_states' argument above
+
+        """
         num_states = len(states)
 
         # ---------- w.r.t. states
@@ -728,11 +771,9 @@ class BatchReactor(_BaseReactor):
         # Create problem
         merged_params = self.Kinetics.concat_params()
 
-        call_fn, kw_problem = get_sundials_callable(
-            self.state_events, eval_sens, merged_params, self.unit_model)
-
-        def jac_fn(t, y, sw): return self.get_jacobians(t, y, sw, None,
-                                                        merged_params)
+        call_fn, jac_fn, kw_problem = get_sundials_callable(
+            self.state_events, eval_sens, merged_params,
+            self.unit_model, self.get_jacobians)
 
         problem = Explicit_Problem(call_fn, states_init, t0=self.elapsed_time,
                                    **kw_problem)
