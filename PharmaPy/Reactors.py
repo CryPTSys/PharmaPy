@@ -51,7 +51,9 @@ def get_sundials_callable(events, eval_sens, param_vals, unit_model):
     flag_events = len(events) > 0
 
     if not flag_events and not eval_sens:
-        call_fun = unit_model
+        def call_fun(t, y):
+            return unit_model(t, y, None, None)
+
         kwargs_problem = {}
     elif flag_events:
         def call_fun(t, y, sw):

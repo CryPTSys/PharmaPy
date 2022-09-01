@@ -11,7 +11,6 @@ from numpy.linalg import solve, norm, inv
 
 
 lm_header = [
-    '\n',
     '{:<40}'.format('-'*60),
     "{:<7} {:<10} {:<10} {:<10} {:<10}".format('eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'),
     '{:<40}'.format('-'*60)]
