@@ -346,7 +346,7 @@ class Drying:
 
         cpl_mix = self.Liquid_1.getCp(temp=temp_sol, mass_frac=xliq_extended,
                                       basis='mass')
-        sensible_heat = cpg_mix * (temp_sol - temp_gas) * dry_rate.sum(axis=1)
+        sensible_heat = cpg_mix * (temp_gas - temp_sol) * dry_rate.sum(axis=1)
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = rho_gas / self.rho_liq * cpg_mix
