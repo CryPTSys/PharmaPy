@@ -5,7 +5,7 @@ Created on Wed May 27 10:12:13 2020
 @author: dcasasor
 """
 
-from PharmaPy.Phases import LiquidPhase, SolidPhase, VaporPhase
+from PharmaPy.Phases import LiquidPhase, SolidPhase, VaporPhase, classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from scipy.interpolate import CubicSpline
 import numpy as np
@@ -25,6 +25,43 @@ def Interpolation(t_data, y_data, time, newton=True, num_points=3):
     y_target = interp.evalPolynomial(time)
 
     return y_target
+
+
+class BatchToFlowConnector:
+    def __init__(self, flow_mult=1, cycle_time=None):
+        self.flow_mult = flow_mult
+        self.cycle_time = cycle_time
+
+        self._Phase = None
+        self.oper_mode = 'Batch'
+
+    @property
+    def Phase(self):
+        return self._Phases
+
+    @Phase.setter
+    def Phase(self, phases):
+        classify_phases(self)
+        return
+
+    def solve_unit(self):
+        self.retrieve_results()
+
+    def retrieve_results(self):
+
+        fields = ('temp', 'pres', 'mass_frac', 'path_data')
+
+        if self.cycle_time is None:
+            self.cycle_time = self.Inlet.time_upstream[-1]
+
+        if self.has_solids:
+            pass  # TODO: add this if continuous downstream solid processing is made available
+        else:
+            kw_phase = {key: getattr(self.Liquid_1, key) for key in fields}
+            mass_flow = self.Liquid_1.mass / self.cycle_time * self.flow_mult
+            outlet = LiquidStream(**kw_phase, mass_flow=mass_flow)
+
+        self.Outlet = outlet
 
 
 class LiquidStream(LiquidPhase):

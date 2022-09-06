@@ -1782,9 +1782,9 @@ class PlugFlowReactor(_BaseReactor):
 
         model = self.unit_model
 
-        model, kw_model = get_sundials_callable(
+        model, jac_fn, kw_model = get_sundials_callable(
             self.state_events, eval_sens=False, param_vals=[],
-            unit_model=self.unit_model)
+            unit_model=self.unit_model, get_jac=self.get_jacobians)
 
         problem = Explicit_Problem(model, states_init, t0=self.elapsed_time,
                                    **kw_model)
