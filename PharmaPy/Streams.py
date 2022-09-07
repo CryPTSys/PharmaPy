@@ -7,6 +7,8 @@ Created on Wed May 27 10:12:13 2020
 
 from PharmaPy.Phases import LiquidPhase, SolidPhase, VaporPhase, classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
+from PharmaPy.Results import DynamicResult
+
 from scipy.interpolate import CubicSpline
 import numpy as np
 
@@ -28,21 +30,44 @@ def Interpolation(t_data, y_data, time, newton=True, num_points=3):
 
 
 class BatchToFlowConnector:
-    def __init__(self, flow_mult=1, cycle_time=None):
+    def __init__(self, cycle_time, flow_mult=1):
         self.flow_mult = flow_mult
         self.cycle_time = cycle_time
 
-        self._Phase = None
+        self._Phases = None
+        self._Inlet = None
         self.oper_mode = 'Batch'
 
+        self.is_continuous = True
+
     @property
-    def Phase(self):
+    def Phases(self):
         return self._Phases
 
-    @Phase.setter
-    def Phase(self, phases):
+    @Phases.setter
+    def Phases(self, phases):
+        self.has_solids = False
+
+        if isinstance(phases, (list, tuple)):
+            self._Phases = phases
+        elif 'LiquidPhase' in phases.__class__.__name__:
+            self._Phases = [phases]
+        elif 'Slurry' in phases.__class__.__name__:
+            self._Phases = phases.Phases
+            self.has_solids = True
+
         classify_phases(self)
-        return
+        self.nomenclature()
+
+    def nomenclature(self):
+        comp = self.Liquid_1.name_species
+        self.states_di = {
+            'mass_frac': {'dim': len(comp), 'index': comp},
+            'mass_flow': {'dim': 1, 'units': 'kg/s'},
+            'temp': {'dim': 1, 'units': 'K'}}
+
+    def flatten_states(self):
+        pass
 
     def solve_unit(self):
         self.retrieve_results()
@@ -51,17 +76,27 @@ class BatchToFlowConnector:
 
         fields = ('temp', 'pres', 'mass_frac', 'path_data')
 
-        if self.cycle_time is None:
-            self.cycle_time = self.Inlet.time_upstream[-1]
+        # if self.cycle_time is None:
+        #     self.cycle_time = self.Phases[0].time_upstream
 
         if self.has_solids:
             pass  # TODO: add this if continuous downstream solid processing is made available
         else:
             kw_phase = {key: getattr(self.Liquid_1, key) for key in fields}
+
+            kw_phase['path_thermo'] = kw_phase.pop('path_data')
             mass_flow = self.Liquid_1.mass / self.cycle_time * self.flow_mult
             outlet = LiquidStream(**kw_phase, mass_flow=mass_flow)
 
+            kw_phase.pop('path_thermo')
+            di_output = kw_phase
+
+        kw_phase['time'] = [self.cycle_time]
+
+        self.result = DynamicResult(self.states_di, **kw_phase)
+
         self.Outlet = outlet
+        self.outputs = None
 
 
 class LiquidStream(LiquidPhase):

@@ -523,6 +523,8 @@ class _BaseReactor:
 
         fig.tight_layout()
 
+        fig.text(0.5, 0, 'time (s)', ha='center')
+
         return fig, ax
 
     def plot_sens(self, fig_size=None, mode='per_parameter',
@@ -874,7 +876,7 @@ class BatchReactor(_BaseReactor):
 
         self.Liquid_1.temp = dp['temp'][-1]
 
-        concentr_final = self.Liquid_1.mole_conc.copy()
+        concentr_final = self.Liquid_1.mole_conc.copy().astype(np.float64)
         concentr_final[self.mask_species] = dp['mole_conc'][-1]
         self.Liquid_1.updatePhase(vol=self.Liquid_1.vol,
                                   mole_conc=concentr_final)
@@ -1637,6 +1639,9 @@ class PlugFlowReactor(_BaseReactor):
 
         if self.adiabatic:
             heat_transfer = np.zeros_like(self.vol_discr)
+
+        elif self.isothermal:
+            heat_transfer = source_term
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
 
@@ -1662,7 +1667,7 @@ class PlugFlowReactor(_BaseReactor):
 
         di_states = complete_dict_states(
             time, di_states, ('mole_conc', 'temp'), self.Liquid_1,
-            self.controls, inputs)
+            self.controls, inputs, num_discr=self.num_discr)
 
         flow_in = inputs['vol_flow']  # m**3/s
 
@@ -1694,22 +1699,20 @@ class PlugFlowReactor(_BaseReactor):
         material_bces = self.material_balances(time, **di_states,
                                                vol_diff=vol_diff,
                                                flow_in=flow_in, rate_j=rates_j)
+        if enrgy_bce:
+            ht_inst = self.energy_balances(time, **di_states,
+                                           vol_diff=vol_diff,
+                                           flow_in=flow_in, rate_i=rates_i,
+                                           heat_profile=True)
+            return ht_inst
 
-        if 'temp' in self.states_uo:
-            if enrgy_bce:
-                ht_inst = self.energy_balances(time, **di_states,
-                                               vol_diff=vol_diff,
-                                               flow_in=flow_in, rate_i=rates_i,
-                                               heat_profile=True)
-                return ht_inst
+        elif 'temp' in self.states_uo:
+            energy_bce = self.energy_balances(time, **di_states,
+                                              vol_diff=vol_diff,
+                                              flow_in=flow_in, rate_i=rates_i,
+                                              heat_profile=False)
 
-            else:
-                energy_bce = self.energy_balances(time, **di_states,
-                                                  vol_diff=vol_diff,
-                                                  flow_in=flow_in, rate_i=rates_i,
-                                                  heat_profile=False)
-
-                balances = np.column_stack((material_bces, energy_bce)).ravel()
+            balances = np.column_stack((material_bces, energy_bce)).ravel()
         else:
             balances = material_bces.ravel()
 
@@ -1750,8 +1753,6 @@ class PlugFlowReactor(_BaseReactor):
             final_time = time_grid[-1] + self.elapsed_time
 
         self.set_names()
-
-        c_inlet = self.Inlet.mole_conc
 
         vol_rxn = self.Liquid_1.vol
         self.vol_discr = np.linspace(0, vol_rxn, self.num_discr + 1)
@@ -1829,7 +1830,6 @@ class PlugFlowReactor(_BaseReactor):
     def retrieve_results(self, time, states):
         time = np.asarray(time)
         self.timeProf = time
-        num_times = len(time)
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
@@ -1838,6 +1838,10 @@ class PlugFlowReactor(_BaseReactor):
 
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
+
+        dp = complete_dict_states(time, dp, ('temp', ),
+                                  self.Liquid_1, self.controls,
+                                  num_discr=self.num_discr + 1)  # + inputs
 
         dp['time'] = time
         dp['vol'] = self.vol_discr
