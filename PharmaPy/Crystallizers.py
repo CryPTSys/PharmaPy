@@ -310,13 +310,6 @@ class _BaseCryst:
 
         self.mask_params = np.array(self.mask_params)
 
-        ind_true = np.where(self.mask_params)[0]
-        ind_false = np.where(~self.mask_params)[0]
-
-        self.params_fixed = self.Kinetics.concat_params()[ind_false]
-
-        self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
-
     @property
     def Utility(self):
         return self._Utility
@@ -533,17 +526,8 @@ class _BaseCryst:
 
             return dcsd_dt, np.array(mass_transfer)
 
-    def unit_model(self, time, states, params, sw=None,
+    def unit_model(self, time, states, params=None, sw=None,
                    mat_bce=False, enrgy_bce=False):
-
-        # ---------- Prepare inputs
-        if len(self.params_fixed) > 1:
-            params_all = np.concatenate((params, self.params_fixed))
-            params_all = params_all[self.ind_maskpar]
-        else:
-            params_all = params
-
-        self.Kinetics.set_params(params_all)
 
         di_states = unpack_states(states, self.dim_states, self.name_states)
 
@@ -961,7 +945,7 @@ class _BaseCryst:
 
     def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None,
-                         scale_factor=1e-3, run_args=None):
+                         scale_factor=1e-3, run_args=None, reord_sens=True):
         self.reset()
         self.params_iter = params
 
@@ -993,7 +977,10 @@ class _BaseCryst:
                                                        eval_sens=True,
                                                        verbose=False)
 
-                sens = reorder_sens(sens, separate_sens=False)
+                if reord_sens:
+                    sens = reorder_sens(sens, separate_sens=False)
+                else:
+                    sens = np.stack(sens)
 
                 result = (states, sens)
             else:
@@ -1019,7 +1006,8 @@ class _BaseCryst:
 
                 sens_sep = dict(zip(di_keys, sens_sep))
 
-                result = self.param_wrapper(self.result, sens_sep)
+                result = self.param_wrapper(self.result, sens_sep,
+                                            reord_sens=reord_sens)
 
         return result
 
@@ -1092,6 +1080,9 @@ class _BaseCryst:
 
         # axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
         axis.set_xscale('log')
+
+        fig.texts[0].remove()
+        axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
 
         return fig, axis
 

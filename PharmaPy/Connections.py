@@ -102,7 +102,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
                     elif len(time) > 1:
                         field = np.outer(np.ones_like(time), field)
@@ -118,7 +118,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
                     di_out[phase][state] = field
     return di_out
@@ -279,12 +279,11 @@ class Connection:
             self.Matter.time_upstream = time_prof[-1]
 
     def ConvertUnits(self):
-        states_up = self.source_uo.names_states_out
-
         mode_source = self.source_uo.oper_mode
         mode_dest = self.destination_uo.oper_mode
 
         if mode_source == 'Continuous' and mode_dest != 'Batch':
+            states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
             if class_destination == 'DynamicCollector':
@@ -339,7 +338,7 @@ class Connection:
             # Transfering from batch to continuous (how to approach this?)
             if self.source_uo.oper_mode != 'Continuous':
                 pass
-                # TODO: bit TODO. We need to define how Batch/Semibatch
+                # TODO: big TODO. We need to define how Batch/Semibatch
                 # followed by continuous will be handled. The most practical
                 # approach would be to solve thhe the downstream continuous
                 # section for a period of time such as the material from the

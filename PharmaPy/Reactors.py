@@ -47,6 +47,45 @@ def check_stoichiometry(stoich, mws):
               "aggregated Kinetic instance.")
 
 
+def get_sundials_callable(events, eval_sens, param_vals, unit_model, get_jac):
+    flag_events = len(events) > 0
+
+    if not flag_events and not eval_sens:
+        def call_fun(t, y): return unit_model(t, y, None, None)
+
+        def jac_fun(t, y): return get_jac(t, y, None, None, param_vals)
+
+        kwargs_problem = {}
+
+    # This is redundant but helps with readability
+    elif flag_events and eval_sens:
+        def call_fun(t, y, sw, params):
+            return unit_model(t, y, sw=sw, params=params)
+
+        def jac_fun(t, y, sw, params):
+            return get_jac(t, y, sw, None, params)
+
+        kwargs_problem = {'sw0': [True] * len(events), 'p0': param_vals}
+
+    elif flag_events:
+        def call_fun(t, y, sw):
+            return unit_model(t, y, sw=sw, params=param_vals)
+
+        def jac_fun(t, y, sw): return get_jac(t, y, sw, None, param_vals)
+
+        kwargs_problem = {'sw0': [True] * len(events)}
+
+    elif eval_sens:
+        def call_fun(t, y, params):
+            return unit_model(t, y, params=params)
+
+        def jac_fun(t, y, params): return get_jac(t, y, None, None, param_vals)
+
+        kwargs_problem = {'p0': param_vals}
+
+    return call_fun, jac_fun, kwargs_problem
+
+
 class _BaseReactor:
     def __init__(self, mask_params,
                  base_units, temp_ref, isothermal,
@@ -82,7 +121,9 @@ class _BaseReactor:
             the sensitivity system along with the concentratio profiles.
             Use False if you want the parameter estimation platform to
             estimate the sensitivity system using finite differences
-        state_events : dict of ? TODO: [not sure about this one]
+        state_events : lsit of dict(s)
+            list of dictionaries, each one containing the specification of a
+            state event
         """
         self.distributed_uo = False
         self.is_continuous = False
@@ -138,7 +179,10 @@ class _BaseReactor:
         else:
             self.controls = controls
 
-        self.state_event_list = state_events
+        if state_events is None:
+            state_events = []
+
+        self.state_events = state_events
 
         # Outputs
         self.time_runs = []
@@ -230,8 +274,8 @@ class _BaseReactor:
         is_PFR = self.__class__.__name__ == 'PlugFlowReactor'
 
         events = eval_state_events(
-            time, states, sw, self.len_states,
-            self.states_uo, self.state_event_list, sdot=self.derivatives,
+            time, states, sw, self.dim_states,
+            self.states_uo, self.state_events, sdot=self.derivatives,
             discretized_model=is_PFR)
 
         return events
@@ -303,7 +347,7 @@ class _BaseReactor:
 
         return inputs
 
-    def unit_model(self, time, states, params):
+    def unit_model(self, time, states, sw=None, params=None):
         # Calculate inlets
         u_values = self.get_inputs(time)
 
@@ -335,7 +379,34 @@ class _BaseReactor:
 
         return balances
 
-    def get_jacobians(self, time, states, sens, params, wrt_states=True):
+    def get_jacobians(self, time, states, sw, sens, params, wrt_states=True):
+        """
+        Function that calculates df/dy (jac_states) or the rhs of the
+        sensitivity system, i.e. df/dy * sens + df/dtheta
+        where df/dtheta is jac_params
+
+        Parameters
+        ----------
+        time : float
+            integration time.
+        states : array-like
+            states of the ODE system.
+        sw : list of bools
+            list indicating the states of the switches.
+        sens : array-like
+            current sensitivities of the system.
+        params : array-like
+            value of the kinetic parameters.
+        wrt_states : bool, optional
+            if True, jac_states is returned (function called by problem.jac).
+            Otherwise, the rhs of the sensitivity system is returned
+            (function called by problem.rhs). The default is True.
+
+        Returns
+        -------
+        See 'wrt_states' argument above
+
+        """
         num_states = len(states)
 
         # ---------- w.r.t. states
@@ -372,7 +443,7 @@ class _BaseReactor:
         return di_out
 
     def paramest_wrapper(self, params, t_vals, modify_phase=None,
-                         modify_controls=None, reorder=True, run_args={}):
+                         modify_controls=None, reord_sens=True, run_args={}):
 
         self.reset()
 
@@ -390,7 +461,7 @@ class _BaseReactor:
                                                    verbose=False,
                                                    eval_sens=True, **run_args)
 
-            if reorder:
+            if reord_sens:
                 sens = reorder_sens(sens)
             else:
                 sens = np.stack(sens)
@@ -451,6 +522,8 @@ class _BaseReactor:
             ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 
         fig.tight_layout()
+
+        fig.text(0.5, 0, 'time (s)', ha='center')
 
         return fig, ax
 
@@ -699,30 +772,40 @@ class BatchReactor(_BaseReactor):
 
         # Create problem
         merged_params = self.Kinetics.concat_params()
+
+        call_fn, jac_fn, kw_problem = get_sundials_callable(
+            self.state_events, eval_sens, merged_params,
+            self.unit_model, self.get_jacobians)
+
+        problem = Explicit_Problem(call_fn, states_init, t0=self.elapsed_time,
+                                   **kw_problem)
+
         if eval_sens:
-            problem = Explicit_Problem(self.unit_model, states_init,
-                                       t0=self.elapsed_time,
-                                       p0=merged_params)
+            problem.jac = jac_fn
 
-            problem.jac = lambda time, states, params: self.get_jacobians(
-                time, states, 0, params)
+            def rhs_sens(t, y, sens, params): return self.get_jacobians(
+                    t, y, None, sens, params, wrt_states=False)
 
-            problem.rhs_sens = lambda time, states, sens, params: self.get_jacobians(
-                time, states, sens, params, wrt_states=False)
+            problem.rhs_sens = rhs_sens
 
         else:
-            def fobj(time, states): return self.unit_model(
-                time, states, merged_params)
-
-            problem = Explicit_Problem(fobj, states_init,
-                                       t0=self.elapsed_time)
             if self.isothermal and self.Kinetics.df_dstates is not None:
-                problem.jac = lambda time, states: self.get_jacobians(
-                    time, states, 0, merged_params)
+                problem.jac = jac_fn
+
+        if len(self.state_events) > 0:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_events,
+                                     any_event=True)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
 
         vol_tank = self.Liquid_1.vol / self.vol_offset
         self.diam = (4 / np.pi * vol_tank)**(1/3)
         self.area_base = np.pi/4 * self.diam**2
+
+        self.derivatives = call_fn(self.elapsed_time, states_init,
+                                   *list(kw_problem.values()))
 
         # Set solver
         solver = CVode(problem)
@@ -793,7 +876,7 @@ class BatchReactor(_BaseReactor):
 
         self.Liquid_1.temp = dp['temp'][-1]
 
-        concentr_final = self.Liquid_1.mole_conc.copy()
+        concentr_final = self.Liquid_1.mole_conc.copy().astype(np.float64)
         concentr_final[self.mask_species] = dp['mole_conc'][-1]
         self.Liquid_1.updatePhase(vol=self.Liquid_1.vol,
                                   mole_conc=concentr_final)
@@ -1556,6 +1639,9 @@ class PlugFlowReactor(_BaseReactor):
 
         if self.adiabatic:
             heat_transfer = np.zeros_like(self.vol_discr)
+
+        elif self.isothermal:
+            heat_transfer = source_term
         else:  # W/m**3
             a_prime = 4 / self.diam  # m**2 / m**3
 
@@ -1581,7 +1667,7 @@ class PlugFlowReactor(_BaseReactor):
 
         di_states = complete_dict_states(
             time, di_states, ('mole_conc', 'temp'), self.Liquid_1,
-            self.controls, inputs)
+            self.controls, inputs, num_discr=self.num_discr)
 
         flow_in = inputs['vol_flow']  # m**3/s
 
@@ -1613,22 +1699,20 @@ class PlugFlowReactor(_BaseReactor):
         material_bces = self.material_balances(time, **di_states,
                                                vol_diff=vol_diff,
                                                flow_in=flow_in, rate_j=rates_j)
+        if enrgy_bce:
+            ht_inst = self.energy_balances(time, **di_states,
+                                           vol_diff=vol_diff,
+                                           flow_in=flow_in, rate_i=rates_i,
+                                           heat_profile=True)
+            return ht_inst
 
-        if 'temp' in self.states_uo:
-            if enrgy_bce:
-                ht_inst = self.energy_balances(time, **di_states,
-                                               vol_diff=vol_diff,
-                                               flow_in=flow_in, rate_i=rates_i,
-                                               heat_profile=True)
-                return ht_inst
+        elif 'temp' in self.states_uo:
+            energy_bce = self.energy_balances(time, **di_states,
+                                              vol_diff=vol_diff,
+                                              flow_in=flow_in, rate_i=rates_i,
+                                              heat_profile=False)
 
-            else:
-                energy_bce = self.energy_balances(time, **di_states,
-                                                  vol_diff=vol_diff,
-                                                  flow_in=flow_in, rate_i=rates_i,
-                                                  heat_profile=False)
-
-                balances = np.column_stack((material_bces, energy_bce)).ravel()
+            balances = np.column_stack((material_bces, energy_bce)).ravel()
         else:
             balances = material_bces.ravel()
 
@@ -1670,8 +1754,6 @@ class PlugFlowReactor(_BaseReactor):
 
         self.set_names()
 
-        c_inlet = self.Inlet.mole_conc
-
         vol_rxn = self.Liquid_1.vol
         self.vol_discr = np.linspace(0, vol_rxn, self.num_discr + 1)
 
@@ -1700,17 +1782,25 @@ class PlugFlowReactor(_BaseReactor):
         self.len_states = len_states
 
         model = self.unit_model
-        if self.state_event_list is None:
-            def model(t, y): return self.unit_model(t, y, None)
-            problem = Explicit_Problem(model, states_init,
-                                       t0=self.elapsed_time)
-        else:
-            switches = [True] * len(self.state_event_list)
-            problem = Explicit_Problem(self.unit_model, states_init,
-                                       t0=self.elapsed_time, sw0=switches)
+
+        model, jac_fn, kw_model = get_sundials_callable(
+            self.state_events, eval_sens=False, param_vals=[],
+            unit_model=self.unit_model, get_jac=self.get_jacobians)
+
+        problem = Explicit_Problem(model, states_init, t0=self.elapsed_time,
+                                   **kw_model)
+
+        if len(self.state_events) > 0:
+            # def model(t, y): return self.unit_model(t, y, None)
+            # problem = Explicit_Problem(model, states_init,
+            #                            t0=self.elapsed_time)
+        # else:
+            # switches = [True] * len(self.state_events)
+            # problem = Explicit_Problem(self.unit_model, states_init,
+            #                            t0=self.elapsed_time, sw0=switches)
 
             def new_handle(solver, info):
-                return handle_events(solver, info, self.state_event_list,
+                return handle_events(solver, info, self.state_events,
                                      any_event=any_event)
 
             problem.state_events = self._eval_state_events
@@ -1740,7 +1830,6 @@ class PlugFlowReactor(_BaseReactor):
     def retrieve_results(self, time, states):
         time = np.asarray(time)
         self.timeProf = time
-        num_times = len(time)
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
@@ -1749,6 +1838,10 @@ class PlugFlowReactor(_BaseReactor):
 
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
+
+        dp = complete_dict_states(time, dp, ('temp', ),
+                                  self.Liquid_1, self.controls,
+                                  num_discr=self.num_discr + 1)  # + inputs
 
         dp['time'] = time
         dp['vol'] = self.vol_discr
