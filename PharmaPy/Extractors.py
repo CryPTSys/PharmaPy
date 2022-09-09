@@ -12,6 +12,8 @@ from PharmaPy.Commons import mid_fn
 from PharmaPy.Phases import LiquidPhase
 from PharmaPy.Streams import LiquidStream
 
+from PharmaPy.Results import DynamicResult
+
 
 class EquilibriumLLE:
     def __init__(self, Inlet=None, temp_drum=None, pres_drum=None,
@@ -45,6 +47,13 @@ class EquilibriumLLE:
             self.in_flow = self.Inlet.mole_flow
         else:
             self.in_flow = self.Inlet.moles
+
+        name_comp = self.Inlet.name_species
+        self.states_di = {
+            'x_heavy': {'dim': self.num_comp, 'type': 'alg', 'index': name_comp},
+            'x_light': {'dim': self.num_comp, 'type': 'alg', 'index': name_comp},
+            'moles_heavy': {'dim': 1, 'type': 'alg'},
+            'moles_light': {'dim': 1, 'type': 'alg'}}
 
     def material_eqn_based(self, extr, raff, x_extr, x_raff, z_i):
 
@@ -182,14 +191,18 @@ class EquilibriumLLE:
         # # Energy balance
         # heat_bce = self.unit_model(solution, material=False)
 
-        # Retrieve solution
+        self.retrieve_results(solution)
+
+        return solution
+
+    def retrieve_results(self, solution):
         phase_part = solution[0]
 
         if phase_part > 1 or phase_part < 0:
             phase_part = 1
-            print()
-            print('No phases in equilibrium present at the specified conditions')
-            print()
+
+            print('\nNo phases in equilibrium present at the specified '
+                  'conditions', end='\n')
 
             xa_liq = self.Inlet.mole_frac
             xb_liq = xa_liq
@@ -234,4 +247,12 @@ class EquilibriumLLE:
             self.Liquid_2 = Liquid_b
             self.Liquid_3 = Liquid_a
 
-        return solution
+        # Result object
+        if dens_a > dens_b:
+            di = {'x_light': xb_liq, 'x_heavy': xa_liq,
+                  'moles_heavy': liquid_a, 'moles_light': liquid_b}
+        else:
+            di = {'x_light': xa_liq, 'x_heavy': xb_liq,
+                  'moles_heavy': liquid_b, 'moles_light': liquid_a}
+
+        self.result = DynamicResult(self.states_di, **di)
