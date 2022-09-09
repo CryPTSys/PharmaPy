@@ -111,11 +111,13 @@ class ContinuousExtractor:
             return deriv.sum()
 
         error = 1
-        tol = 1e-4
+
+        tol = self.solver_options.get('tol', 1e-4)
+        max_iter = self.solver_options.get('max_iter', 100)
 
         count = 0
 
-        while error > tol:
+        while error > tol and count < max_iter:
             k_i = get_ki(x_1_seed, x_2_seed, self.temp)
             phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
 
@@ -176,7 +178,12 @@ class ContinuousExtractor:
     def flatten_states(self):
         pass
 
-    def solve_unit(self):
+    def solve_unit(self, solver_options=None):
+
+        if solver_options is None:
+            solver_options = {}
+
+        self.solver_options = solver_options
 
         # Set seeds
         mol_z = self.in_flow * self.matter.mole_frac
@@ -204,6 +211,7 @@ class ContinuousExtractor:
 
     def retrieve_results(self, solution):
         phase_part = solution[0]
+        self.info_solver = solution[-1]
 
         if phase_part > 1 or phase_part < 0:
             phase_part = 1
