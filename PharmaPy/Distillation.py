@@ -564,7 +564,7 @@ class DynamicDistillation():
         
         k_vals = self._Inlet.getKeqVLE(pres = self.col_P, temp=temp,
                                        x_liq = x)
-        alpha = k_vals/k_vals[self.HK_index]
+        alpha = k_vals/k_vals[:, self.HK_index][:,None]
         
         y = ((alpha*x).T/np.sum(alpha*x,axis=1)).T
         
