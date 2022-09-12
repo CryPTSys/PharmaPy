@@ -28,6 +28,65 @@ from matplotlib.ticker import AutoMinorLocator
 eps = np.finfo(float).eps
 
 
+class ContinuousHoldup:
+    def __init__(self):
+        self._Inlet = None
+        self._Phases = None
+
+    @property
+    def Inlet(self):
+        return self._Inlet
+
+    @Inlet.setter
+    def Inlet(self, inlet):
+        self._Inlet = inlet
+
+    @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, phase):
+        self._Phases = phase
+
+        classify_phases()
+
+    def nomenclature(self):
+        name_comp = self.Liquid_1.name_species
+        num_comp = len(name_comp)
+
+        # Inlets
+        dict_in = {'mass_flow': 1, 'mass_frac': num_comp}
+        self.dict_states_in = dict_in
+
+        # Phase
+        states_di = {'mass_frac': {'type': 'diff', 'dim': num_comp,
+                                   'index': name_comp},
+                     'temp': {'type': 'diff', 'dim': 1, 'units': 'K'}}
+
+        self.dim_states = [val['dim'] for val in states_di.values()]
+        self.name_states = list(states_di.keys())
+
+        self.states_di = states_di
+
+    def get_inputs(self, time):
+        inputs = get_inputs_new(time, self.Inlet, self.dict_states_in)
+
+        return inputs
+
+    def unit_model(self, time, states):
+        di_states = unpack_states(states, self.dim_states, self.name_states)
+
+    def material_balance(self):
+        pass
+
+    def energy_balance(self):
+        pass
+
+
+
+
+
 class Mixer:
     def __init__(self, temp_refer=298.15):
 

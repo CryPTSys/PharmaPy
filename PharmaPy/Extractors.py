@@ -11,6 +11,7 @@ from scipy.optimize import newton
 from PharmaPy.Commons import mid_fn
 from PharmaPy.Phases import LiquidPhase
 from PharmaPy.Streams import LiquidStream
+from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Results import DynamicResult
 
@@ -58,6 +59,9 @@ class ContinuousExtractor:
 
         for key, val in fields.items():
             setattr(self, key, val)
+
+    def get_inputs(self):
+        pass
 
     def material_eqn_based(self, extr, raff, x_extr, x_raff, z_i):
 
