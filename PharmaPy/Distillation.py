@@ -590,8 +590,6 @@ class DynamicDistillation():
         
         problem = Implicit_Problem(self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
         solver = IDA(problem)
-        solver.rtol=10**-2
-        solver.atol=10**-2
         time, states, d_states = solver.simulate(runtime)
         self.retrieve_results(time, states)
         return time, states, d_states
