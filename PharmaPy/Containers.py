@@ -35,7 +35,7 @@ class ContinuousHoldup:
 
         self.elapsed_time = 0
 
-        self.oper_mode = 'continuous'
+        self.oper_mode = 'Continuous'
 
     @property
     def Inlet(self):
@@ -58,15 +58,18 @@ class ContinuousHoldup:
 
         classify_phases(self)
         self.nomenclature()
+        self.mass = self.Liquid_1.mass
 
     def nomenclature(self):
         name_comp = self.Liquid_1.name_species
         num_comp = len(name_comp)
 
         # Inlets
-        dict_in = {'mass_flow': 1, 'mass_frac': num_comp}
+        dict_in = {'mass_flow': 1, 'mass_frac': num_comp, 'temp': 1}
         self.dict_states_in = dict_in
         self.names_states_in = list(dict_in.keys())
+
+        self.dict_states_in = {'Inlet': self.dict_states_in}
 
         # Phase
         states_di = {'mass_frac': {'type': 'diff', 'dim': num_comp,
@@ -77,11 +80,12 @@ class ContinuousHoldup:
         self.name_states = list(states_di.keys())
 
         self.states_di = states_di
+        self.fstates_di = {}
 
     def get_inputs(self, time):
         inputs = get_inputs_new(time, self.Inlet, self.dict_states_in)
 
-        return inputs
+        return inputs['Inlet']
 
     def unit_model(self, time, states):
         di_states = unpack_states(states, self.dim_states, self.name_states)
@@ -99,12 +103,12 @@ class ContinuousHoldup:
     def material_balance(self, mass_frac, inputs):
 
         dw_dt = inputs['mass_flow'] / self.mass * (
-            mass_frac - inputs['mass_frac'])
+            inputs['mass_frac'] - mass_frac)
 
         return dw_dt
 
     def energy_balance(self, mass_frac, temp, inputs):
-        cp = self.Liquid_1.getCp(mass_frac=mass_frac, temp=temp)
+        cp = self.Liquid_1.getCp(mass_frac=mass_frac, temp=temp, basis='mass')
 
         h_in = self.Inlet.getEnthalpy(temp=inputs['temp'],
                                       mass_frac=inputs['mass_frac'])
@@ -131,20 +135,23 @@ class ContinuousHoldup:
         final_time = runtime + self.elapsed_time
         time, states = solver.simulate(final_time)
 
+        self.retrieve_results(time, states)
+
         return time, states
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
 
         di = unpack_states(states, self.dim_states, self.name_states)
-        self.result = DynamicResult(self.states_di, **di)
+        di['time'] = time
+        self.result = DynamicResult(self.states_di, self.fstates_di, **di)
 
         self.output = di
 
         inputs = self.get_inputs(time)
-        self.Outlet = LiquidStream(mass_flow=inputs['mass_flow'][-1],
-                                   temp=inputs['temp'][-1],
-                                   mass_frac=inputs['mass_frac'])
+        # self.Outlet = LiquidStream(mass_flow=inputs['mass_flow'][-1],
+        #                            temp=inputs['temp'][-1],
+        #                            mass_frac=inputs['mass_frac'])
 
 
 class Mixer:

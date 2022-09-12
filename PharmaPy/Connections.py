@@ -155,16 +155,21 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
 
-        ins = {}
-        for key, val in y_inlet.items():
-            ins[key] = interpolate_inputs(time, t_inlet, val, **kwargs_interp)
+        if t_inlet is None:  # static data
+            inputs = {'Inlet': y_inlet}  # TODO: I don't think this is general
 
-        inputs = {}
-        for phase, names in dict_states_in.items():
-            inputs[phase] = {}
-            for key, vals in ins.items():
-                if key in names:
-                    inputs[phase][key] = vals
+        else:  # time-dependent data
+            ins = {}
+            for key, val in y_inlet.items():
+                ins[key] = interpolate_inputs(time, t_inlet, val,
+                                              **kwargs_interp)
+
+            inputs = {}
+            for phase, names in dict_states_in.items():
+                inputs[phase] = {}
+                for key, vals in ins.items():
+                    if key in names:
+                        inputs[phase][key] = vals
 
     else:
         inputs = {obj: {} for obj in dict_states_in.keys()}
