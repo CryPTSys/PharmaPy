@@ -564,8 +564,9 @@ class DynamicDistillation():
 
         k_vals = self._Inlet.getKeqVLE(pres = self.col_P, temp=temp,
                                        x_liq = x)
-        alpha = k_vals/k_vals[self.HK_index]
 
+        alpha = k_vals/k_vals[:, self.HK_index][:,None]
+        
         y = ((alpha*x).T/np.sum(alpha*x,axis=1)).T
 
         #Rectifying section
@@ -590,8 +591,6 @@ class DynamicDistillation():
 
         problem = Implicit_Problem(self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
         solver = IDA(problem)
-        solver.rtol=10**-2
-        solver.atol=10**-2
         time, states, d_states = solver.simulate(runtime)
         self.retrieve_results(time, states)
         return time, states, d_states
