@@ -35,6 +35,8 @@ class ContinuousHoldup:
 
         self.elapsed_time = 0
 
+        self.oper_mode = 'continuous'
+
     @property
     def Inlet(self):
         return self._Inlet
@@ -49,9 +51,13 @@ class ContinuousHoldup:
 
     @Phases.setter
     def Phases(self, phase):
-        self._Phases = phase
+        if isinstance(phase, (list, tuple)):
+            self._Phases = phase
+        elif phase.__module__ == 'PharmaPy.Phases':
+            self._Phases = [phase]
 
         classify_phases(self)
+        self.nomenclature()
 
     def nomenclature(self):
         name_comp = self.Liquid_1.name_species
@@ -60,6 +66,7 @@ class ContinuousHoldup:
         # Inlets
         dict_in = {'mass_flow': 1, 'mass_frac': num_comp}
         self.dict_states_in = dict_in
+        self.names_states_in = list(dict_in.keys())
 
         # Phase
         states_di = {'mass_frac': {'type': 'diff', 'dim': num_comp,
