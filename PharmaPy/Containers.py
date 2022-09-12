@@ -77,11 +77,34 @@ class ContinuousHoldup:
     def unit_model(self, time, states):
         di_states = unpack_states(states, self.dim_states, self.name_states)
 
-    def material_balance(self):
-        pass
+        inputs = self.get_inputs(time)
 
-    def energy_balance(self):
-        pass
+        material = self.material_balance(di_states['mass_frac'], inputs)
+        energy = self.energy_balance(di_states['mass_frac'], di_states['temp'],
+                                     inputs)
+
+        balances = np.hstack((material, energy))
+
+        return balances
+
+    def material_balance(self, mass_frac, inputs):
+
+        dw_dt = inputs['mass_flow'] / self.mass * (
+            mass_frac - inputs['mass_frac'])
+
+        return dw_dt
+
+    def energy_balance(self, mass_frac, temp, inputs):
+        cp = self.Liquid_1.getCp(mass_frac=mass_frac, temp=temp)
+
+        h_in = self.Inlet.getEnthalpy(temp=inputs['temp'],
+                                      mass_frac=inputs['mass_frac'])
+        h = self.Inlet.getEnthalpy(temp=temp, mass_frac=mass_frac)
+
+        dtemp_dt = inputs['mass_flow'] / self.mass / cp * \
+            (h_in - h)
+
+        return dtemp_dt
 
 
 
