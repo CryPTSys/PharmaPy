@@ -33,6 +33,8 @@ class ContinuousHoldup:
         self._Inlet = None
         self._Phases = None
 
+        self.elapsed_time = 0
+
     @property
     def Inlet(self):
         return self._Inlet
@@ -49,7 +51,7 @@ class ContinuousHoldup:
     def Phases(self, phase):
         self._Phases = phase
 
-        classify_phases()
+        classify_phases(self)
 
     def nomenclature(self):
         name_comp = self.Liquid_1.name_species
@@ -106,8 +108,36 @@ class ContinuousHoldup:
 
         return dtemp_dt
 
+    def solve_unit(self, runtime, verbose=True):
+        w_init = self.Liquid_1.mass_frac
+        temp_init = self.Liquid_1.temp
 
+        states_init = np.hstack((w_init, temp_init))
 
+        problem = Explicit_Problem(self.unit_model, states_init,
+                                   t0=self.elapsed_time)
+        solver = CVode(problem)
+
+        if not verbose:
+            solver.verbosity = 50
+
+        final_time = runtime + self.elapsed_time
+        time, states = solver.simulate(final_time)
+
+        return time, states
+
+    def retrieve_results(self, time, states):
+        time = np.asarray(time)
+
+        di = unpack_states(states, self.dim_states, self.name_states)
+        self.result = DynamicResult(self.states_di, **di)
+
+        self.output = di
+
+        inputs = self.get_inputs(time)
+        self.Outlet = LiquidStream(mass_flow=inputs['mass_flow'][-1],
+                                   temp=inputs['temp'][-1],
+                                   mass_frac=inputs['mass_frac'])
 
 
 class Mixer:
