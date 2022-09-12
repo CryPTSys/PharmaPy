@@ -11,18 +11,40 @@ from scipy.optimize import newton
 from PharmaPy.Commons import mid_fn
 from PharmaPy.Phases import LiquidPhase
 from PharmaPy.Streams import LiquidStream
+from PharmaPy.Connections import get_inputs_new
+
+from PharmaPy.Results import DynamicResult
 
 
-class EquilibriumLLE:
-    def __init__(self, Inlet=None, temp_drum=None, pres_drum=None,
-                 gamma_method='UNIQUAC'):
+def material_setter(instance, oper_mode):
+    name_comp = instance.name_species
+    num_comp = len(name_comp)
+    states_di = {
+        'x_heavy': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
+        'x_light': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
+        'moles_heavy': {'dim': 1, 'type': 'alg'},
+        'moles_light': {'dim': 1, 'type': 'alg'}}
 
-        self.temp = temp_drum
-        self.pres = pres_drum
-        self._Inlet = Inlet
+    if oper_mode == 'continuous':
+        in_flow = instance.mole_flow
+    else:
+        in_flow = instance.moles
+
+    out = {'in_flow': in_flow, 'temp': instance.temp, 'pres': instance.pres,
+           'num_comp': num_comp, 'states_di': states_di}
+
+    return out
+
+
+class ContinuousExtractor:
+    def __init__(self, gamma_method='UNIQUAC'):
+
+        self._Inlet = None
         self.k_i = None
 
         self.gamma_method = gamma_method
+
+        self.oper_mode = 'Batch'
 
     @property
     def Inlet(self):
@@ -30,31 +52,26 @@ class EquilibriumLLE:
 
     @Inlet.setter
     def Inlet(self, instance):
+        fields = material_setter(instance, oper_mode=self.oper_mode)
         self._Inlet = instance
 
-        if self.temp is None:
-            self.temp = self._Inlet.temp
+        self.matter = self._Inlet
 
-        if self.pres is None:
-            self.pres = self._Inlet.pres
+        for key, val in fields.items():
+            setattr(self, key, val)
 
-        # self.pres = self._Inlet.pres
-        self.num_comp = self._Inlet.num_species
-
-        if self.Inlet.__module__ == 'PharmaPy.Streams':
-            self.in_flow = self.Inlet.mole_flow
-        else:
-            self.in_flow = self.Inlet.moles
+    def get_inputs(self):
+        pass
 
     def material_eqn_based(self, extr, raff, x_extr, x_raff, z_i):
 
-        gamma_extr = self.Inlet.getActivityCoeff(method=self.gamma_method,
-                                                 mole_frac=x_extr,
-                                                 temp=self.temp)
+        gamma_extr = self.matter.getActivityCoeff(method=self.gamma_method,
+                                                  mole_frac=x_extr,
+                                                  temp=self.temp)
 
-        gamma_raff = self.Inlet.getActivityCoeff(method=self.gamma_method,
-                                                 mole_frac=x_raff,
-                                                 temp=self.temp)
+        gamma_raff = self.matter.getActivityCoeff(method=self.gamma_method,
+                                                  mole_frac=x_raff,
+                                                  temp=self.temp)
 
         global_bce = 1 - extr - raff
         comp_bces = z_i - extr*x_extr - raff*x_raff
@@ -75,13 +92,13 @@ class EquilibriumLLE:
     def material_balance(self, phi_seed, x_1_seed, x_2_seed, z_i, temp):
 
         def get_ki(x1, x2, temp):
-            gamma_1 = self.Inlet.getActivityCoeff(method=self.gamma_method,
-                                                  mole_frac=x1,
-                                                  temp=temp)
+            gamma_1 = self.matter.getActivityCoeff(method=self.gamma_method,
+                                                   mole_frac=x1,
+                                                   temp=temp)
 
-            gamma_2 = self.Inlet.getActivityCoeff(method=self.gamma_method,
-                                                  mole_frac=x2,
-                                                  temp=temp)
+            gamma_2 = self.matter.getActivityCoeff(method=self.gamma_method,
+                                                   mole_frac=x2,
+                                                   temp=temp)
 
             k_i = gamma_1 / gamma_2
 
@@ -98,11 +115,13 @@ class EquilibriumLLE:
             return deriv.sum()
 
         error = 1
-        tol = 1e-4
+
+        tol = self.solver_options.get('tol', 1e-4)
+        max_iter = self.solver_options.get('max_iter', 100)
 
         count = 0
 
-        while error > tol:
+        while error > tol and count < max_iter:
             k_i = get_ki(x_1_seed, x_2_seed, self.temp)
             phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
 
@@ -144,14 +163,14 @@ class EquilibriumLLE:
         h_vap = self.VaporOut.getEnthalpy(self.temp, temp_ref=tref,
                                           mole_frac=y_i, basis='mole')
 
-        h_in = self.Inlet.getEnthalpy(temp_ref=tref, basis='mole')
+        h_in = self.matter.getEnthalpy(temp_ref=tref, basis='mole')
 
         heat_duty = liq_flow * h_liq + vap_flow * h_vap - self.in_flow * h_in
 
         return heat_duty  # W
 
     def unit_model(self, phi, x1, x2, temp, material=True):
-        z_i = self.Inlet.mole_frac
+        z_i = self.matter.mole_frac
 
         if material:
             balance = self.material_balance(phi, x1, x2, z_i, temp)
@@ -160,10 +179,18 @@ class EquilibriumLLE:
 
         return balance
 
-    def solve_unit(self):
+    def flatten_states(self):
+        pass
+
+    def solve_unit(self, solver_options=None):
+
+        if solver_options is None:
+            solver_options = {}
+
+        self.solver_options = solver_options
 
         # Set seeds
-        mol_z = self.in_flow * self.Inlet.mole_frac
+        mol_z = self.in_flow * self.matter.mole_frac
 
         distr_seed = np.random.random(self.num_comp)
         distr_seed = distr_seed / distr_seed.sum()
@@ -182,16 +209,21 @@ class EquilibriumLLE:
         # # Energy balance
         # heat_bce = self.unit_model(solution, material=False)
 
-        # Retrieve solution
+        self.retrieve_results(solution)
+
+        return solution
+
+    def retrieve_results(self, solution):
         phase_part = solution[0]
+        self.info_solver = solution[-1]
 
         if phase_part > 1 or phase_part < 0:
             phase_part = 1
-            print()
-            print('No phases in equilibrium present at the specified conditions')
-            print()
 
-            xa_liq = self.Inlet.mole_frac
+            print('\nNo phases in equilibrium present at the specified '
+                  'conditions', end='\n')
+
+            xa_liq = self.matter.mole_frac
             xb_liq = xa_liq
 
         else:
@@ -201,10 +233,10 @@ class EquilibriumLLE:
         liquid_b = phase_part * self.in_flow
         liquid_a = self.in_flow - liquid_b
 
-        path = self.Inlet.path_data
+        path = self.matter.path_data
 
         # Store in objects
-        if self.Inlet.__module__ == 'PharmaPy.Streams':
+        if self.oper_mode == 'continuous':
             Liquid_a = LiquidStream(path, mole_frac=xa_liq,
                                     mole_flow=liquid_a,
                                     temp=self.temp, pres=self.pres)
@@ -234,4 +266,32 @@ class EquilibriumLLE:
             self.Liquid_2 = Liquid_b
             self.Liquid_3 = Liquid_a
 
-        return solution
+        # Result object
+        if dens_a > dens_b:
+            di = {'x_light': xb_liq, 'x_heavy': xa_liq,
+                  'moles_heavy': liquid_a, 'moles_light': liquid_b}
+        else:
+            di = {'x_light': xa_liq, 'x_heavy': xb_liq,
+                  'moles_heavy': liquid_b, 'moles_light': liquid_a}
+
+        self.result = DynamicResult(self.states_di, **di)
+
+
+class BatchExtractor(ContinuousExtractor):
+    def __init__(self, gamma_method='UNIQUAC'):
+        super().__init__(gamma_method=gamma_method)
+
+        self._Phases = None
+
+    @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, instance):
+        fields = material_setter(instance, oper_mode=self.oper_mode)
+        self._Phases = instance
+        self.matter = self._Phases
+
+        for key, val in fields.items():
+            setattr(self, key, val)

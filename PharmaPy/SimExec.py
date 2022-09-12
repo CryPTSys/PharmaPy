@@ -143,8 +143,9 @@ class SimulationExec:
                     count += 1
 
                 # Processing times
-                time_prof = instance.result.time
-                time_processing[name] = time_prof[-1] - time_prof[0]
+                if hasattr(instance, 'time'):
+                    time_prof = instance.result.time
+                    time_processing[name] = time_prof[-1] - time_prof[0]
 
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):

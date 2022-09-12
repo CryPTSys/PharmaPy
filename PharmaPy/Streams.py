@@ -91,12 +91,13 @@ class BatchToFlowConnector:
             kw_phase.pop('path_thermo')
             di_output = kw_phase
 
-        kw_phase['time'] = [self.cycle_time]
+        # kw_phase['time'] = [self.cycle_time]
+        kw_phase['time'] = None
 
         self.result = DynamicResult(self.states_di, **kw_phase)
 
         self.Outlet = outlet
-        self.outputs = None
+        self.outputs = kw_phase
 
 
 class LiquidStream(LiquidPhase):
