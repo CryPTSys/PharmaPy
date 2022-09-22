@@ -31,6 +31,10 @@ class DistillationColumn:
         self.N_feed=N_feed #Num plate from bottom
         self.per_NLK=100 #Sharp split all NLK recovred in distillate
         self.per_NHK = 0 #Sharp split no NHK in distillate
+        LK_index = name_species.index(LK)
+        HK_index = name_species.index(HK)
+        self.LK_index = LK_index
+        self.HK_index = HK_index
         
         self.nomenclature()
         self._Inlet = None
@@ -81,18 +85,9 @@ class DistillationColumn:
         classify_phases(self)
         #self.nomenclature()
         
-    def estimate_comp (self):
+    def estimate_comp (self, name_species, feed_flowrate, z_feed, LK, HK, LK_index, HK_index):
         ### Determine Light Key and Heavy Key component numbers
         # Assume z_feed and name species are in the order- lightest to heaviest
-        name_species = self.name_species
-        feed_flowrate = self.feed_flowrate
-        z_feed = self.z_feed
-        LK = self.LK
-        HK = self.HK
-        LK_index = name_species.index(LK)
-        HK_index = name_species.index(HK)
-        self.LK_index = LK_index
-        self.HK_index = HK_index
         if HK_index != LK_index +1:
             print ('High key and low key indices are not adjacent')
         
@@ -146,15 +141,12 @@ class DistillationColumn:
                     mole_frac=y_oneplate, thermo_method=self.gamma_model, x_liq=need_x_vap)
         return res[::-1] #Program needs VLE function to return output in x,Temp format
     
-    def calc_reflux(self, x_dist = None, x_bot = None, 
-                    reflux = None, num_plates = None, pres=None, temp=None):
+    def calc_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate, 
+                    reflux, num_plates, pres):
         ### Calculate operating lines
-        #Rectifying section
-        if (x_dist is None or x_bot is None):
-            x_dist, x_bot, dist_flowrate, bot_flowrate = self.estimate_comp()                                            
         LK_index = self.LK_index
         HK_index = self.HK_index
-        k_vals = self.get_k_vals(x_oneplate = self.z_feed, temp=temp) 
+        k_vals = self.get_k_vals(x_oneplate = self.z_feed) 
         
         alpha = k_vals/k_vals[HK_index]
         ### Estimate Reflux ratio
@@ -169,23 +161,23 @@ class DistillationColumn:
         min_reflux = L_min/dist_flowrate
         self.min_reflux = min_reflux
         
-        if reflux is None:
+        if reflux is None or reflux == 0:
             reflux = 1.5*min_reflux #Heuristic
-        
         if reflux <0:
             reflux = -1*reflux*self.min_reflux 
+        elif reflux>0 and reflux< self.min_reflux:
+            print('Specified reflux less than min_reflux, calculation proceeds with 1.5*min_reflux')
+            reflux = 1.5*self.min_reflux
         
-        if num_plates is not None:
+        if num_plates:
             def bot_comp_err (reflux, num_plates, x_dist, x_bot, 
                               dist_flowrate, bot_flowrate):
                 
                 Ln  = reflux*dist_flowrate
                 Vn  = Ln  + dist_flowrate
-                
                 #Stripping section
                 Lm  = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1) 
                 Vm  = Lm  - bot_flowrate
-                
                 #Calculate compositions
                 x = np.zeros((num_plates+1, self.num_species))
                 y = np.zeros((num_plates+1, self.num_species))
@@ -194,8 +186,23 @@ class DistillationColumn:
                 x_new,T_new = self.VLE(y[0])
                 x[0] = x_new
                 T[0] = T_new
+                if self.N_feed: #Feed plate specified
+                    for i in range (1, num_plates+1):
+                        #Rectifying section
+                        if i < self.N_feed+1:
+                            y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
+                            x_new,T_new = self.VLE(y[i])
+                            x[i] = x_new
+                            T[i] = T_new
+                                
+                        #Stripping section
+                        else:
+                            y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
+                            x_new,T_new = self.VLE(y[i])
+                            x[i] = x_new
+                            T[i] = T_new
                 
-                if self.N_feed is None: #Feed plate not specified
+                else: #feed plate not specified
                     y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                     y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                     
@@ -218,33 +225,17 @@ class DistillationColumn:
                             x[i] = x_new
                             T[i] = T_new
                 
-                else: #Feed plate specified
-                    for i in range (1, num_plates+1):
-                        #Rectifying section
-                        if i < num_plates+1 - self.N_feed:
-                            y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
-                            x_new,T_new = self.VLE(y[i])
-                            x[i] = x_new
-                            T[i] = T_new
-                                
-                        #Stripping section
-                        else:
-                            y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
-                            x_new,T_new = self.VLE(y[i])
-                            x[i] = x_new
-                            T[i] = T_new
-                            
                 error = np.linalg.norm(x_bot - x[-1])/np.linalg.norm(x_bot)*100 + 0.01 * reflux**2 #pentalty for very high reflux values
                 return error
             
-            reflux = scipy.optimize.minimize(bot_comp_err, x0 = 1.5* self.min_reflux, 
-                                                 args=(num_plates, x_dist, x_bot, dist_flowrate, bot_flowrate), 
-                                                 method = 'Nelder-Mead')
+            reflux = scipy.optimize.minimize(bot_comp_err, x0 = 1.5*self.min_reflux, 
+                                             args=(num_plates, x_dist, x_bot, dist_flowrate, bot_flowrate), 
+                                             method = 'Nelder-Mead', bounds=((1.01*self.min_reflux,1000),))
             reflux = reflux.x
-        return reflux, x_dist, x_bot, dist_flowrate, bot_flowrate
+        self.reflux = reflux
+        return reflux
     
-    def calc_plates(self, reflux = None, num_plates = None):
-        reflux, x_dist, x_bot, dist_flowrate, bot_flowrate = self.calc_reflux(reflux = reflux, num_plates  = num_plates)
+    def calc_plates(self, x_dist, x_bot, dist_flowrate, bot_flowrate, reflux, num_plates):
         LK_index = self.LK_index
         HK_index = self.HK_index
         
@@ -256,7 +247,6 @@ class DistillationColumn:
         #Stripping section
         Lm  = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1) 
         Vm  = Lm  - bot_flowrate
-        
         
         if num_plates is None:
             ### Calculate number of plates
@@ -347,7 +337,7 @@ class DistillationColumn:
                 N_feed = self.N_feed
                 for i in range (1, num_plates+1):
                     #Rectifying section
-                    if i < num_plates+1 - self.N_feed:
+                    if i < self.N_feed:
                         y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                         x_new,T_new = self.VLE(y[i])
                         x[i] = x_new
@@ -363,10 +353,22 @@ class DistillationColumn:
         self.N_feed = N_feed
         
         self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
-        return num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min
+        return num_plates
+    
+    def solve_unit(self, runtime=None, t0=0):
+        x_dist, x_bot, dist_flowrate, bot_flowrate = self.estimate_comp(self.name_species, self.feed_flowrate, self.z_feed, 
+                                                                        self.LK, self.HK, self.LK_index, self.HK_index)
+        reflux= self.calc_reflux(x_dist, x_bot, dist_flowrate, bot_flowrate, 
+                                 self.reflux, self.num_plates, self.col_P)
+        num_plates = self.calc_plates(x_dist, x_bot, dist_flowrate, bot_flowrate, reflux, self.num_plates)
+        return
     
     def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
         
+        if not(isinstance(x, np.ndarray)):
+            x = np.array(x)
+            y = np.array(y)
+            T = np.array(T)
         dist_result = {'num_plates':num_plates, 'x':x.T, 'y':y.T, 'T':T, 
                        'bot_flowrate':bot_flowrate, 'dist_flowrate':dist_flowrate, 'reflux':reflux, 
                        'N_feed':N_feed, 'x_dist':x_dist, 'x_bot':x_bot, 'min_reflux':min_reflux, 'N_min':N_min
@@ -460,59 +462,40 @@ class DynamicDistillation():
                               }
         steady_col = DistillationColumn(**column_user_inputs)
         steady_col.Inlet = self._Inlet
-        (num_plates, x_ss, y_ss, T_ss, bot_flowrate, dist_flowrate, 
-         reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = steady_col.calc_plates(reflux = column_user_inputs['reflux'], 
-                                                                                    num_plates = column_user_inputs['num_plates'])
+        steady_col.solve_unit()
         
         #Calculate compositions
         #For starup Total reflux
         #Total reflux
-        x0 = np.zeros_like(x_ss)
-        y0 = np.zeros_like(y_ss)
-        T0 = np.zeros_like(T_ss)
         column_total_reflux = {'name_species': self.name_species,
                               'col_P': self.col_P,  # Pa
-                              'num_plates': num_plates, #exclude reboiler
-                              'reflux': 1000, #L/D
+                              'num_plates': steady_col.result.num_plates, #exclude reboiler
+                              'reflux': 1e5, #L/D
                               'q_feed': self.q_feed, #Feed q value
                               'LK': self.LK, #LK
                               'HK': self.HK, #HK
                               'per_LK': self.per_LK,# % recovery LK in distillate
                               'per_HK': self.per_HK,# % recovery HK in distillate
                               'holdup': self.M_const,
-                              'N_feed': N_feed
+                              'N_feed': steady_col.result.N_feed
                               }
         
         total_reflux_col = DistillationColumn(**column_total_reflux)
         total_reflux_col.Inlet = self._Inlet
-        (num_plates, x0, y0, T0, bot_flowrate, dist_flowrate, 
-          reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = total_reflux_col.calc_plates(reflux = column_total_reflux['reflux'], 
-                                                                                            num_plates = column_total_reflux['num_plates'])
-        x0 = np.array(x0)
-        y0 = np.array(y0)
-        T0 = np.array(T0)
-        T0 = (T0.T).ravel()
-        ## Set all values to original steady state
-        steady_col = DistillationColumn(**column_user_inputs)
-        steady_col.Inlet = self._Inlet
-        (num_plates, x_ss, y_ss, T_ss, bot_flowrate, dist_flowrate, 
-          reflux, N_feed, x_dist, x_bot, min_reflux, N_min) = steady_col.calc_plates(reflux = column_user_inputs['reflux'], 
-                                                                                    num_plates = column_user_inputs['num_plates'])
-        self.x0 = x0
-        self.y0 = y0
-        self.T0 = T0
-        self.x_ss = x_ss
-        self.y_ss = y_ss
-        self.T_ss = T_ss
-        self.num_plates = num_plates
-        self.bot_flowrate = bot_flowrate
-        self.dist_flowrate = dist_flowrate
-        self.reflux = reflux
-        self.N_feed = N_feed
-        self.x_dist = x_dist
-        self.x_bot = x_bot
-        #min_reflux and N_min are already available as self. 
-
+        total_reflux_col.solve_unit()
+        self.x0 = total_reflux_col.result.x.T
+        self.y0 = total_reflux_col.result.y.T
+        self.T0 = total_reflux_col.result.T
+        self.num_plates = steady_col.result.num_plates
+        self.bot_flowrate = steady_col.result.bot_flowrate
+        self.dist_flowrate = steady_col.result.dist_flowrate
+        self.reflux = steady_col.result.reflux
+        self.N_feed = steady_col.result.N_feed
+        self.x_dist = steady_col.result.x_dist
+        self.x_bot = steady_col.result.x_bot
+        self.min_reflux = steady_col.result.min_reflux
+        self.N_min = steady_col.result.N_min
+        
     @property
     def Phases(self):
         return self._Phases
