@@ -1433,7 +1433,7 @@ class ContinuousEvaporator:
         flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
         flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + input_flow
-        flow_liq = np.maximum(eps, flow_liq)
+        flow_liq = np.maximum(0, flow_liq - flow_vap)
 
         return vol_liq, vol_vap, flow_liq, flow_vap
 

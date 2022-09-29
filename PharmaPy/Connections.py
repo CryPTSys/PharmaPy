@@ -151,25 +151,36 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
         inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
         inputs = {'Inlet': inputs}
 
-    elif stream.y_upstream is not None:
+    elif stream.y_upstream is not None and stream.time_upstream is not None:
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
 
-        if t_inlet is None:  # static data
-            inputs = {'Inlet': y_inlet}  # TODO: I don't think this is general
+        ins = {}
+        for key, val in y_inlet.items():
+            ins[key] = interpolate_inputs(time, t_inlet, val,
+                                          **kwargs_interp)
 
-        else:  # time-dependent data
-            ins = {}
-            for key, val in y_inlet.items():
-                ins[key] = interpolate_inputs(time, t_inlet, val,
-                                              **kwargs_interp)
+        inputs = {}
+        for phase, names in dict_states_in.items():
+            inputs[phase] = {}
+            for key, vals in ins.items():
+                if key in names:
+                    inputs[phase][key] = vals
 
-            inputs = {}
-            for phase, names in dict_states_in.items():
-                inputs[phase] = {}
-                for key, vals in ins.items():
-                    if key in names:
-                        inputs[phase][key] = vals
+    elif stream.y_upstream is not None:
+        inputs = {}
+
+        for phase, names in dict_states_in.items():
+            inputs[phase] = {}
+            for key, vals in stream.y_inlet.items():
+                if key in names:
+                    if isinstance(time, np.ndarray) and len(time) > 1:
+                        vals = np.outer(np.ones_like(time), vals)
+
+                        if vals.shape[1] == 1:
+                            vals = vals.flatten()
+
+                    inputs[phase][key] = vals
 
     else:
         inputs = {obj: {} for obj in dict_states_in.keys()}
@@ -287,7 +298,32 @@ class Connection:
         mode_source = self.source_uo.oper_mode
         mode_dest = self.destination_uo.oper_mode
 
-        if mode_source == 'Continuous' and mode_dest != 'Batch':
+        flow_flag = (mode_source == 'Continuous' and mode_dest != 'Batch')
+        btf_flag = self.source_uo.__class__.__name__ == 'BatchToFlowConnector'
+
+        if flow_flag:
+            states_up = self.source_uo.names_states_out
+
+            class_destination = self.destination_uo.__class__.__name__
+            if class_destination == 'DynamicCollector':
+                if self.source_uo.__class__.__name__ == 'MSMPR':
+                    states_down = self.destination_uo.names_states_in['crystallizer']
+                else:
+                    states_down = self.destination_uo.names_states_in['liquid_mixer']
+
+            else:
+                states_down = self.destination_uo.names_states_in
+
+            name_analyzer = NameAnalyzer(
+                states_up, states_down, self.num_species,
+                len(getattr(self.Matter, 'distrib', []))
+                )
+
+            # Convert units and pass states to self.Matter
+            converted_states = name_analyzer.convertUnitsNew(self.Matter)
+            self.Matter.y_inlet = converted_states
+
+        elif btf_flag:
             states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
@@ -322,6 +358,8 @@ class Connection:
 
         elif mode_dest == 'Batch':
             self.destination_uo.Phases = transfered_matter
+            # if class_destination == 'BatchToFlowConnector':
+            #     self.destination_uo.names_states_out = self.source_uo.names_states_out
 
         elif mode_dest == 'Semibatch':
             if class_destination == 'DynamicCollector':
