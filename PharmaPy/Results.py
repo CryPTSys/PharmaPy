@@ -235,10 +235,11 @@ class SimulationResult:
 
                     num *= num_discr
 
-                    if di['type'] == 'diff':
-                        num_diff.append(num)
-                    elif di['type'] == 'alg':
-                        num_alg.append(num)
+                    if 'type' in di:
+                        if di['type'] == 'diff':
+                            num_diff.append(num)
+                        elif di['type'] == 'alg':
+                            num_alg.append(num)
 
                 if sum(num_diff) == 0:
                     model_type = 'ALG'

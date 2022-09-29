@@ -143,8 +143,9 @@ class SimulationExec:
                     count += 1
 
                 # Processing times
-                time_prof = instance.result.time
-                time_processing[name] = time_prof[-1] - time_prof[0]
+                if hasattr(instance, 'time'):
+                    time_prof = instance.result.time
+                    time_processing[name] = time_prof[-1] - time_prof[0]
 
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):
@@ -165,11 +166,70 @@ class SimulationExec:
         self.result = SimulationResult(self)
         self.connections = connections
 
-    def SetParamEstimation(self, x_data, y_data=None, spectra=None,
+    def SetParamEstimation(self, x_data, y_data=None, y_spectra=None,
                            fit_spectra=False,
                            wrapper_kwargs=None,
                            phase_modifiers=None, control_modifiers=None,
                            pick_unit=None, **inputs_paramest):
+        """
+        Set parameter estimation using the aggregated unit operation to a
+        simulation object
+
+        Parameters
+        ----------
+        x_data : TYPE
+            DESCRIPTION.
+        y_data : TYPE, optional
+            DESCRIPTION. The default is None.
+        spectra : TYPE, optional
+            DESCRIPTION. The default is None.
+        fit_spectra : TYPE, optional
+            DESCRIPTION. The default is False.
+        wrapper_kwargs : TYPE, optional
+            DESCRIPTION. The default is None.
+        phase_modifiers : dict, optional
+            Dictionary containing values to be set to the initial state
+            of a phase for each experiment. Keys of 'phase_modifiers'
+            must be experiment names, and fields must be dictionaries
+            with keys matching the fields used to create a PharmaPy phase.
+            An example for a reactor would be:
+
+                my_modifier = {
+                    'exp_1': {'temp': 300, 'mole_frac': [...]},
+                    'exp_2': {'temp': 320, 'mole_frac': [...]}}
+
+            For multi-phase systems such as crystallizer, an additional layer
+            is needed to indicate which phase is being modified, e.g.
+
+                my_modifier = {
+                    'exp_1': {'Liquid_1': {'temp': 300, 'mole_frac': [...]}},
+                    'exp_2': {'Liquid_1': {'temp': 320, 'mole_frac': [...]}, 'Solid_1': {'distrib':}}
+                    }
+
+            The default is None.
+        control_modifiers : dict, optional
+            Dictionary containing arguments to be passed to a control function.
+            For instance, for a crystallizer with a temperature control with
+            signature my_control(time, temp_init, ramp):
+
+                my_modifier = {'temp': {'args': (320, -0.2)}}
+
+            The default is None.
+        pick_unit : TYPE, optional
+            DESCRIPTION. The default is None.
+        **inputs_paramest : TYPE
+            DESCRIPTION.
+
+        Raises
+        ------
+        RuntimeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
 
         # self.LoadUOs()
 
@@ -243,7 +303,7 @@ class SimulationExec:
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed=param_seed, x_data=x_data, spectra=spectra,
+                param_seed=param_seed, time_data=x_data, y_spectra=y_spectra,
                 kwargs_fun=kwargs_wrapper,
                 **inputs_paramest)
         else:

@@ -178,15 +178,26 @@ def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
 
 
 def complete_dict_states(time, di, target_keys, phase, controls,
-                         u_inputs=None):
+                         u_inputs=None, num_discr=1):
     for key in target_keys:
         if key not in di:
             if key in controls.keys():
-                di[key] = controls[key](time)
+                control = controls[key]
+                di[key] = control['fun'](time,
+                                         *control['args'],
+                                         **control['kwargs'])
             else:
                 val = getattr(phase, key, None)
 
-                if isinstance(time, (list, np.ndarray)) and len(time) > 1:
+                time_flag = isinstance(time, (list, np.ndarray)) and len(time) > 1
+
+                if num_discr > 1:
+                    if time_flag:
+                        val = val * np.ones((len(time), num_discr))
+                    else:
+                        val = val * np.ones(num_discr)
+
+                elif time_flag:
                     val = val * np.ones_like(time)
 
                 di[key] = val

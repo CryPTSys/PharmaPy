@@ -28,6 +28,132 @@ from matplotlib.ticker import AutoMinorLocator
 eps = np.finfo(float).eps
 
 
+class ContinuousHoldup:
+    def __init__(self):
+        self._Inlet = None
+        self._Phases = None
+
+        self.elapsed_time = 0
+
+        self.oper_mode = 'Continuous'
+
+    @property
+    def Inlet(self):
+        return self._Inlet
+
+    @Inlet.setter
+    def Inlet(self, inlet):
+        self._Inlet = inlet
+
+    @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, phase):
+        if isinstance(phase, (list, tuple)):
+            self._Phases = phase
+        elif phase.__module__ == 'PharmaPy.Phases':
+            self._Phases = [phase]
+
+        classify_phases(self)
+        self.nomenclature()
+        self.mass = self.Liquid_1.mass
+
+    def nomenclature(self):
+        name_comp = self.Liquid_1.name_species
+        num_comp = len(name_comp)
+
+        # Inlets
+        dict_in = {'mass_flow': 1, 'mass_frac': num_comp, 'temp': 1}
+        self.dict_states_in = dict_in
+        self.names_states_in = list(dict_in.keys())
+
+        self.dict_states_in = {'Inlet': self.dict_states_in}
+
+        # Phase
+        states_di = {'mass_frac': {'type': 'diff', 'dim': num_comp,
+                                   'index': name_comp},
+                     'temp': {'type': 'diff', 'dim': 1, 'units': 'K'}}
+
+        self.dim_states = [val['dim'] for val in states_di.values()]
+        self.name_states = list(states_di.keys())
+
+        self.states_di = states_di
+        self.fstates_di = {}
+
+    def get_inputs(self, time):
+        inputs = get_inputs_new(time, self.Inlet, self.dict_states_in)
+
+        return inputs['Inlet']
+
+    def unit_model(self, time, states):
+        di_states = unpack_states(states, self.dim_states, self.name_states)
+
+        inputs = self.get_inputs(time)
+
+        material = self.material_balance(di_states['mass_frac'], inputs)
+        energy = self.energy_balance(di_states['mass_frac'], di_states['temp'],
+                                     inputs)
+
+        balances = np.hstack((material, energy))
+
+        return balances
+
+    def material_balance(self, mass_frac, inputs):
+
+        dw_dt = inputs['mass_flow'] / self.mass * (
+            inputs['mass_frac'] - mass_frac)
+
+        return dw_dt
+
+    def energy_balance(self, mass_frac, temp, inputs):
+        cp = self.Liquid_1.getCp(mass_frac=mass_frac, temp=temp, basis='mass')
+
+        h_in = self.Inlet.getEnthalpy(temp=inputs['temp'],
+                                      mass_frac=inputs['mass_frac'])
+        h = self.Inlet.getEnthalpy(temp=temp, mass_frac=mass_frac)
+
+        dtemp_dt = inputs['mass_flow'] / self.mass / cp * \
+            (h_in - h)
+
+        return dtemp_dt
+
+    def solve_unit(self, runtime, verbose=True):
+        w_init = self.Liquid_1.mass_frac
+        temp_init = self.Liquid_1.temp
+
+        states_init = np.hstack((w_init, temp_init))
+
+        problem = Explicit_Problem(self.unit_model, states_init,
+                                   t0=self.elapsed_time)
+        solver = CVode(problem)
+
+        if not verbose:
+            solver.verbosity = 50
+
+        final_time = runtime + self.elapsed_time
+        time, states = solver.simulate(final_time)
+
+        self.retrieve_results(time, states)
+
+        return time, states
+
+    def retrieve_results(self, time, states):
+        time = np.asarray(time)
+
+        di = unpack_states(states, self.dim_states, self.name_states)
+        di['time'] = time
+        self.result = DynamicResult(self.states_di, self.fstates_di, **di)
+
+        self.output = di
+
+        inputs = self.get_inputs(time)
+        # self.Outlet = LiquidStream(mass_flow=inputs['mass_flow'][-1],
+        #                            temp=inputs['temp'][-1],
+        #                            mass_frac=inputs['mass_frac'])
+
+
 class Mixer:
     def __init__(self, temp_refer=298.15):
 

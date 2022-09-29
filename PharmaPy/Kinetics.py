@@ -343,7 +343,8 @@ class RxnKinetics:
 
             self.fit_paramsf = True
             if self.elem_flag:
-                if params['params_f'] is None:
+                params_f = params.get('params_f', None)
+                if params_f is None:
                     is_reactant = self.stoich_matrix < 0
                     orders = abs(is_reactant * self.stoich_matrix)
                     self.fit_paramsf = False

@@ -10,10 +10,15 @@ from numpy import ones_like, inner, diag, asarray, maximum
 from numpy.linalg import solve, norm, inv
 
 
+lm_header = [
+    '{:<40}'.format('-'*60),
+    "{:<7} {:<10} {:<10} {:<10} {:<10}".format('eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'),
+    '{:<40}'.format('-'*60)]
+
+
 def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
                         eps_1=1e-8, eps_2=1e-8, tol_fun=1e-12,
-                        full_output=False,
-                        lambd_zero=1e-2,
+                        full_output=False, mu=None, d_diag=None,
                         args=(), verbose=False):
     """
     Optimize function using the Levenberg-Marquardt algorithm
@@ -36,7 +41,7 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     eps_1 : float, optional
         stoping criteria for the gradient. The default is 1e-8.
     eps_2 : float, optional
-        stopping criterion for the step. The default is 1e-8.
+        stopping criterion for step size. The default is 1e-8.
     tol_fun : float, optional
         stoping criterion for the objective function . The default is 1e-12.
     full_output : bool, optional
@@ -72,29 +77,28 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
     a_matrix = inner(jac, jac)  # Hessian approximation
     b_vector = inner(jac, fun)  # gradient
 
-    if fletcher_modif:
-        d_scaling = norm(jac, axis=1)
-        d_scaling = max(d_scaling) * ones_like(x)
+    if d_diag is None:
+        if fletcher_modif:
+            d_scaling = norm(jac, axis=1)
+            d_scaling = max(d_scaling) * ones_like(x)
+        else:
+            d_scaling = ones_like(x)
     else:
-        d_scaling = ones_like(x)
+        d_scaling = d_diag
 
-    mu = lambd_zero * max(diag(a_matrix))  # after Nielsen (1999)
-    # mu = lambd_zero
+    if mu is None:
+        mu = 1e-2 * max(diag(a_matrix))  # after Nielsen (1999)
 
     num_feval = 0
 
     if verbose:
-        print()
-        print('{:<40}'.format('-'*60))
-        print("{:<7} {:<10} {:<10} {:<10} {:<10}".format(
-            'eval', 'fun_val', '||step||', 'gradient', 'dampening_factor'))
-        print('{:<40}'.format('-'*60))
+        print('\n'.join(lm_header))
         print("{:<7} {:<10.3e} {:<10} {:<10.3e} {:<10.3e}".format(
             num_feval, norm(fun)**2, '---', norm(b_vector), mu))
 
     while num_feval < max_fun_eval:
         d_diag = diag(d_scaling)
-        lm_step = solve(a_matrix + mu*inner(d_diag.T, d_diag), -b_vector)
+        lm_step = solve(a_matrix + mu * inner(d_diag.T, d_diag), -b_vector)
 
         if norm(lm_step) < eps_2 * norm(x):
             reason = 'Small step'
@@ -135,9 +139,10 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
 
         beta = nu
 
-        # print(nu)
-
         if verbose:
+            if num_feval % 50 == 0:
+                print('\n'.join(lm_header))
+
             print("{:<7} {:<10.3e} {:<10.3e} {:<10.3e} {:<10.3e}".format(
                 num_feval, sq_new, norm(lm_step), norm(b_vector), mu))
 
@@ -155,14 +160,16 @@ def levenberg_marquardt(x, func, deriv, fletcher_modif=False, max_fun_eval=100,
         print()
 
     if full_output:
+        lm_par = {'d_diag': d_scaling, 'mu': mu}
         if max_fun_eval == 0:
             output_dict = {'x': x, 'fun': fun, 'jac': jac,
-                           'num_iter': num_iter, 'num_fun_eval': num_feval}
+                           'num_iter': num_iter, 'num_fun_eval': num_feval,
+                           'lm_params': lm_par}
         else:
             output_dict = {'x': x, 'fun': fun, 'jac': jac,
                            'norm_step': norm(lm_step),
                            'stop_criterion': reason, 'num_iter': num_iter,
-                           'num_fun_eval': num_feval}
+                           'num_fun_eval': num_feval, 'lm_params': lm_par}
 
         return x, covar_x, output_dict
     else:

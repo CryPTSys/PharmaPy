@@ -102,7 +102,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
                     elif len(time) > 1:
                         field = np.outer(np.ones_like(time), field)
@@ -114,13 +114,13 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
             for state in di:
                 if state not in inlets[phase]:
                     sub_phase = getattr(stream, phase)
-                    field = getattr(sub_phase, state)
+                    field = getattr(sub_phase, state, None)
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
-                        di_out[sub_phase][state] = getattr(sub_phase, state)
+                    di_out[phase][state] = field
     return di_out
 
 
@@ -155,16 +155,21 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
 
-        ins = {}
-        for key, val in y_inlet.items():
-            ins[key] = interpolate_inputs(time, t_inlet, val, **kwargs_interp)
+        if t_inlet is None:  # static data
+            inputs = {'Inlet': y_inlet}  # TODO: I don't think this is general
 
-        inputs = {}
-        for phase, names in dict_states_in.items():
-            inputs[phase] = {}
-            for key, vals in ins.items():
-                if key in names:
-                    inputs[phase][key] = vals
+        else:  # time-dependent data
+            ins = {}
+            for key, val in y_inlet.items():
+                ins[key] = interpolate_inputs(time, t_inlet, val,
+                                              **kwargs_interp)
+
+            inputs = {}
+            for phase, names in dict_states_in.items():
+                inputs[phase] = {}
+                for key, vals in ins.items():
+                    if key in names:
+                        inputs[phase][key] = vals
 
     else:
         inputs = {obj: {} for obj in dict_states_in.keys()}
@@ -172,7 +177,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
     remaining = get_remaining_states(dict_states_in, stream, inputs, time)
 
     for key in dict_states_in:
-        inputs[key] = inputs[key] | remaining[key]
+        inputs[key] = {**inputs[key], **remaining[key]}
 
     return inputs
 
@@ -279,12 +284,11 @@ class Connection:
             self.Matter.time_upstream = time_prof[-1]
 
     def ConvertUnits(self):
-        states_up = self.source_uo.names_states_out
-
         mode_source = self.source_uo.oper_mode
         mode_dest = self.destination_uo.oper_mode
 
         if mode_source == 'Continuous' and mode_dest != 'Batch':
+            states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
             if class_destination == 'DynamicCollector':
@@ -339,7 +343,7 @@ class Connection:
             # Transfering from batch to continuous (how to approach this?)
             if self.source_uo.oper_mode != 'Continuous':
                 pass
-                # TODO: bit TODO. We need to define how Batch/Semibatch
+                # TODO: big TODO. We need to define how Batch/Semibatch
                 # followed by continuous will be handled. The most practical
                 # approach would be to solve thhe the downstream continuous
                 # section for a period of time such as the material from the
