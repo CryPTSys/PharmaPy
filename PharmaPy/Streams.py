@@ -66,6 +66,8 @@ class BatchToFlowConnector:
             'mass_flow': {'dim': 1, 'units': 'kg/s'},
             'temp': {'dim': 1, 'units': 'K'}}
 
+        self.names_states_out = ('temp', 'pres', 'mass_frac', 'mass_flow')
+
     def flatten_states(self):
         pass
 
@@ -89,7 +91,7 @@ class BatchToFlowConnector:
             outlet = LiquidStream(**kw_phase, mass_flow=mass_flow)
 
             kw_phase.pop('path_thermo')
-            di_output = kw_phase
+            kw_phase['mass_flow'] = mass_flow
 
         # kw_phase['time'] = [self.cycle_time]
         kw_phase['time'] = None

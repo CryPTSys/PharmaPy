@@ -1931,8 +1931,13 @@ class MSMPR(_BaseCryst):
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol)  # TODO
 
+            if isinstance(inputs['Inlet']['vol_flow'], float):
+                vol_flow = inputs['Inlet']['vol_flow']
+            else:
+                vol_flow = inputs['Inlet']['vol_flow'][-1]
+
             self.Outlet = SlurryStream(
-                vol_flow=inputs['Inlet']['vol_flow'][-1],
+                vol_flow=vol_flow,
                 x_distrib=self.x_grid,
                 distrib=dp['distrib'][-1])
 
