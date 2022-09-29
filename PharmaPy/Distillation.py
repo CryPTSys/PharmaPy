@@ -6,10 +6,15 @@ from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Commons import unpack_discretized
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
+from PharmaPy.Plotting import plot_distrib
+
 from assimulo.solvers import IDA
 
 import scipy.optimize
 import scipy.sparse
+
+from itertools import cycle
+from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 
 class DistillationColumn:
     def __init__(self, name_species, col_P, q_feed, LK, HK,
@@ -35,7 +40,7 @@ class DistillationColumn:
         HK_index = name_species.index(HK)
         self.LK_index = LK_index
         self.HK_index = HK_index
-        
+
         self.nomenclature()
         self._Inlet = None
         self._Phases = None
@@ -84,7 +89,7 @@ class DistillationColumn:
     def Phases(self, phases):
         classify_phases(self)
         #self.nomenclature()
-        
+
     def estimate_comp (self, name_species, feed_flowrate, z_feed, LK, HK, LK_index, HK_index):
         ### Determine Light Key and Heavy Key component numbers
         # Assume z_feed and name species are in the order- lightest to heaviest
@@ -140,14 +145,14 @@ class DistillationColumn:
         res = temporary_vapor.getDewPoint(pres=self.col_P, mass_frac=None,
                     mole_frac=y_oneplate, thermo_method=self.gamma_model, x_liq=need_x_vap)
         return res[::-1] #Program needs VLE function to return output in x,Temp format
-    
-    def calc_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate, 
+
+    def calc_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
                     reflux, num_plates, pres):
         ### Calculate operating lines
         LK_index = self.LK_index
         HK_index = self.HK_index
-        k_vals = self.get_k_vals(x_oneplate = self.z_feed) 
-        
+        k_vals = self.get_k_vals(x_oneplate = self.z_feed)
+
         alpha = k_vals/k_vals[HK_index]
         ### Estimate Reflux ratio
         # First Underwood equation
@@ -160,17 +165,17 @@ class DistillationColumn:
         L_min = V_min - dist_flowrate
         min_reflux = L_min/dist_flowrate
         self.min_reflux = min_reflux
-        
+
         if reflux is None or reflux == 0:
             reflux = 1.5*min_reflux #Heuristic
         if reflux <0:
-            reflux = -1*reflux*self.min_reflux 
+            reflux = -1*reflux*self.min_reflux
         elif reflux>0 and reflux< self.min_reflux:
             print('Specified reflux less than min_reflux, calculation proceeds with 1.5*min_reflux')
             reflux = 1.5*self.min_reflux
-        
+
         if num_plates:
-            def bot_comp_err (reflux, num_plates, x_dist, x_bot, 
+            def bot_comp_err (reflux, num_plates, x_dist, x_bot,
                               dist_flowrate, bot_flowrate):
 
                 Ln  = reflux*dist_flowrate
@@ -194,47 +199,47 @@ class DistillationColumn:
                             x_new,T_new = self.VLE(y[i])
                             x[i] = x_new
                             T[i] = T_new
-                                
+
                         #Stripping section
                         else:
                             y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                             x_new,T_new = self.VLE(y[i])
                             x[i] = x_new
                             T[i] = T_new
-                
+
                 else: #feed plate not specified
                     y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                     y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
-                    
+
                     for i in range (1, num_plates+1):
                         #Rectifying section
                         if (y_top_op[LK_index]/y_top_op[HK_index] < y_bot_op[LK_index]/y_bot_op[HK_index]):
-                            
+
                             y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                             x_new,T_new = self.VLE(y[i])
                             x[i] = x_new
                             T[i] = T_new
-                            
+
                             y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                             y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
-                                
+
                         #Stripping section
                         else:
                             y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                             x_new,T_new = self.VLE(y[i])
                             x[i] = x_new
                             T[i] = T_new
-                
+
                 error = np.linalg.norm(x_bot - x[-1])/np.linalg.norm(x_bot)*100 + 0.01 * reflux**2 #pentalty for very high reflux values
                 return error
-            
-            reflux = scipy.optimize.minimize(bot_comp_err, x0 = 1.5*self.min_reflux, 
-                                             args=(num_plates, x_dist, x_bot, dist_flowrate, bot_flowrate), 
+
+            reflux = scipy.optimize.minimize(bot_comp_err, x0 = 1.5*self.min_reflux,
+                                             args=(num_plates, x_dist, x_bot, dist_flowrate, bot_flowrate),
                                              method = 'Nelder-Mead', bounds=((1.01*self.min_reflux,1000),))
             reflux = reflux.x
         self.reflux = reflux
         return reflux
-    
+
     def calc_plates(self, x_dist, x_bot, dist_flowrate, bot_flowrate, reflux, num_plates):
         LK_index = self.LK_index
         HK_index = self.HK_index
@@ -247,7 +252,7 @@ class DistillationColumn:
         #Stripping section
         Lm  = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1)
         Vm  = Lm  - bot_flowrate
-        
+
         if num_plates is None:
             ### Calculate number of plates
             #Composition list
@@ -354,23 +359,23 @@ class DistillationColumn:
 
         self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
         return num_plates
-    
+
     def solve_unit(self, runtime=None, t0=0):
-        x_dist, x_bot, dist_flowrate, bot_flowrate = self.estimate_comp(self.name_species, self.feed_flowrate, self.z_feed, 
+        x_dist, x_bot, dist_flowrate, bot_flowrate = self.estimate_comp(self.name_species, self.feed_flowrate, self.z_feed,
                                                                         self.LK, self.HK, self.LK_index, self.HK_index)
-        reflux= self.calc_reflux(x_dist, x_bot, dist_flowrate, bot_flowrate, 
+        reflux= self.calc_reflux(x_dist, x_bot, dist_flowrate, bot_flowrate,
                                  self.reflux, self.num_plates, self.col_P)
         num_plates = self.calc_plates(x_dist, x_bot, dist_flowrate, bot_flowrate, reflux, self.num_plates)
         return
-    
+
     def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
-        
+
         if not(isinstance(x, np.ndarray)):
             x = np.array(x)
             y = np.array(y)
             T = np.array(T)
-        dist_result = {'num_plates':num_plates, 'x':x.T, 'y':y.T, 'T':T, 
-                       'bot_flowrate':bot_flowrate, 'dist_flowrate':dist_flowrate, 'reflux':reflux, 
+        dist_result = {'num_plates':num_plates, 'x':x.T, 'y':y.T, 'T':T,
+                       'bot_flowrate':bot_flowrate, 'dist_flowrate':dist_flowrate, 'reflux':reflux,
                        'N_feed':N_feed, 'x_dist':x_dist, 'x_bot':x_bot, 'min_reflux':min_reflux, 'N_min':N_min
             }
 
@@ -421,6 +426,8 @@ class DynamicDistillation():
             'mole_frac':{'dim':len(self.name_species), 'index': self.name_species},
             }
 
+        self.fstates_di = {}
+
     @property
     def Inlet(self):
         return self._Inlet
@@ -463,7 +470,7 @@ class DynamicDistillation():
         steady_col = DistillationColumn(**column_user_inputs)
         steady_col.Inlet = self._Inlet
         steady_col.solve_unit()
-        
+
         #Calculate compositions
         #For starup Total reflux
         #Total reflux
@@ -495,7 +502,7 @@ class DynamicDistillation():
         self.x_bot = steady_col.result.x_bot
         self.min_reflux = steady_col.result.min_reflux
         self.N_min = steady_col.result.N_min
-        
+
     @property
     def Phases(self):
         return self._Phases
@@ -544,7 +551,7 @@ class DynamicDistillation():
                                        x_liq = x)
 
         alpha = k_vals/k_vals[:, self.HK_index][:,None]
-        
+
         y = ((alpha*x).T/np.sum(alpha*x,axis=1)).T
 
         #Rectifying section
@@ -586,18 +593,70 @@ class DynamicDistillation():
                                 indexes=indexes, inputs=inputs)
 
         dp['time'] = time
+        dp['plate'] = np.arange(1, self.num_plates + 1)
 
-        self.result = DynamicResult(di_states=self.states_di, di_fstates=None, **dp)
+        self.result = DynamicResult(di_states=self.states_di, di_fstates=None,
+                                    **dp)
 
         self.outputs = dp
         x_comp = np.array(list(dp['mole_frac'].values())) #[component_index, time, plate]
 
         # Outlet stream
         path = self.Inlet.path_data
-        self.OutletBottom = LiquidStream(path, temp=dp['temp'][-1][-1], #[time, plate]
-                                   mole_frac=x_comp.T[-1][-1], #[plate, time, component_index]
-                                   mole_flow = self.bot_flowrate)
-        self.OutletDistillate = LiquidStream(path, temp=dp['temp'][-1][0], #[time,plate]
-                                   mole_frac=x_comp.T[0][-1],
-                                   mole_flow = self.dist_flowrate)
+        self.OutletBottom = LiquidStream(
+            path, temp=dp['temp'][-1][-1],  # [time, plate]
+            mole_frac=x_comp.T[-1][-1],  # [plate, time, component_index]
+            mole_flow=self.bot_flowrate)
+
+        self.OutletDistillate = LiquidStream(
+            path, temp=dp['temp'][-1][0],  # [time,plate]
+            mole_frac=x_comp.T[0][-1],
+            mole_flow=self.dist_flowrate)
+
         self.Outlet = self.OutletBottom
+
+    def plot_profiles(self, times=None, plates=None, pick_comp=None, **fig_kw):
+        states = []
+        ylab = ['x_liq', 'T']
+
+        if pick_comp is None:
+            states.append('mole_frac')
+        else:
+            states.append(['mole_frac', pick_comp])
+
+        states.append('temp')
+
+        if times is not None:
+            marks = cycle(('o', '^', 's', 'd', '+'))
+            fig, ax = plot_distrib(self, states, 'plate', times=times,
+                                   ylabels=ylab, ncols=2, **fig_kw)
+
+            ind_lines = []
+            for ind in range(self.num_species):
+                ind_lines.append(ind)
+                ind_lines.append(ind + self.num_species)
+
+            for axis in ax:
+                if len(axis.lines) > len(times):
+                    # shuffle to make markers consistent
+                    lines = [axis.lines[ind] for ind in ind_lines]
+                else:
+                    lines = axis.lines
+
+                for ind, line in enumerate(lines):
+                    if ind % len(times) == 0:
+                        mark = next(marks)
+
+                    line.set_marker(mark)
+                    line.set_markerfacecolor('None')
+
+                axis.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+                axis.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+        elif plates is not None:
+            pass  # TODO
+
+        fig.tight_layout()
+
+        return fig, ax
