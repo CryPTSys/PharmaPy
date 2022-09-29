@@ -511,15 +511,10 @@ class DynamicDistillation():
         di_states = unpack_discretized(states, self.len_out,
                                        self.name_states)
 
-        #states_reord = np.reshape(states, (self.num_plates + 1, self.len_states))
-        #states_split = [states_reord[:,0], states_reord[:,1:]] #first column in temperature, others are compositions
-        #dict_states = dict(zip(self.name_states, states_split))
         material = self.material_balances(time, **di_states)
         
         di_d_states = unpack_discretized(d_states, self.len_out,
                                        self.name_states)
-        #d_states = np.reshape(d_states, ((self.num_plates + 1, self.len_states)))
-        
         material[:,1:] = material[:,1:] - di_d_states['mole_frac'] #N_plates(N_components), only for compositions
         balances = material.ravel()
         return balances
