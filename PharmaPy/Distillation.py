@@ -440,6 +440,9 @@ class DynamicDistillation():
 
         self.oper_mode = 'Continuous'
 
+    def flatten_states(self):
+        pass
+
     def nomenclature(self):
         self.name_states = ['temp', 'mole_frac']
         self.names_states_out = ['temp', 'mole_frac']
