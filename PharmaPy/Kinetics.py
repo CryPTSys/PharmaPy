@@ -349,7 +349,15 @@ class RxnKinetics:
                     orders = abs(is_reactant * self.stoich_matrix)
                     self.fit_paramsf = False
                 else:
-                    orders = np.asarray(params['params_f'])
+                    order_map = self.stoich_matrix < 0
+
+                    params_f = params['params_f']
+                    if not isinstance(params_f[0], (list, tuple)):
+                        params_f = [orders]
+
+                    orders = np.zeros_like(self.stoich_matrix)
+                    for ind, order in enumerate(params_f):
+                        orders[ind, order_map[ind]] = order
 
                 if orders.ndim == 1:
                     orders = orders[np.newaxis, ...]
