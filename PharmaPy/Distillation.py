@@ -429,10 +429,8 @@ class DynamicDistillation():
         self.gamma_model = gamma_model
         self.N_feed = N_feed  # Num plate from bottom
 
-        self.nomenclature()
         self._Phases = None
         self._Inlet = None
-        return
 
     def nomenclature(self):
         self.name_states = ['temp', 'mole_frac']
@@ -452,9 +450,23 @@ class DynamicDistillation():
 
     @Phases.setter
     def Phases(self, phases):
+        if not isinstance(phases, (list, tuple)):
+            phases = [phases]
+
+        self._Phases = phases
+
         classify_phases(self)
 
         self.holdup = self.Liquid_1.moles
+
+        name_species = self.Liquid_1.name_species
+        self.num_species = len(name_species)
+        self.LK_index = name_species.index(self.LK)
+        self.HK_index = name_species.index(self.HK)
+
+        self.name_species = name_species
+
+        self.nomenclature()
 
     @property
     def Inlet(self):
@@ -491,7 +503,6 @@ class DynamicDistillation():
         # Total reflux conditions (Startup)
         # Steady state values (Based on steady state column)
         column_user_inputs = {
-            'name_species': self.name_species,
             'col_P': self.col_P,  # Pa
             'num_plates': self.num_plates,  # exclude reboiler
             'reflux': self.reflux,  # L/D
@@ -500,7 +511,7 @@ class DynamicDistillation():
             'HK': self.HK,  # HK
             'per_LK': self.per_LK,  # % recovery LK in distillate
             'per_HK': self.per_HK,  # % recovery HK in distillate
-            'holdup': self.holdup,
+            # 'holdup': self.holdup,
             'N_feed': self.N_feed
                               }
 
@@ -508,28 +519,27 @@ class DynamicDistillation():
         steady_col.Inlet = self._Inlet
         steady_col.solve_unit()
 
-        # Calculate compositions for starup at total reflux
-        column_total_reflux = {
-            'name_species': self.name_species,
-            'col_P': self.col_P,  # Pa
-            'num_plates': steady_col.result.num_plates,  # exclude reboiler
-            'reflux': 1e5,  # L/D
-            'q_feed': self.q_feed,  # Feed q value
-            'LK': self.LK,  # LK
-            'HK': self.HK,  # HK
-            'per_LK': self.per_LK,  # % recovery LK in distillate
-            'per_HK': self.per_HK,  # % recovery HK in distillate
-            'holdup': self.holdup,
-            'N_feed': steady_col.result.N_feed
-                               }
+        # # Calculate compositions for starup at total reflux
+        # column_total_reflux = {
+        #     'col_P': self.col_P,  # Pa
+        #     'num_plates': steady_col.result.num_plates,  # exclude reboiler
+        #     'reflux': 1e5,  # L/D
+        #     'q_feed': self.q_feed,  # Feed q value
+        #     'LK': self.LK,  # LK
+        #     'HK': self.HK,  # HK
+        #     'per_LK': self.per_LK,  # % recovery LK in distillate
+        #     'per_HK': self.per_HK,  # % recovery HK in distillate
+        #     # 'holdup': self.holdup,
+        #     'N_feed': steady_col.result.N_feed
+        #                        }
 
-        total_reflux_col = DistillationColumn(**column_total_reflux)
-        total_reflux_col.Inlet = self._Inlet
-        total_reflux_col.solve_unit()
+        # total_reflux_col = DistillationColumn(**column_total_reflux)
+        # total_reflux_col.Inlet = self._Inlet
+        # total_reflux_col.solve_unit()
 
-        self.x0 = total_reflux_col.result.x.T
-        self.y0 = total_reflux_col.result.y.T
-        self.T0 = total_reflux_col.result.T
+        # self.x0 = total_reflux_col.result.x.T
+        # self.y0 = total_reflux_col.result.y.T
+        # self.T0 = total_reflux_col.result.T
         self.num_plates = steady_col.result.num_plates
         self.bot_flowrate = steady_col.result.bot_flowrate
         self.dist_flowrate = steady_col.result.dist_flowrate
@@ -539,14 +549,6 @@ class DynamicDistillation():
         self.x_bot = steady_col.result.x_bot
         self.min_reflux = steady_col.result.min_reflux
         self.N_min = steady_col.result.N_min
-
-    @property
-    def Phases(self):
-        return self._Phases
-
-    @Phases.setter
-    def Phases(self, phases):
-        classify_phases(self)
 
     def unit_model(self, time, states, d_states):
         '''This method will work by itself and does not need any user manipulation.
@@ -619,17 +621,25 @@ class DynamicDistillation():
         # 3 compositions + 1 temperature per plate
         self.len_states = len(self.name_species) + 1
 
-        init_states = np.column_stack((self.T0, self.x0))
-        init_derivative = self.material_balances(
-            time=0, mole_frac=self.x0, temp=self.T0)
+        # init_states = np.column_stack((self.T0, self.x0))
+
+        x_init = self.Liquid_1.mole_frac.copy()
+        temp_init = self.Liquid_1.getBubblePoint(pres=self.col_P,
+                                                 mole_frac=x_init)
+
+        init_states = np.tile(np.hstack((temp_init, x_init)),
+                              (self.num_plates + 1, 1))
+
+        init_derivative = self.material_balances(time=0,
+                                                 mole_frac=init_states[:, 1:],
+                                                 temp=init_states[:, 0])
 
         problem = Implicit_Problem(
             self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
 
         solver = IDA(problem)
-        alg_map = np.column_stack((np.ones_like(self.T0),
-                                   np.zeros_like(self.x0))
-                                  )
+        alg_map = np.zeros_like(init_states)
+        alg_map[:, 0] = 1
 
         solver.algvar = alg_map.ravel()
 
