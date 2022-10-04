@@ -35,7 +35,19 @@ def ParseDatabase(path_datafile, to_arrays=True):
 
     # Collect data with the same key
     entries = set().union(*entries)
-    dd = {k: [d.get(k) for d in original_data.values()] for k in entries}
+
+    dd = {}
+
+    for entry in entries:
+        vals = []
+        for val in original_data.values():
+            item = val.get(entry)
+            if isinstance(item, dict):
+                item = item['value']
+
+            vals.append(item)
+
+        dd[entry] = vals
 
     # Convert to arrays  # TODO: improve this
     if to_arrays:
@@ -507,9 +519,9 @@ class ThermoPhysicalManager:
 
         if x_liq is None:
             x_liq = self.mole_frac
-            
+
         crit = isinstance(temp, np.ndarray) and temp.ndim ==1
-        if crit:    
+        if crit:
             supercrit = np.matrix(temp).T > self.t_crit
             p_vap = self.AntoineEquation(temp)
             if np.any(supercrit):
