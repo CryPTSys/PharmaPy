@@ -95,8 +95,14 @@ class DistillationColumn:
 
     def estimate_comp(self, name_species, feed_flowrate, z_feed, LK, HK, LK_index, HK_index):
         # Determine Light Key and Heavy Key component numbers
-        # Assume z_feed and name species are in the order- lightest to heaviest
-        if HK_index != LK_index + 1:
+
+        bubble_pure = self.Inlet.AntoineEquation(pres=self.col_P)
+        volatility_order = np.argsort(bubble_pure)
+
+        hk_loc = np.where(volatility_order == HK_index)[0][0]
+        lk_loc = np.where(volatility_order == LK_index)[0][0]
+
+        if hk_loc != lk_loc + 1:
             print('High key and low key indices are not adjacent')
 
         # Calculate Distillate and Bottom flow rates
@@ -431,6 +437,8 @@ class DynamicDistillation():
 
         self._Phases = None
         self._Inlet = None
+
+        self.oper_mode = 'Continuous'
 
     def nomenclature(self):
         self.name_states = ['temp', 'mole_frac']

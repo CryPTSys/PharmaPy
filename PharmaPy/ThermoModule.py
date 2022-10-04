@@ -520,7 +520,7 @@ class ThermoPhysicalManager:
         if x_liq is None:
             x_liq = self.mole_frac
 
-        crit = isinstance(temp, np.ndarray) and temp.ndim ==1
+        crit = isinstance(temp, np.ndarray) and temp.ndim == 1
         if crit:
             supercrit = np.matrix(temp).T > self.t_crit
             p_vap = self.AntoineEquation(temp)
