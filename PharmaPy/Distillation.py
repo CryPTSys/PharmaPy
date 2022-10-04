@@ -581,10 +581,10 @@ class DynamicDistillation():
         Vn = Ln + dist_flowrate
 
         # Stripping section
-        Lm = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1)
+        Lm = Ln + self.feed_flowrate + self.feed_flowrate * (self.q_feed - 1)
         Vm = Lm - bot_flowrate
 
-        dxdt = np.zeros_like(x)
+        dx_dt = np.zeros_like(x)
 
         k_vals = self._Inlet.getKeqVLE(pres=self.col_P, temp=temp,
                                        x_liq=x)
@@ -593,23 +593,23 @@ class DynamicDistillation():
         y = k_vals * x
 
         # Rectifying section
-        dxdt[0] = 1/M_const * (Vn*y[1] + Ln*y[0] - Vn * y[0] - Ln*x[0])  # Distillate plate
-        dxdt[1:N_feed - 1] = 1/M_const * (
-            Vn*y[2:N_feed] + Ln * x[0:N_feed - 2] -
-            Vn*y[1:N_feed - 1] - Ln*x[1:N_feed - 1])
+        dx_dt[0] = Vn/M_const * (y[1] - x[0])  # Reflux tank
+        dx_dt[1:N_feed - 1] = 1/M_const * (
+            Vn * y[2:N_feed] + Ln * x[0:N_feed - 2] -
+            Vn * y[1:N_feed - 1] - Ln * x[1:N_feed - 1])
 
         # Stripping section
-        dxdt[N_feed - 1] = 1/M_const * (
-            Vm*y[N_feed] + Ln*x[N_feed - 2] + self.feed_flowrate*z_feed -
-            Vn*y[N_feed - 1] - Lm*x[N_feed - 1])  # Feed plate
+        dx_dt[N_feed - 1] = 1/M_const * (
+            Vm * y[N_feed] + Ln * x[N_feed - 2] + self.feed_flowrate * z_feed -
+            Vn * y[N_feed - 1] - Lm * x[N_feed - 1])  # Feed plate
 
-        dxdt[N_feed: - 1] = 1/M_const * (
-            Vm*y[N_feed + 1:] + Lm * x[N_feed - 1:-2] - Vm*y[N_feed: - 1] -
-            Lm*x[N_feed:-1])
+        dx_dt[N_feed: - 1] = 1/M_const * (
+            Vm * y[N_feed + 1:] + Lm * x[N_feed - 1:-2] -
+            Vm * y[N_feed: - 1] - Lm*x[N_feed:-1])
 
         # Reboiler, y_in for reboiler is the same as x_out
-        dxdt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
-        mat_bal = np.column_stack((residuals_temp, dxdt))
+        dx_dt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
+        mat_bal = np.column_stack((residuals_temp, dx_dt))
 
         return mat_bal
 
@@ -654,10 +654,8 @@ class DynamicDistillation():
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        inputs = self.get_inputs(self.timeProf)['Inlet']
-
         dp = unpack_discretized(states, self.len_out, self.name_states,
-                                indexes=indexes, inputs=inputs)
+                                indexes=indexes, inputs=None)
 
         dp['time'] = time
         dp['plate'] = np.arange(1, self.num_plates + 1)
