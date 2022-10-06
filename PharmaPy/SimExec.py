@@ -456,8 +456,8 @@ class SimulationExec:
         else:
             inlets = [None]
 
-        inlets = [inlet for inlet in inlets if inlet is not None]
-        inlets = [inlet for inlet in inlets if inlet.y_upstream is None]
+        inlets = [inlet for inlet in inlets
+                  if inlet is not None and inlet.y_upstream is None]
 
         inlet_count = 1
         out = {}
@@ -475,12 +475,14 @@ class SimulationExec:
                 name_stream = get_name_object(stream)
 
                 di[name_stream] = {}
-                inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
 
                 dens = stream.getDensity(basis=basis)
 
                 if uo.oper_mode == 'Batch':
-                    elapsed_time = 1
+                    if basis == 'mass':
+                        total = stream.mass
+                    elif basis == 'mole':
+                        total = stream.moles
                 elif inlet.DynamicInlet is None:
                     time = uo.result.time[-1] - uo.result.time[0]
                     if basis == 'mass':
@@ -589,32 +591,36 @@ class SimulationExec:
                          for j in out[i]
                          for k in out[i][j]}
 
-        multi_index = pd.MultiIndex.from_tuples(di_multiindex)
-        raw_df = pd.DataFrame(list(di_multiindex.values()), index=multi_index)
+        if len(di_multiindex) == 0:
+            raw_df = pd.DataFrame()
+        else:
+            multi_index = pd.MultiIndex.from_tuples(di_multiindex)
+            raw_df = pd.DataFrame(list(di_multiindex.values()),
+                                  index=multi_index)
 
-        if totals:
-            if basis == 'mass':
-                mass_frac = raw_df.filter(regex='mass_frac').values
+            if totals:
+                if basis == 'mass':
+                    mass_frac = raw_df.filter(regex='mass_frac').values
 
-                mass = raw_df['mass'].values[:, np.newaxis]
-                mass_comp = mass_frac * mass
+                    mass = raw_df['mass'].values[:, np.newaxis]
+                    mass_comp = mass_frac * mass
 
-                cols = ['mass_%s' % comp for comp in self.NamesSpecies]
-                cols = ['mass'] + cols
+                    cols = ['mass_%s' % comp for comp in self.NamesSpecies]
+                    cols = ['mass'] + cols
 
-                raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
-                                      columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
+                                          columns=cols, index=raw_df.index)
 
-            elif basis == 'moles':
-                mole_frac = raw_df.filter(regex='mole_frac').values
-                moles = raw_df['moles'].values[:, np.newaxis]
-                moles_comp = mole_frac * moles
+                elif basis == 'moles':
+                    mole_frac = raw_df.filter(regex='mole_frac').values
+                    moles = raw_df['moles'].values[:, np.newaxis]
+                    moles_comp = mole_frac * moles
 
-                cols = ['moles_%s' % comp for comp in self.NamesSpecies]
-                cols = ['moles'] + cols
+                    cols = ['moles_%s' % comp for comp in self.NamesSpecies]
+                    cols = ['moles'] + cols
 
-                raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
-                                      columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
+                                          columns=cols, index=raw_df.index)
 
         return raw_df
 

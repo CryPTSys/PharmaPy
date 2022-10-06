@@ -311,6 +311,8 @@ class NameAnalyzer:
 
             if 'mass' in down:
                 fun_kwargs['basis'] = 'mass'
+            else:
+                fun_kwargs['basis'] = 'mole'
 
         elif 'mass_conc' in up and 'frac' in down:
             method_name = 'mass_conc_to_frac'
