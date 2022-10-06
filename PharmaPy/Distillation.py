@@ -450,7 +450,8 @@ class DynamicDistillation():
         # self.names_states_in.append('vol_flow')
         self.states_di = {
             'temp': {'dim': 1, 'units': 'K'},
-            'mole_frac': {'dim': len(self.name_species), 'index': self.name_species},
+            'mole_frac': {'dim': len(self.name_species),
+                          'index': self.name_species},
         }
 
         self.fstates_di = {}
@@ -619,7 +620,8 @@ class DynamicDistillation():
             Vm * y[N_feed: - 1] - Lm*x[N_feed:-1])
 
         # Reboiler, y_in for reboiler is the same as x_out
-        dx_dt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
+        # dx_dt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
+        dx_dt[-1] = 1/M_const * (Lm*x[-2] - Vm*y[-1] - bot_flowrate*x[-1])
         mat_bal = np.column_stack((residuals_temp, dx_dt))
 
         return mat_bal
@@ -669,7 +671,7 @@ class DynamicDistillation():
                                 indexes=indexes, inputs=None)
 
         dp['time'] = time
-        dp['plate'] = np.arange(1, self.num_plates + 1)
+        dp['plate'] = np.arange(self.num_plates + 1)
 
         self.result = DynamicResult(di_states=self.states_di, di_fstates=None,
                                     **dp)
@@ -703,26 +705,21 @@ class DynamicDistillation():
 
         states.append('temp')
 
+        if pick_comp is None:
+            num_species_plot = self.num_species
+        else:
+            num_species_plot = len(pick_comp)
+
         if times is not None:
-            marks = cycle(('o', '^', 's', 'd', '+'))
+            marks = ('s', 'o', '^', 'd', '+')
             fig, ax = plot_distrib(self, states, 'plate', times=times,
                                    ylabels=ylab, ncols=2, **fig_kw)
 
-            ind_lines = []
-            for ind in range(self.num_species):
-                ind_lines.append(ind)
-                ind_lines.append(ind + self.num_species)
-
-            for axis in ax:
-                if len(axis.lines) > len(times):
-                    # shuffle to make markers consistent
-                    lines = [axis.lines[ind] for ind in ind_lines]
-                else:
-                    lines = axis.lines
+            for ct, axis in enumerate(ax):
+                lines = axis.lines
 
                 for ind, line in enumerate(lines):
-                    if ind % len(times) == 0:
-                        mark = next(marks)
+                    mark = marks[ind % num_species_plot]
 
                     line.set_marker(mark)
                     line.set_markerfacecolor('None')
