@@ -16,7 +16,7 @@ from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
                               retrieve_pde_result)
 
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.Connections import get_inputs, get_inputs_new
+from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
@@ -45,6 +45,19 @@ def check_stoichiometry(stoich, mws):
               "provided stoichiometric matrix. "
               "Check 'stoich_matrix' argument passed to the "
               "aggregated Kinetic instance.")
+
+
+def order_state_names(names):
+    material = []
+    energy = []
+
+    for name in names:
+        if 'temp' in name or 'u_int' in name:
+            energy.append(name)
+        else:
+            material.append(name)
+
+    return material + energy
 
 
 def get_sundials_callable(events, eval_sens, param_vals, unit_model, get_jac):
@@ -134,7 +147,6 @@ class _BaseReactor:
         self._Utility = None
 
         # Names
-        # self.partic_species = partic_species
         self.bipartite = None
         self.names_upstream = None
 
@@ -335,8 +347,16 @@ class _BaseReactor:
             for key, val in self.states_di.items():
                 self.states_di[key]['depends_on'].append('vol')
 
-        self.name_states = list(self.states_di.keys())
+        name_states = list(self.states_di.keys())
+
+        self.name_states = order_state_names(name_states)
         self.dim_states = [a['dim'] for a in self.states_di.values()]
+
+        # Input names
+        len_in = [self.num_species, 1, 1]
+        states_in_dict = dict(zip(self.names_states_in, len_in))
+
+        self.states_in_dict = {'Inlet': states_in_dict}
 
     def get_inputs(self, time):
         inlet = getattr(self, 'Inlet', None)
@@ -1065,11 +1085,6 @@ class CSTR(_BaseReactor):
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True):
 
-        len_in = [self.num_species, 1, 1]
-        states_in_dict = dict(zip(self.names_states_in, len_in))
-
-        self.states_in_dict = {'Inlet': states_in_dict}
-
         self.params_control = params_control
         self.set_names()
 
@@ -1245,10 +1260,10 @@ class SemibatchReactor(CSTR):
         self.names_states_in = self.names_states_out + ['temp', 'vol_flow']
         self.names_states_out += ['temp', 'vol']
 
-    def material_balances(self, *args):
-        dc_dt = super().material_balances(*args)
+    def material_balances(self, time, inputs, **kwargs):
+        dc_dt = super().material_balances(time, inputs=inputs, **kwargs)
 
-        dvol_dt = args[-1]['vol_flow']
+        dvol_dt = inputs['Inlet']['vol_flow']
 
         return np.append(dc_dt, dvol_dt)
 
@@ -1268,9 +1283,6 @@ class SemibatchReactor(CSTR):
         self.params_control = params_control
         self.set_names()
 
-        self.num_concentr = len(self.Liquid_1.mole_conc)
-        self.args_inputs = (self, self.num_concentr, 0)
-
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -1281,12 +1293,8 @@ class SemibatchReactor(CSTR):
         if self.reset_states:
             self.reset()
 
-        # # Calculate inlet streams
-        # self.Inlet.getProps()
-
         # Initial states
         states_init = self.Liquid_1.mole_conc
-
         states_init = np.append(states_init, self.Liquid_1.vol)
 
         if 'temp' in self.states_uo:
@@ -1334,52 +1342,52 @@ class SemibatchReactor(CSTR):
 
         return time, states
 
-    def retrieve_results(self, time, states):
-        conc_prof = states[:, :self.num_concentr]
-        vol_prof = states[:, self.num_concentr]
+    # def retrieve_results(self, time, states):
+    #     conc_prof = states[:, :self.num_concentr]
+    #     vol_prof = states[:, self.num_concentr]
 
-        if self.isothermal:
-            temp_prof = np.ones_like(time) * self.Liquid_1.temp
-            tht_prof = None
+    #     if self.isothermal:
+    #         temp_prof = np.ones_like(time) * self.Liquid_1.temp
+    #         tht_prof = None
 
-        elif self.temp_control is not None:
-            conc_prof = states.copy()
-            temp_prof = self.temp_control(**self.params_control['temp'])
+    #     elif self.temp_control is not None:
+    #         conc_prof = states.copy()
+    #         temp_prof = self.temp_control(**self.params_control['temp'])
 
-        else:
-            temp_prof = states[:, self.num_concentr + 1]
+    #     else:
+    #         temp_prof = states[:, self.num_concentr + 1]
 
-            if 'temp_ht' in self.states_uo:
-                tht_prof = states[:, -1]
-            else:
-                tht_prof = None
+    #         if 'temp_ht' in self.states_uo:
+    #             tht_prof = states[:, -1]
+    #         else:
+    #             tht_prof = None
 
-        # Heat profile
-        u_inputs = get_inputs(time, *self.args_inputs)
+    #     # Heat profile
+    #     u_inputs = self.get_inputs(time)
 
-        self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
-                                              temp_prof,
-                                              tht_prof, u_inputs,
-                                              heat_prof=True)
+    #     self.heat_prof = self.energy_balances(time, conc_prof, vol_prof,
+    #                                           temp_prof,
+    #                                           tht_prof, u_inputs,
+    #                                           heat_prof=True)
 
-        self.temp_runs.append(temp_prof)
-        self.conc_runs.append(conc_prof)
-        self.vol_runs.append(vol_prof)
+    #     self.temp_runs.append(temp_prof)
+    #     self.conc_runs.append(conc_prof)
+    #     self.vol_runs.append(vol_prof)
 
-        if tht_prof is not None:
-            self.tempHt_runs.append(tht_prof)
+    #     if tht_prof is not None:
+    #         self.tempHt_runs.append(tht_prof)
 
-        # Final state
-        self.elapsed_time = time[-1]
-        self.concentr = self.conc_runs[-1][-1]
-        self.temp = self.temp_runs[-1][-1]
-        self.vol = self.vol_runs[-1][-1]
+    #     # Final state
+    #     self.elapsed_time = time[-1]
+    #     self.concentr = self.conc_runs[-1][-1]
+    #     self.temp = self.temp_runs[-1][-1]
+    #     self.vol = self.vol_runs[-1][-1]
 
-        self.Liquid_1.temp = self.temp
-        self.Liquid_1.vol = self.vol
-        self.Liquid_1.updatePhase(vol=self.vol, mole_conc=self.concentr)
-        self.Outlet = self.Liquid_1
-        self.outputs = states
+    #     self.Liquid_1.temp = self.temp
+    #     self.Liquid_1.vol = self.vol
+    #     self.Liquid_1.updatePhase(vol=self.vol, mole_conc=self.concentr)
+    #     self.Outlet = self.Liquid_1
+    #     self.outputs = states
 
 
 class PlugFlowReactor(_BaseReactor):

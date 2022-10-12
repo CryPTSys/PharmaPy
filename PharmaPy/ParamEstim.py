@@ -1155,7 +1155,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         weighted_resid = weighted_resid.T.ravel()
 
-        return y_runs, weighted_resid , sens_runs
+        return y_runs, weighted_resid, sens_runs
 
     def get_local_analysis(self, params):
         y_runs = []
