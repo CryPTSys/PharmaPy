@@ -1174,11 +1174,17 @@ class CSTR(_BaseReactor):
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
-        # Outlet stream
+        # Outlet stream/phase
         path = self.Inlet.path_data
-        self.Outlet = LiquidStream(path, temp=dp['temp'][-1],
-                                   mole_conc=dp['mole_conc'][-1],
-                                   vol_flow=inputs['Inlet']['vol_flow'][-1])
+        if self.__class__.__name__ == 'SemibatchReactor':
+            self.Liquid_1.updatePhase(temp=dp['temp'][-1],
+                                      mole_conc=dp['mole_conc'][-1],
+                                      vol=dp['vol'][-1])
+            self.Outlet = self.Liquid_1
+        else:
+            self.Outlet = LiquidStream(path, temp=dp['temp'][-1],
+                                       mole_conc=dp['mole_conc'][-1],
+                                       vol_flow=inputs['Inlet']['vol_flow'][-1])
 
         # Output vector
         outputs = {key: dp[key] for key in ('mole_conc', 'temp')}
