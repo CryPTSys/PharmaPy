@@ -772,7 +772,8 @@ class DynamicCollector:
 
         return dtemp_dt
 
-    def solve_unit(self, runtime=None, time_grid=None, verbose=True):
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True,
+                   sundials_opts=None):
         self.names_states_in = self.names_states_in[self.model_type]
         self.names_states_out = self.names_states_out[self.model_type]
 
@@ -872,6 +873,13 @@ class DynamicCollector:
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time)
             solver = CVode(problem)
+
+            if sundials_opts is not None:
+                for name, val in sundials_opts.items():
+                    setattr(solver, name, val)
+
+                    if name == 'time_limit':
+                        solver.report_continuously = True
 
             if not verbose:
                 solver.verbosity = 50

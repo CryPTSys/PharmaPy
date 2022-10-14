@@ -5,7 +5,7 @@ Created on Mon Apr 27 14:23:01 2020
 @author: dcasasor
 """
 
-from assimulo.solvers import CVode
+from assimulo.solvers import CVode, LSODAR
 from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
@@ -379,10 +379,6 @@ class _BaseReactor:
                                          self.Liquid_1, self.controls)
 
         self.Liquid_1.temp = di_states['temp']
-
-        if self.oper_mode != 'Batch':
-            self.Liquid_1.updatePhase(mole_conc=di_states['mole_conc'],
-                                      vol=di_states['vol'])
 
         material_bces = self.material_balances(time, **di_states,
                                                inputs=u_values)
@@ -1083,7 +1079,7 @@ class CSTR(_BaseReactor):
             return output
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
-                   params_control=None, verbose=True):
+                   params_control=None, verbose=True, sundials_opts=None):
 
         self.params_control = params_control
         self.set_names()
@@ -1132,6 +1128,14 @@ class CSTR(_BaseReactor):
 
         # Set solver
         solver = CVode(problem)
+        # solver = LSODAR(problem)
+
+        if sundials_opts is not None:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+
+                if name == 'time_limit':
+                    solver.report_continuously = True
 
         if not verbose:
             solver.verbosity = 50
