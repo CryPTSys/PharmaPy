@@ -49,8 +49,7 @@ class DynamicExtractor:
             'y_i': {'dim': num_comp, 'type': 'alg', 'index': name_species},
             'holdup_R': {'dim': 1, 'type': 'alg', 'units': 'mole'},
             'holdup_E': {'dim': 1, 'type': 'alg', 'units': 'mole'},
-            'R_flows': {'dim': 1, 'type': 'alg', 'units': 'mole/s'},
-            'E_flows': {'dim': 1, 'type': 'alg', 'units': 'mole/s'},
+            'top_flows': {'dim': 1, 'type': 'alg', 'units': 'mole/s'},
             'u_int': {'dim': 1, 'type': 'diff', 'units': 'J'},
             'temp': {'dim': 1, 'type': 'alg', 'units': 'K'}
             }
@@ -149,6 +148,17 @@ class DynamicExtractor:
 
         return eqns
 
+    def get_u_int(self, di_states):
+        h_R = self.Liquid_1.getEnthalpy(mole_frac=di_states['x_i'],
+                                        temp=di_states['temp'])
+
+        h_E = self.Liquid_1.getEnthalpy(mole_frac=di_states['y_i'],
+                                        temp=di_states['temp'])
+
+        u_int = di_states['holdup_R'] * h_R + di_states['holdup_E'] * h_E
+
+        return u_int
+
     def unit_model(self, time, states):
 
         di_states = unpack_discretized(states,
@@ -164,7 +174,7 @@ class DynamicExtractor:
         di_phases = {'heavy': {}, 'light': {}}
 
         target_states = self.target_states.copy()
-        heavy_phase = target_states.pop('heavy_phase')
+        target_states.pop('heavy_phase')
         for equiv, name in target_states.items():
 
             key = equiv.split('_')[0]
@@ -189,12 +199,12 @@ class DynamicExtractor:
         return di_phases
 
     def material_balances(self, time, mol_i, x_i, y_i,
-                          holdup_R, holdup_E, R_flows, E_flows, u_int, temp):
+                          holdup_R, holdup_E, top_flows, u_int, temp):
 
         return
 
     def energy_balances(self, time, mol_i, x_i, y_i,
-                        holdup_R, holdup_E, R_flows, E_flows, u_int, temp):
+                        holdup_R, holdup_E, top_flows, u_int, temp):
 
         return
 
@@ -229,7 +239,7 @@ class DynamicExtractor:
         self.target_states = target_states
 
         # ---------- Create dictionary of initial values
-        di_init = {'mol_i': mol_i_init}
+        di_init = {'mol_i': np.tile(mol_i_init, (self.num_stages, 1))}
 
         for equiv, name in target_states.items():
             if 'phase' not in equiv:
@@ -278,16 +288,23 @@ class DynamicExtractor:
 
         top_flows = linalg.solve(*top_flow_eqns)
 
-        return di_init, inputs, di_phases, bottom_flows, top_flows
+        di_init['top_flows'] = top_flows
+
+        di_init['temp'] = self.Liquid_1.temp * np.ones(self.num_stages)
+
+        u_int = self.get_u_int(di_init)
+
+        di_init['u_int'] = u_int
+
+        return di_init
 
     def solve_unit(self, runtime):
 
-        di_init, inputs, di_phases, bottom_flows, top_flows = self.initialize_model()
+        # di_init, inputs, di_phases, bottom_flows, top_flows = self.initialize_model()
+        di_init = self.initialize_model()
+        di_init = {key: di_init[key] for key in self.name_states}
 
-        # init_states = np.tile(np.hstack(list(di_init.values())),
-        #                       (self.num_plates + 1, 1))
-
-        # init_states = np.hstack(())
+        init_states = np.column_stack(tuple(di_init.values()))
         # init_states = init_states.T.ravel()
 
         # problem = Implicit_Problem(self.unit_model)
@@ -297,7 +314,7 @@ class DynamicExtractor:
 
         # return time, states
 
-        return di_init, inputs, di_phases, bottom_flows, top_flows
+        return di_init, init_states
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
