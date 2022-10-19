@@ -169,34 +169,17 @@ class DynamicExtractor:
 
         return eqns
 
-    def get_u_int(self, di_states):
-        h_R = self.Liquid_1.getEnthalpy(mole_frac=di_states['x_i'],
-                                        temp=di_states['temp'])
-
-        h_E = self.Liquid_1.getEnthalpy(mole_frac=di_states['y_i'],
-                                        temp=di_states['temp'])
-
-        u_int = di_states['holdup_R'] * h_R + di_states['holdup_E'] * h_E
-
-        return u_int
-
-    def unit_model(self, time, states):
-
-        # ---------- Unpack variables
-        di_states = unpack_discretized(states,
-                                       self.dim_states, self.name_states)
-
-        inputs = self.get_inputs(time)
-
-        diph = self.get_di_phases(di_states)
-        bottom_flows = self.get_bottom_flows(diph)
-
+    def get_augmented_arrays(self, di_states, inputs, diph, bottom_flows):
         x_in = inputs['raffinate']['Inlet']['mole_frac']
         y_in = inputs['extract']['Inlet']['mole_frac']
 
-        # ---------- Create augmented arrays to account for inlets
+        temp_in = {key: val['Inlet']['temp'] for key, val in inputs.items()}
+
         x_augm = np.vstack((x_in, di_states['x_i']))
         y_augm = np.vstack((di_states['y_i'], y_in))
+        temp_augm = np.hstack((temp_in['raffinate'],
+                               di_states['temp'],
+                               temp_in['extract']))
 
         R_flows = np.zeros(self.num_stages + 1)
         E_flows = np.zeros_like(R_flows)
@@ -241,19 +224,38 @@ class DynamicExtractor:
                 temp=inputs['extract']['Inlet']['temp'])
             rho_E[:-1] = diph['heavy']['rho']
 
-        # Assign augmented fracs
-        augm_arrays = (x_augm, y_augm, R_flows, E_flows, rho_R, rho_E)
+        augm_arrays = (x_augm, y_augm, temp_augm, R_flows, E_flows,
+                       rho_R, rho_E)
+
+        return augm_arrays
+
+    def unit_model(self, time, states):
+
+        # ---------- Unpack variables
+        di_states = unpack_discretized(states,
+                                       self.dim_states, self.name_states)
+
+        inputs = self.get_inputs(time)
+
+        diph = self.get_di_phases(di_states)
+        bottom_flows = self.get_bottom_flows(diph)
+
+        augm_arrays = self.get_augmented_arrays(di_states, inputs, diph,
+                                                bottom_flows)
 
         # ---------- Balances
         material = self.material_balances(time,
                                           augm_arrays=augm_arrays,
                                           di_phases=diph,
                                           **di_states)
-        # energy = self.energy_balances(time, heavy_phase=heavy_phase,
-        #                               **di_states)
 
-        # balances = np.hstack((material, energy))
-        return material
+        energy = self.energy_balances(time,
+                                      augm_arrays=augm_arrays,
+                                      di_phases=diph,
+                                      **di_states)
+
+        balances = np.column_stack(material + energy)
+        return balances
 
     def get_di_phases(self, di_states):
         di_phases = {'heavy': {}, 'light': {}}
@@ -287,13 +289,13 @@ class DynamicExtractor:
                           holdup_R, holdup_E, top_flows, u_int, temp,
                           di_phases, augm_arrays):
 
-        x_augm, y_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
+        x_augm, y_augm, temp_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
 
         # ---------- Differential block
-        dnij_dt = y_augm[1:] * E_flows[1:, np.newaxis] + \
-            x_augm[:-1] * R_flows[:-1, np.newaxis] - \
-            y_augm[:-1] * E_flows[:-1, np.newaxis] + \
-            x_augm[1:] * R_flows[1:, np.newaxis]
+        dnij_dt = y_augm[1:] * E_flows[1:, np.newaxis] \
+            + x_augm[:-1] * R_flows[:-1, np.newaxis] \
+            - y_augm[:-1] * E_flows[:-1, np.newaxis] \
+            - x_augm[1:] * R_flows[1:, np.newaxis]
 
         # ---------- Algebraic block
         nij_alg = x_i * holdup_R[:, np.newaxis] + y_i * holdup_E[:, np.newaxis] \
@@ -323,13 +325,28 @@ class DynamicExtractor:
                                top_flow_alg)  # good
                               )
 
+        out = [dnij_dt, nij_alg, equilibrium_alg, global_alg, volume_alg,
+               top_flow_alg]
+
         return out
 
     def energy_balances(self, time, mol_i, x_i, y_i,
                         holdup_R, holdup_E, top_flows, u_int, temp,
-                        heavy_phase, bottom_flows):
+                        di_phases, augm_arrays):
 
-        return
+        x_augm, y_augm, temp_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
+
+        h_R = self.Liquid_1.getEnthalpy(mole_frac=x_augm, temp=temp_augm[:-1])
+        h_E = self.Liquid_1.getEnthalpy(mole_frac=y_augm, temp=temp_augm[1:])
+
+        duint_dt = E_flows[1:] * h_E[1:] + R_flows[:-1] * h_R[:-1] \
+            - E_flows[:-1] * h_E[:-1] - R_flows[1:] * h_R[1:]
+
+        temp_eqns = holdup_E * h_E[:-1] + holdup_R * h_R[1:]
+
+        out = [duint_dt, temp_eqns]
+
+        return out
 
     def initialize_model(self):
         # ---------- Equilibrium calculations
@@ -377,7 +394,7 @@ class DynamicExtractor:
 
                 di_init[name] = attr
 
-        # Get flows and internal energies
+        # Get flows
         inputs = self.get_inputs(0)
 
         di_phases = self.get_di_phases(di_init)
@@ -413,7 +430,14 @@ class DynamicExtractor:
 
         di_init['temp'] = self.Liquid_1.temp * np.ones(self.num_stages)
 
-        u_int = self.get_u_int(di_init)
+        # Energy balance calculations
+        h_R = self.Liquid_1.getEnthalpy(mole_frac=di_init['x_i'],
+                                        temp=di_init['temp'])
+
+        h_E = self.Liquid_1.getEnthalpy(mole_frac=di_init['y_i'],
+                                        temp=di_init['temp'])
+
+        u_int = di_init['holdup_R'] * h_R + di_init['holdup_E'] * h_E
 
         di_init['u_int'] = u_int
 
