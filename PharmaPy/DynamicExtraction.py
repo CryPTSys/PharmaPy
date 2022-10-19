@@ -113,7 +113,7 @@ class DynamicExtractor:
         self._Inlet = self.inlets
 
     def get_stage_dimensions(self, diph):
-        self.vol = diph['heavy']['vol'] + diph['light']['vol']
+        self.vol = diph['heavy']['vol'][0] + diph['light']['vol'][0]
         if self.area_cross is None:
             diam_stage = (4 * self.dh_ratio * self.vol / np.pi)**(1/3)
             self.area_cross = np.pi/4 * diam_stage**2
@@ -128,6 +128,10 @@ class DynamicExtractor:
 
     def get_bottom_flows(self, diph):
         rho_mass = diph['heavy']['rho'] * diph['heavy']['mw']
+        arg = 2 * 9.18 / rho_mass / self.area_cross * \
+                (diph['heavy']['mw'] * diph['heavy']['mol'] +
+                 diph['light']['mw'] * diph['light']['mol'])
+
         bottom_flows = self.cd * diph['heavy']['rho'] * self.area_out * \
             np.sqrt(2 * 9.18 / rho_mass / self.area_cross *
                     (diph['heavy']['mw'] * diph['heavy']['mol'] +
@@ -229,11 +233,17 @@ class DynamicExtractor:
 
         return augm_arrays
 
-    def unit_model(self, time, states):
+    def unit_model(self, time, states, sdot=None):
 
         # ---------- Unpack variables
         di_states = unpack_discretized(states,
                                        self.dim_states, self.name_states)
+
+        if sdot is None:
+            di_sdot = sdot
+        else:
+            di_sdot = unpack_discretized(sdot, self.dim_states,
+                                         self.name_states)
 
         inputs = self.get_inputs(time)
 
@@ -246,15 +256,16 @@ class DynamicExtractor:
         # ---------- Balances
         material = self.material_balances(time,
                                           augm_arrays=augm_arrays,
-                                          di_phases=diph,
+                                          di_phases=diph, di_sdot=di_sdot,
                                           **di_states)
 
         energy = self.energy_balances(time,
                                       augm_arrays=augm_arrays,
-                                      di_phases=diph,
+                                      di_phases=diph, di_sdot=di_sdot,
                                       **di_states)
 
-        balances = np.column_stack(material + energy)
+        balances = np.column_stack(material + energy).ravel()
+
         return balances
 
     def get_di_phases(self, di_states):
@@ -286,7 +297,7 @@ class DynamicExtractor:
         return di_phases
 
     def material_balances(self, time, mol_i, x_i, y_i,
-                          holdup_R, holdup_E, top_flows, u_int, temp,
+                          holdup_R, holdup_E, top_flows, u_int, temp, di_sdot,
                           di_phases, augm_arrays):
 
         x_augm, y_augm, temp_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
@@ -296,6 +307,9 @@ class DynamicExtractor:
             + x_augm[:-1] * R_flows[:-1, np.newaxis] \
             - y_augm[:-1] * E_flows[:-1, np.newaxis] \
             - x_augm[1:] * R_flows[1:, np.newaxis]
+
+        if di_sdot is not None:
+            dnij_dt = dnij_dt - di_sdot['mol_i']
 
         # ---------- Algebraic block
         nij_alg = x_i * holdup_R[:, np.newaxis] + y_i * holdup_E[:, np.newaxis] \
@@ -317,21 +331,13 @@ class DynamicExtractor:
         top_flow_alg = self.get_top_flow_eqns(top_augm, bottom_flows,
                                               di_phases)
 
-        out = np.column_stack((dnij_dt,
-                               nij_alg,  # good
-                               equilibrium_alg,  # good
-                               global_alg,  # check
-                               volume_alg,  # good
-                               top_flow_alg)  # good
-                              )
-
         out = [dnij_dt, nij_alg, equilibrium_alg, global_alg, volume_alg,
                top_flow_alg]
 
         return out
 
     def energy_balances(self, time, mol_i, x_i, y_i,
-                        holdup_R, holdup_E, top_flows, u_int, temp,
+                        holdup_R, holdup_E, top_flows, u_int, temp, di_sdot,
                         di_phases, augm_arrays):
 
         x_augm, y_augm, temp_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
@@ -342,7 +348,10 @@ class DynamicExtractor:
         duint_dt = E_flows[1:] * h_E[1:] + R_flows[:-1] * h_R[:-1] \
             - E_flows[:-1] * h_E[:-1] - R_flows[1:] * h_R[1:]
 
-        temp_eqns = holdup_E * h_E[:-1] + holdup_R * h_R[1:]
+        if di_sdot is not None:
+            duint_dt = duint_dt - di_sdot['u_int']
+
+        temp_eqns = holdup_E * h_E[:-1] + holdup_R * h_R[1:] - u_int
 
         out = [duint_dt, temp_eqns]
 
@@ -451,18 +460,24 @@ class DynamicExtractor:
         init_states = np.column_stack(tuple(di_init.values()))
         init_states = init_states.ravel()
 
-        balances = self.unit_model(0, init_states)
+        init_deriv = self.unit_model(0, init_states)
 
-        # problem = Implicit_Problem(self.unit_model)
-        # solver = IDA(problem)
+        problem = Implicit_Problem(self.unit_model,
+                                   y0=init_states, yd0=init_deriv)
 
-        # time, states = solver.solve(runtime)
+        problem.algvar = self.alg_map
 
-        # return time, states
+        solver = IDA(problem)
+        solver.make_consistent('IDA_YA_YDP_INIT')
+        solver.suppress_alg = True
+
+        time, states = solver.simulate(runtime)
+
+        return time, states
 
         # return di_init, init_states
 
-        return balances
+        # return balances
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
