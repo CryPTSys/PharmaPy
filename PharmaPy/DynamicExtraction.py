@@ -15,6 +15,17 @@ from assimulo.solvers import IDA
 import copy
 
 
+def get_alg_map(states_di, nstages=1):
+    maps = []
+    for val in states_di.values():
+        if val['type'] == 'diff':
+            maps.append(np.ones(val['dim'] * nstages))
+        elif val['type'] == 'alg':
+            maps.append(np.zeros(val['dim'] * nstages))
+
+    return np.hstack(maps)
+
+
 class DynamicExtractor:
     def __init__(self, num_stages, k_fun=None, gamma_model='UNIQUAC',
                  area_cross=None, coeff_disch=1, diam_out=0.0254, dh_ratio=2):
@@ -59,6 +70,8 @@ class DynamicExtractor:
 
         states_in_dict = {'mole_flow': 1, 'temp': 1, 'mole_frac': num_comp}
         self.states_in_dict = {'Inlet': states_in_dict}
+
+        self.alg_map = get_alg_map(self.states_di, self.num_stages)
 
     @property
     def Phases(self):
@@ -123,28 +136,36 @@ class DynamicExtractor:
 
         return bottom_flows
 
-    def get_top_flow_eqns(self, top_flows, bottom_flows, inputs, diph,
+    def get_top_flow_eqns(self, top_flows, bottom_flows, diph,
                           matrix=False):
 
         if matrix:
             rng = np.arange(self.num_stages - 1)
             a_matrix = -np.eye(self.num_stages) * 1/diph['light']['rho']
+
             if self.target_states['heavy_phase'] == 'raffinate':
                 a_matrix[rng, rng + 1] = 1/diph['light']['rho'][1:]
 
-                b_vector = 1 / diph['heavy']['rho'] * (bottom_flows[1:] - bottom_flows[:-1])
+                b_vector = 1 / diph['heavy']['rho'] \
+                    * (bottom_flows[1:] - bottom_flows[:-1])
+
                 b_vector[-1] -= top_flows[-1]/diph['light']['rho'][-1]
 
             elif self.target_states['heavy_phase'] == 'extract':
                 a_matrix[rng + 1, rng] = 1/diph['light']['rho'][:-1]
 
-                b_vector = -1 / diph['heavy']['rho'] * (bottom_flows[1:] - bottom_flows[:-1])
+                b_vector = -1 / diph['heavy']['rho'] \
+                    * (bottom_flows[1:] - bottom_flows[:-1])
                 b_vector[0] -= top_flows[0]/diph['light']['rho'][0]
 
             eqns = (a_matrix, b_vector)
         else:
-            eqns = (top_flows[1:] - top_flows[:-1]) / diph['light']['rho'] + \
-                (bottom_flows[1:] - bottom_flows[:-1]) / diph['heavy']['rho']
+            if self.target_states['heavy_phase'] == 'raffinate':  # TODO: check
+                eqns = (top_flows[1:] - top_flows[:-1]) / diph['light']['rho'] \
+                    + (bottom_flows[:-1] - bottom_flows[1:]) / diph['heavy']['rho']
+            elif self.target_states['heavy_phase'] == 'extract':
+                eqns = (top_flows[:-1] - top_flows[1:]) / diph['light']['rho'] \
+                    + (bottom_flows[1:] - bottom_flows[:-1]) / diph['heavy']['rho']
 
         return eqns
 
@@ -161,14 +182,78 @@ class DynamicExtractor:
 
     def unit_model(self, time, states):
 
+        # ---------- Unpack variables
         di_states = unpack_discretized(states,
                                        self.dim_states, self.name_states)
 
-        material = self.material_balances(time, di_states)
-        energy = self.energy_balances(time, **di_states)
+        inputs = self.get_inputs(time)
 
-        balances = np.hstack(material, energy)
-        return balances
+        diph = self.get_di_phases(di_states)
+        bottom_flows = self.get_bottom_flows(diph)
+
+        x_in = inputs['raffinate']['Inlet']['mole_frac']
+        y_in = inputs['extract']['Inlet']['mole_frac']
+
+        # ---------- Create augmented arrays to account for inlets
+        x_augm = np.vstack((x_in, di_states['x_i']))
+        y_augm = np.vstack((di_states['y_i'], y_in))
+
+        R_flows = np.zeros(self.num_stages + 1)
+        E_flows = np.zeros_like(R_flows)
+
+        rho_R = np.zeros_like(R_flows)
+        rho_E = np.zeros_like(R_flows)
+        if self.target_states['heavy_phase'] == 'raffinate':
+            # Extract (light)
+            E_flows[-1] = inputs['extract']['Inlet']['mole_flow']
+            E_flows[:-1] = di_states['top_flows']
+
+            rho_E[-1] = self.Liquid_1.getDensity(
+                mole_frac=inputs['extract']['Inlet']['mole_frac'],
+                temp=inputs['extract']['Inlet']['temp'])
+            rho_E[:-1] = diph['light']['rho']
+
+            # Raffinate (heavy)
+            R_flows[0] = inputs['raffinate']['Inlet']['mole_flow']
+            R_flows[1:] = bottom_flows
+
+            rho_R[0] = self.Liquid_1.getDensity(
+                mole_frac=inputs['raffinate']['Inlet']['mole_frac'],
+                temp=inputs['raffinate']['Inlet']['temp'])
+            rho_R[1:] = diph['heavy']['rho']
+
+        elif self.target_states['heavy_phase'] == 'extract':
+            # Raffinate (light)
+            R_flows[0] = inputs['raffinate']['Inlet']['mole_flow']
+            R_flows[1:] = di_states['top_flows']
+
+            rho_R[0] = self.Liquid_1.getDensity(
+                mole_frac=inputs['raffinate']['Inlet']['mole_frac'],
+                temp=inputs['raffinate']['Inlet']['temp'])
+            rho_R[1:] = diph['light']['rho']
+
+            # Extract (heavy)
+            E_flows[-1] = inputs['extract']['Inlet']['mole_flow']
+            E_flows[:-1] = bottom_flows
+
+            rho_E[-1] = self.Liquid_1.getDensity(
+                mole_frac=inputs['extract']['Inlet']['mole_frac'],
+                temp=inputs['extract']['Inlet']['temp'])
+            rho_E[:-1] = diph['heavy']['rho']
+
+        # Assign augmented fracs
+        augm_arrays = (x_augm, y_augm, R_flows, E_flows, rho_R, rho_E)
+
+        # ---------- Balances
+        material = self.material_balances(time,
+                                          augm_arrays=augm_arrays,
+                                          di_phases=diph,
+                                          **di_states)
+        # energy = self.energy_balances(time, heavy_phase=heavy_phase,
+        #                               **di_states)
+
+        # balances = np.hstack((material, energy))
+        return material
 
     def get_di_phases(self, di_states):
         di_phases = {'heavy': {}, 'light': {}}
@@ -187,7 +272,7 @@ class DynamicExtractor:
             di_phases[phase][key] = di_states[name]
 
             if 'x_' in name or 'y_' in name:
-                rho = self.Liquid_1.getDensity(di_states[name], basis='mole')
+                rho = self.Liquid_1.getDensity(mole_frac=di_states[name], basis='mole')
                 mw = np.dot(self.Liquid_1.mw, di_states[name].T)
 
                 di_phases[phase]['rho'] = rho
@@ -199,12 +284,50 @@ class DynamicExtractor:
         return di_phases
 
     def material_balances(self, time, mol_i, x_i, y_i,
-                          holdup_R, holdup_E, top_flows, u_int, temp):
+                          holdup_R, holdup_E, top_flows, u_int, temp,
+                          di_phases, augm_arrays):
 
-        return
+        x_augm, y_augm, R_flows, E_flows, rho_R, rho_E = augm_arrays
+
+        # ---------- Differential block
+        dnij_dt = y_augm[1:] * E_flows[1:, np.newaxis] + \
+            x_augm[:-1] * R_flows[:-1, np.newaxis] - \
+            y_augm[:-1] * E_flows[:-1, np.newaxis] + \
+            x_augm[1:] * R_flows[1:, np.newaxis]
+
+        # ---------- Algebraic block
+        nij_alg = x_i * holdup_R[:, np.newaxis] + y_i * holdup_E[:, np.newaxis] \
+            - mol_i
+
+        k_ij = self.k_fun(x_i, y_i, temp)  # TODO: make this stage-wise
+        equilibrium_alg = k_ij * x_i - y_i
+
+        global_alg = holdup_R + holdup_E - mol_i.sum(axis=1)
+        volume_alg = holdup_R/rho_R[1:] + holdup_E/rho_E[:-1] - self.vol
+
+        if self.target_states['heavy_phase'] == 'raffinate':
+            bottom_flows = R_flows
+            top_augm = E_flows
+        elif self.target_states['heavy_phase'] == 'extract':
+            bottom_flows = E_flows
+            top_augm = R_flows
+
+        top_flow_alg = self.get_top_flow_eqns(top_augm, bottom_flows,
+                                              di_phases)
+
+        out = np.column_stack((dnij_dt,
+                               nij_alg,  # good
+                               equilibrium_alg,  # good
+                               global_alg,  # check
+                               volume_alg,  # good
+                               top_flow_alg)  # good
+                              )
+
+        return out
 
     def energy_balances(self, time, mol_i, x_i, y_i,
-                        holdup_R, holdup_E, top_flows, u_int, temp):
+                        holdup_R, holdup_E, top_flows, u_int, temp,
+                        heavy_phase, bottom_flows):
 
         return
 
@@ -266,9 +389,8 @@ class DynamicExtractor:
         top_holder = np.zeros_like(bottom_holder)
 
         if target_states['heavy_phase'] == 'raffinate':
-            # Extract ath the end of top_flows
+            # Extract at the end of top_flows
             top_holder[-1] = inputs['extract']['Inlet']['mole_flow']
-            top_holder[:-1] = bottom_flows
 
             # Raffinate at the beginning of bottom_flows
             bottom_holder[0] = inputs['raffinate']['Inlet']['mole_flow']
@@ -281,10 +403,9 @@ class DynamicExtractor:
 
             # Raffinate at the beginning of top_flows
             top_holder[0] = inputs['raffinate']['Inlet']['mole_flow']
-            top_holder[1:] = bottom_flows
 
-        top_flow_eqns = self.get_top_flow_eqns(
-            top_holder, bottom_holder, inputs, di_phases, matrix=True)
+        top_flow_eqns = self.get_top_flow_eqns(top_holder, bottom_holder,
+                                               di_phases, matrix=True)
 
         top_flows = linalg.solve(*top_flow_eqns)
 
@@ -300,12 +421,13 @@ class DynamicExtractor:
 
     def solve_unit(self, runtime):
 
-        # di_init, inputs, di_phases, bottom_flows, top_flows = self.initialize_model()
         di_init = self.initialize_model()
         di_init = {key: di_init[key] for key in self.name_states}
 
         init_states = np.column_stack(tuple(di_init.values()))
-        # init_states = init_states.T.ravel()
+        init_states = init_states.ravel()
+
+        balances = self.unit_model(0, init_states)
 
         # problem = Implicit_Problem(self.unit_model)
         # solver = IDA(problem)
@@ -314,7 +436,9 @@ class DynamicExtractor:
 
         # return time, states
 
-        return di_init, init_states
+        # return di_init, init_states
+
+        return balances
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
