@@ -285,14 +285,18 @@ class DynamicExtractor:
             di_phases[phase][key] = di_states[name]
 
             if 'x_' in name or 'y_' in name:
-                rho = self.Liquid_1.getDensity(mole_frac=di_states[name], basis='mole')
+                rho = self.Liquid_1.getDensity(mole_frac=di_states[name],
+                                               basis='mole')
+
                 mw = np.dot(self.Liquid_1.mw, di_states[name].T)
 
                 di_phases[phase]['rho'] = rho
                 di_phases[phase]['mw'] = mw
 
-        di_phases['heavy']['vol'] = di_phases['heavy']['mol'] / di_phases['heavy']['rho']
-        di_phases['light']['vol'] = di_phases['light']['mol'] / di_phases['light']['rho']
+        di_phases['heavy']['vol'] = di_phases['heavy']['mol'] / \
+            di_phases['heavy']['rho']
+        di_phases['light']['vol'] = di_phases['light']['mol'] / \
+            di_phases['light']['rho']
 
         return di_phases
 
