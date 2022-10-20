@@ -233,7 +233,8 @@ class ThermoPhysicalManager:
                 else:
                     mole_fr = mole_frac[:, idx]
 
-                enthalpyOut = np.dot(integral, mole_fr.T)
+                # enthalpyOut = np.dot(integral, mole_fr.T)
+                enthalpyOut = (integral * mole_fr).sum(axis=1)
 
             if len(enthalpyOut) == 1:
                 enthalpyOut = enthalpyOut[0]
