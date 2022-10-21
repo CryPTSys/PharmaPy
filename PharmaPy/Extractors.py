@@ -257,8 +257,8 @@ class ContinuousExtractor:
                                    moles=liquid_b,
                                    temp=self.temp, pres=self.pres)
 
-        dens_a = Liquid_a.getDensity()
-        dens_b = Liquid_b.getDensity()
+        dens_a = Liquid_a.getDensity(basis='mole')
+        dens_b = Liquid_b.getDensity(basis='mole')
 
         if phase_part > 0 and phase_part < 1:
             if dens_a > dens_b:

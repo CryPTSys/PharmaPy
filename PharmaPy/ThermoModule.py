@@ -306,6 +306,16 @@ class ThermoPhysicalManager:
 
         return rhoMix
 
+    def getMolWeight(self, mole_frac=None, mass_frac=None):
+        if mass_frac is None and mole_frac is None:
+            mole_frac = self.mole_frac
+        elif mass_frac is not None:
+            mole_frac = self.frac_to_frac(mass_frac=mass_frac)
+
+        mw_av = np.dot(self.mw, mole_frac.T)
+
+        return mw_av
+
     def getViscosityPure(self, phase='liquid', temp=None):
         if temp is None:
             temp = self.temp
