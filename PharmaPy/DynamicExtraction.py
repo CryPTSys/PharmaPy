@@ -9,11 +9,14 @@ from PharmaPy.Results import DynamicResult
 from PharmaPy.Streams import LiquidStream
 
 from PharmaPy.Extractors import BatchExtractor
+from PharmaPy.Plotting import plot_distrib
 
 from assimulo.solvers import IDA
 from assimulo.solvers import Radau5DAE
 
 import copy
+
+from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 
 def get_alg_map(states_di, nstages=1):
@@ -203,17 +206,17 @@ class DynamicExtractor:
             di_sdot = unpack_discretized(sdot, self.dim_states,
                                          self.name_states)
 
-            print('\ntime: ', time, end='\n')
-            fields = ('holdup_light', 'holdup_heavy')
-            di_print = {key: di_states[key] for key in fields}
+            # print('\ntime: ', time, end='\n')
+            # fields = ('holdup_light', 'holdup_heavy')
+            # di_print = {key: di_states[key] for key in fields}
 
-            print(di_print)
+            # print(di_print)
 
-            fields = ('mol_i', )
-            di_print = {key: {'max': di_sdot[key].max(),
-                              'comp': self.name_species[np.argmax(di_sdot[key])]} for key in fields}
+            # fields = ('mol_i', )
+            # di_print = {key: {'max': di_sdot[key].max(),
+            #                   'comp': self.name_species[np.argmax(di_sdot[key])]} for key in fields}
 
-            print(di_print)
+            # print(di_print)
 
         inputs = self.get_inputs(time)
 
@@ -378,7 +381,6 @@ class DynamicExtractor:
         bottom_flows = self.get_bottom_flows(di_init, rhos_holdups, mw_holdups)
 
         bottom_holder = np.zeros(self.num_stages + 1)
-        top_holder = np.zeros_like(bottom_holder)
 
         heavy = target_states['heavy_phase']
         light = target_states['light_phase']
@@ -386,17 +388,13 @@ class DynamicExtractor:
         heavy_in = inputs[heavy]['Inlet']['mole_flow']
         light_in = inputs[light]['Inlet']['mole_flow']
 
-        top_holder[0] = light_in
-
         bottom_holder[-1] = heavy_in
         bottom_holder[:-1] = bottom_flows
 
-        light_flow = inputs[light]['Inlet']['mole_flow']
+        top_flow_arrays = self.get_top_flow_matrix(bottom_holder, light_in,
+                                                   rhos_holdups)
 
-        top_flow_eqns = self.get_top_flow_matrix(bottom_holder, light_flow,
-                                                 rhos_holdups)
-
-        top_flows = linalg.solve(*top_flow_eqns)
+        top_flows = linalg.solve(*top_flow_arrays)
 
         di_init['top_flows'] = top_flows
 
@@ -467,3 +465,33 @@ class DynamicExtractor:
         # self.Outlet = LiquidStream(self.Liquid_1.path_thermo,
         #                            temp=di_last['temp'],
         #                            mole_flow=di['mole_flow'])
+
+    def plot_profiles(self, times=None, stages=None, pick_comp=None,
+                      **fig_kwargs):
+
+        states_plot = ('holdup_heavy', 'holdup_light')
+        ylabels = ('H_E', 'H_L')
+
+        fig, axis = plot_distrib(self, states_plot, 'stage', times=times,
+                                 x_vals=stages, ncols=2, ylabels=ylabels,
+                                 **fig_kwargs)
+
+        if times is not None:
+            fig.text(0.5, 0, 'stage', ha='center')
+
+            for ax in axis:
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+        elif stages is not None:
+            fig.text(0.5, 0, '$t$ (s)', ha='center')
+
+            for ax in axis:
+                ax.xaxis.set_minor_locator(AutoMinorLocator(2))
+
+        for ax in axis:
+            ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+        fig.tight_layout()
+
+        return fig, axis
+

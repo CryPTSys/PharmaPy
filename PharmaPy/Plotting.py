@@ -258,6 +258,35 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     return fig, ax_orig
 
 
+def name_yaxes(ax, states_fstates, names, ylabels, legend):
+    for ind, name in enumerate(names):
+        axis = ax[ind]
+        if ylabels is None:
+            ylabel = names[ind]
+        else:
+            ylabel = latexify_name(ylabels[ind])
+
+        units = states_fstates[name].get('units', '')
+        if len(units) > 0:
+            unit_name = latexify_name(units, units=True)
+            ylabel = ylabel + ' (' + unit_name + ')'
+
+        axis.set_ylabel(ylabel)
+
+
+def set_legend(ax, states_fstates, names, state_names, legend):
+    for ind, name in enumerate(names):
+        index_y = states_fstates[name].get('index', False)
+        if index_y and legend:
+            if isinstance(state_names[ind], (tuple, list)):
+                picks = state_names[ind][1]
+                picks = get_indexes(index_y, picks)
+
+                index_y = [index_y[i] for i in picks]
+
+            ax[ind].legend(index_y, loc='best')
+
+
 def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                  cm_names=None, ylabels=None, legend=True, **fig_kwargs):
     if times is None and x_vals is None:
@@ -304,31 +333,8 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                 else:
                     axis.plot(x_vals, y_plot[t], color=colors[0][t])
 
-                axis.set_ylabel(names[ind])
-
-        for ind, name in enumerate(names):
-            axis = ax[ind]
-            index_y = states_and_fstates[name].get('index', False)
-            if ylabels is None:
-                ylabel = names[ind]
-            else:
-                ylabel = latexify_name(ylabels[ind])
-
-            units = states_and_fstates[name].get('units', '')
-            if len(units) > 0:
-                unit_name = latexify_name(units, units=True)
-                ylabel = ylabel + ' (' + unit_name + ')'
-
-            axis.set_ylabel(ylabel)
-
-            if index_y and legend:
-                if isinstance(state_names[ind], (tuple, list)):
-                    picks = state_names[ind][1]
-                    picks = get_indexes(index_y, picks)
-
-                    index_y = [index_y[i] for i in picks]
-
-                axis.legend(index_y, loc='best')
+        name_yaxes(ax, states_and_fstates, names, ylabels, legend)
+        set_legend(ax, states_and_fstates, names, state_names, legend)
 
         for axis in ax:
             if len(axis.lines) == 0:
@@ -338,5 +344,21 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
         if len(ax) == 1:
             ax = ax[0]
+
+    else:
+        y_di = get_state_distrib(uo.result, *state_names, x=x_vals,
+                                 x_name=x_name)
+
+        names = list(y_di.keys())
+
+        time = uo.result.time
+        for ind, (state, y) in enumerate(y_di.items()):
+            if isinstance(y, (list, tuple)):
+                y = np.array(y).T
+
+            ax[ind].plot(time, y)
+
+        name_yaxes(ax, states_and_fstates, names, ylabels, legend)
+        set_legend(ax, states_and_fstates, names, state_names, legend)
 
     return fig, ax

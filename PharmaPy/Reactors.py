@@ -1936,15 +1936,15 @@ class PlugFlowReactor(_BaseReactor):
         else:
             pick_comp = pick_comp
 
+        states_plot = [('mole_conc', pick_comp), 'temp']
+
+        y_labels = ('C_j', 'T')
+
+        fig, ax = plot_distrib(self, states_plot, times=times, x_vals=vol,
+                               x_name='vol', ncols=2,
+                               ylabels=y_labels, **fig_kw)
+
         if times is not None:
-
-            states_plot = [('mole_conc', pick_comp), 'temp']
-
-            y_labels = ('C_j', 'T')
-
-            fig, ax = plot_distrib(self, states_plot, times=times,
-                                   x_name='vol', ncols=2,
-                                   ylabels=y_labels, **fig_kw)
 
             fig.tight_layout()
 
@@ -1952,26 +1952,8 @@ class PlugFlowReactor(_BaseReactor):
             if vol is None:
                 raise RuntimeError('Please provide a volume value using '
                                    "the argument 'vol'")
-            fig, ax = plt.subplots(1, 2, **fig_kw)
-
-            vol_ind = np.argmin(abs(vol - self.vol_centers))
-
-            conc_vol = self.concPerVolElem[vol_ind][:, pick_comp]
-            ax[0].plot(self.timeProf, conc_vol)
-
-            ax[1].text(1, 1.04, '$V = {:.4f} \, m^3$'.format(
-                self.vol_centers[vol_ind]), transform=ax[1].transAxes,
-                ha='right')
-
-            ax[0].legend(self.name_species)
-            ax[0].set_ylabel('$C_j$ $(\mathregular{mol \ L^{-1}})$')
-
-            ax[1].plot(self.timeProf, self.tempProf[:, vol_ind])
-            ax[1].set_ylabel('$T$ (K)')
 
             fig.text(0.5, 0, '$t$ ($s$)', ha='center')
-
-            # ax = [ax]
 
         for axis in ax:
             axis.grid()
@@ -1988,54 +1970,6 @@ class PlugFlowReactor(_BaseReactor):
         fig.tight_layout()
 
         return fig, ax
-
-    def plot_states(self, state_list, row_cols=None, fig_size=None,
-                    vol_eval=None, time_eval=None):
-
-        conc_states = [(idx, item) for idx, item in enumerate(state_list)
-                       if 'conc' in item]
-
-        conc_idx, conc_names = zip(*conc_states)
-        others_idx = list(set(range(state_list)) - set(conc_idx))
-
-        num_axes = len(others_idx) + 1
-
-        if row_cols is None:
-            fig, axis = plt.subplots(num_axes, figsize=fig_size)
-        else:
-            fig, axis = plt.subplots(*row_cols, figsize=fig_size)
-
-        idx_states = []
-        for name in state_list:
-            idx_states.append(self.states_uo.index(name))
-
-        states_plot = self.dynamic_states[:, idx_states]
-
-        # Get data
-        if vol_eval is not None and time_eval is not None:
-            raise RuntimeError("Both 'vol_eval' and 'time_eval' were given. "
-                               "Provide only one of the two.")
-        elif vol_eval is not None:
-            idx_col = np.argmin(abs(self.vol_discr - vol_eval))
-            conc_data = self.concPerVolElem[idx_col][:, conc_idx]
-            other_data = states_plot[:, others_idx]
-
-            xlabel = '$V$ ($m^3$)'
-        elif time_eval is not None:
-            idx_row = np.argmin(abs(self.timeProf - time_eval))
-            conc_data = states_plot[conc_idx]
-            other_data = states_plot[others_idx]
-
-            xlabel = '$t$ (s)'
-
-        conc_flag = 0
-        if len(conc_idx) > 0:
-            axis[0].plot(self.timeProf, conc_data)
-            conc_flag = 1
-
-        if len(other_data) > 1:
-            for ind, state in enumerate(other_data.T):
-                axis[ind + conc_flag].plot(self.timeProf, other_data)
 
     def animate_reactor(self, filename=None, step_data=2, fps=5,
                         pick_idx=None, title=None):
