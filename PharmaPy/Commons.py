@@ -156,6 +156,9 @@ def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
     if idx_vol is None:
         if x is None:
             idx_vol = np.arange(len(di[x_name]))
+        elif isinstance(x, (list, tuple, np.ndarray)):
+            idx_vol = [np.argmin(abs(val - di[x_name])) for val in x]
+            out[x_name] = di[x_name][idx_vol]
         else:
             idx_vol = np.argmin(abs(x - di[x_name]))
             out[x_name] = di[x_name][idx_vol]

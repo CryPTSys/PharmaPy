@@ -137,21 +137,17 @@ class DynamicExtractor:
 
     def get_bottom_flows(self, di_states, rhos, mws):
         rho_mass = rhos[0] * mws[0]  # kg/m**3
-        # arg = 2 * 9.18 / rho_mass / self.area_cross * \
-        #     (mws[0] * di_states['holdup_heavy'] +
-        #      mws[1] * di_states['holdup_light']) / 1000
 
-        # print(arg)
+        vel_out = np.sqrt(2 * 9.81 / rho_mass / self.area_cross *
+                          (mws[0] * di_states['holdup_heavy'] +
+                           mws[1] * di_states['holdup_light']) / 1000
+                          )  # m/s
 
-        bottom_flows = self.cd * rhos[0] * self.area_out * \
-            np.sqrt(2 * 9.18 / rho_mass / self.area_cross *
-                    (mws[0] * di_states['holdup_heavy'] +
-                     mws[1] * di_states['holdup_light']) / 1000
-                    )
+        bottom_flows = self.cd * rhos[0] * self.area_out * vel_out  # * 1000
 
         return bottom_flows
 
-    def get_top_flow_matrix(self, bottom_flows, light_flow, rhos):
+    def get_top_flow_arrays(self, bottom_flows, light_flow, rhos):
         rng = np.arange(self.num_stages - 1)
 
         rho_heavy, rho_light = rhos
@@ -283,6 +279,11 @@ class DynamicExtractor:
         out = [dnij_dt, nij_alg, equilibrium_alg, global_alg, volume_alg,
                top_flow_alg]
 
+        # di_flows = {'heavy': {'in': heavy_flows[1], 'out': heavy_flows[0]},
+        #             'light': {'in': light_flows[0], 'out': light_flows[1]}}
+
+        # print(di_flows)
+
         return out
 
     def energy_balances(self, time, mol_i, x_i, y_i,
@@ -324,7 +325,7 @@ class DynamicExtractor:
         mol_i_init = res.x_heavy * res.mol_heavy + res.x_light * res.mol_light
 
         # ---------- Discriminate heavy and light phases
-        rhos_streams = {key: obj.getDensity()
+        rhos_streams = {key: obj.getDensity(basis='mole')
                         for key, obj in self.Inlet.items()}
 
         rhos_holdups = [res.rho_heavy, res.rho_light]
@@ -469,12 +470,17 @@ class DynamicExtractor:
     def plot_profiles(self, times=None, stages=None, pick_comp=None,
                       **fig_kwargs):
 
-        states_plot = ('holdup_heavy', 'holdup_light')
-        ylabels = ('H_E', 'H_L')
+        if pick_comp is None:
+            states_plot = ('holdup_light', 'holdup_heavy', 'x_i', 'y_i')
+        else:
+            states_plot = ('holdup_light', 'holdup_heavy',
+                           ('x_i', pick_comp), ('y_i', pick_comp))
+
+        ylabels = ('H_light', 'H_heavy', 'x_i', 'y_i')
 
         fig, axis = plot_distrib(self, states_plot, 'stage', times=times,
-                                 x_vals=stages, ncols=2, ylabels=ylabels,
-                                 **fig_kwargs)
+                                 x_vals=stages, nrows=2, ncols=2,
+                                 ylabels=ylabels, **fig_kwargs)
 
         if times is not None:
             fig.text(0.5, 0, 'stage', ha='center')
