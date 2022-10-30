@@ -44,8 +44,8 @@ def complete_molefrac(mole_frac, mapping):
 
 
 class DynamicExtractor:
-    def __init__(self, num_stages, k_fun=None, gamma_model='UNIQUAC',
-                 area_cross=None, coeff_disch=1, diam_out=0.0254, dh_ratio=2):
+    def __init__(self, num_stages, k_fun=None, gamma_model='UNIQUAC'):
+                 # area_cross=None, coeff_disch=1, diam_out=0.0254, dh_ratio=2):
 
         self.num_stages = num_stages
 
@@ -60,12 +60,12 @@ class DynamicExtractor:
 
         self.heavy_phase = None
 
-        self.area_cross = area_cross
-        self.diam_stage = None
-        self.dh_ratio = dh_ratio
+        # self.area_cross = area_cross
+        # self.diam_stage = None
+        # self.dh_ratio = dh_ratio
 
-        self.area_out = np.pi / 4 * diam_out**2
-        self.cd = coeff_disch
+        # self.area_out = np.pi / 4 * diam_out**2
+        # self.cd = coeff_disch
 
     def nomenclature(self):
         num_comp = self.num_comp
@@ -73,8 +73,8 @@ class DynamicExtractor:
         self.states_di = {
             'mol_i': {'dim': num_comp, 'units': 'mole', 'type': 'diff',
                       'index': name_species},
-            'x_i': {'dim': num_comp - 1, 'type': 'alg', 'index': name_species},
-            'y_i': {'dim': num_comp - 1, 'type': 'alg', 'index': name_species},
+            'x_i': {'dim': num_comp, 'type': 'alg', 'index': name_species},
+            'y_i': {'dim': num_comp, 'type': 'alg', 'index': name_species},
             'holdup_light': {'dim': 1, 'type': 'alg', 'units': 'mole'},
             'holdup_heavy': {'dim': 1, 'type': 'alg', 'units': 'mole'},
             # 'top_flows': {'dim': 1, 'type': 'alg', 'units': 'mole/s'},
@@ -136,11 +136,11 @@ class DynamicExtractor:
             di_states['holdup_light'][0] / rhos[1]
 
         self.vol = vol / 1000  # m**3
-        if self.area_cross is None:
-            diam_stage = (4 * self.dh_ratio * self.vol / np.pi)**(1/3)
-            self.area_cross = np.pi/4 * diam_stage**2
+        # if self.area_cross is None:
+        #     diam_stage = (4 * self.dh_ratio * self.vol / np.pi)**(1/3)
+        #     self.area_cross = np.pi/4 * diam_stage**2
 
-            self.diam_stage = diam_stage
+        #     self.diam_stage = diam_stage
 
     def get_inputs(self, time):
         inputs = {key: get_inputs_new(time, inlet, self.states_in_dict) for
@@ -177,8 +177,8 @@ class DynamicExtractor:
         light = self.target_states['light_phase']
         heavy = self.target_states['heavy_phase']
 
-        x_in = inputs[light]['Inlet']['mole_frac'][self.idx_light]
-        y_in = inputs[heavy]['Inlet']['mole_frac'][self.idx_heavy]
+        x_in = inputs[light]['Inlet']['mole_frac']
+        y_in = inputs[heavy]['Inlet']['mole_frac']
 
         temp_in = {key: val['Inlet']['temp'] for key, val in inputs.items()}
 
@@ -217,11 +217,11 @@ class DynamicExtractor:
             di_sdot = unpack_discretized(sdot, self.dim_states,
                                          self.name_states)
 
-            # print('\ntime: ', time, end='\n')
-            # fields = ('holdup_light', 'holdup_heavy')
-            # di_print = {key: di_states[key] for key in fields}
+            print('\ntime: ', time, end='\n')
+            fields = ('holdup_light', 'holdup_heavy')
+            di_print = {key: di_states[key] for key in fields}
 
-            # print(di_print)
+            print(di_print)
 
             # fields = ('mol_i', )
             # di_print = {key: {'max': di_sdot[key].max(),
@@ -231,30 +231,20 @@ class DynamicExtractor:
 
         inputs = self.get_inputs(time)
 
-        keys_frac = ('y_i', 'x_i')
-        x_all = complete_molefrac(di_states['x_i'], self.idx_light)
-        y_all = complete_molefrac(di_states['y_i'], self.idx_heavy)
-
         # mws = [self.Liquid_1.getMolWeight(mole_frac=di_states[key])
         #        for key in keys_frac]
 
         # Physical properties
         rhos = [
-            self.Liquid_1.getDensity(mole_frac=x_all, basis='mole',
+            self.Liquid_1.getDensity(mole_frac=di_states['x_i'], basis='mole',
                                      temp=di_states['temp']),
-            self.Liquid_1.getDensity(mole_frac=y_all, basis='mole',
+            self.Liquid_1.getDensity(mole_frac=di_states['y_i'], basis='mole',
                                      temp=di_states['temp'])]
 
         # bottom_flows = self.get_bottom_flows(di_states, rhos, mws)
 
         augm_arrays = self.get_augmented_arrays(di_states, inputs)
                                                 # bottom_flows)
-
-        enthalpies = [
-            self.Liquid_1.getEnthalpy(mole_frac=x_all, basis='mole',
-                                      temp=augm_arrays[2]),
-            self.Liquid_1.getEnthalpy(mole_frac=y_all, basis='mole',
-                                      temp=augm_arrays[2])]
 
         # ---------- Balances
         material = self.material_balances(time,
@@ -264,7 +254,7 @@ class DynamicExtractor:
 
         energy = self.energy_balances(time,
                                       augm_arrays=augm_arrays,
-                                      di_sdot=di_sdot, enthalpies=enthalpies,
+                                      di_sdot=di_sdot,
                                       **di_states)
 
         balances = np.column_stack(material + energy).ravel()
@@ -315,20 +305,18 @@ class DynamicExtractor:
 
     def energy_balances(self, time, mol_i, x_i, y_i,
                         holdup_light, holdup_heavy,  # top_flows,
-                        u_int, temp, enthalpies,
+                        u_int, temp,
                         di_sdot, augm_arrays):
 
         x_augm, y_augm, temp_augm, light_flows, heavy_flows = augm_arrays
 
-        h_light, h_heavy = enthalpies
+        h_light = self.Liquid_1.getEnthalpy(mole_frac=x_augm,
+                                            temp=temp_augm[:-1],
+                                            basis='mole')
 
-        # h_light = self.Liquid_1.getEnthalpy(mole_frac=x_augm,
-        #                                     temp=temp_augm[:-1],
-        #                                     basis='mole')
-
-        # h_heavy = self.Liquid_1.getEnthalpy(mole_frac=y_augm,
-        #                                     temp=temp_augm[1:],
-        #                                     basis='mole')
+        h_heavy = self.Liquid_1.getEnthalpy(mole_frac=y_augm,
+                                            temp=temp_augm[1:],
+                                            basis='mole')
 
         duint_dt = heavy_flows[1:] * h_heavy[1:] \
             + light_flows[:-1] * h_light[:-1] \
@@ -354,27 +342,27 @@ class DynamicExtractor:
 
         mol_i_init = res.x_heavy * res.mol_heavy + res.x_light * res.mol_light
 
-        # ---------- Determine most abundant components per phase
-        pos_heavy = np.argmax(res.x_heavy)
-        pos_light = np.argmax(res.x_light)
+        # # ---------- Determine most abundant components per phase
+        # pos_heavy = np.argmax(res.x_heavy)
+        # pos_light = np.argmax(res.x_light)
 
-        index_heavy = list(
-            set(self.name_species).difference([self.name_species[pos_heavy]]))
+        # index_heavy = list(
+        #     set(self.name_species).difference([self.name_species[pos_heavy]]))
 
-        index_light = list(
-            set(self.name_species).difference([self.name_species[pos_light]]))
+        # index_light = list(
+        #     set(self.name_species).difference([self.name_species[pos_light]]))
 
-        self.states_di['x_i']['index'] = index_light
-        self.states_di['mol_i']['index'] = index_heavy
+        # self.states_di['x_i']['index'] = index_light
+        # self.states_di['mol_i']['index'] = index_heavy
 
-        idx_heavy = [True] * self.num_comp
-        idx_heavy[pos_heavy] = False
+        # idx_heavy = [True] * self.num_comp
+        # idx_heavy[pos_heavy] = False
 
-        idx_light = [True] * self.num_comp
-        idx_light[pos_light] = False
+        # idx_light = [True] * self.num_comp
+        # idx_light[pos_light] = False
 
-        self.idx_heavy = np.array(idx_heavy)
-        self.idx_light = np.array(idx_light)
+        # self.idx_heavy = np.array(idx_heavy)
+        # self.idx_light = np.array(idx_light)
 
         # ---------- Discriminate heavy and light phases
         rhos_streams = {key: obj.getDensity(basis='mole')
@@ -465,8 +453,8 @@ class DynamicExtractor:
 
         di_init['u_int'] = u_int
 
-        di_init['x_i'] = di_init['x_i'][:, idx_light]
-        di_init['y_i'] = di_init['y_i'][:, idx_heavy]
+        # di_init['x_i'] = di_init['x_i'][:, idx_light]
+        # di_init['y_i'] = di_init['y_i'][:, idx_heavy]
 
         return di_init
 

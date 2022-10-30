@@ -953,7 +953,7 @@ class _BaseCryst:
 
         self.elapsed_time = 0
 
-        if isinstance(modify_phase, dict):
+        if isinstance(modify_phase, dict) and len(modify_phase) > 0:
 
             if 'Liquid' not in modify_phase and 'Solid' not in modify_phase:
                 raise ValueError(
