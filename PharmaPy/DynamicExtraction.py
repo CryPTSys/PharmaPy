@@ -5,7 +5,7 @@ from assimulo.problem import Implicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import unpack_discretized, retrieve_pde_result
+from PharmaPy.Commons import unpack_discretized, retrieve_pde_result, flatten_states
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Streams import LiquidStream
 
@@ -65,6 +65,9 @@ class DynamicExtractor:
         self.fixed_vals = {}
         self.stream_out = stream_out
 
+        self.profiles_runs = []
+        self.oper_mode = 'Continuous'
+
     def nomenclature(self):
         num_comp = self.num_comp
         name_species = self.name_species
@@ -89,6 +92,9 @@ class DynamicExtractor:
         self.alg_map = get_alg_map(self.states_di, self.num_stages)
 
         self.fstates_di = {}
+
+    def flatten_states(self):
+        pass
 
     @property
     def Phases(self):
@@ -118,7 +124,7 @@ class DynamicExtractor:
             if 'feed' not in inlet.keys() and 'solvent' not in inlet.keys():
                 raise KeyError(
                     "The passed dictionary must have the key 'feed' "
-                    "or the key 'solvent' identified the passed streams ")
+                    "or the key 'solvent' identifying the passed streams ")
 
         else:
             raise TypeError(
@@ -495,6 +501,8 @@ class DynamicExtractor:
         di['stage'] = np.arange(1, self.num_stages + 1)
         di['time'] = time
 
+        self.profiles_runs.append(di)
+
         self.result = DynamicResult(self.states_di, self.fstates_di, **di)
 
         di_last = retrieve_pde_result(di, x_name='stage', x=self.num_stages)
@@ -504,19 +512,23 @@ class DynamicExtractor:
             list(di_last[key].values())) for key in frac_keys}
 
         inputs = self.get_inputs(time[-1])
-        if self.stream_out == 'light':
-            kw_outlet = {
-                'mole_flow': inputs[self.target_states['light_phase']]['Inlet']['mole_flow'],
-                'mole_frac': frac_last['x_i'][-1]}
 
-        else:
-            kw_outlet = {
+        kws = {
+            self.target_states['light_phase']: {
+                'mole_flow': inputs[self.target_states['light_phase']]['Inlet']['mole_flow'],
+                'mole_frac': frac_last['x_i'][-1]},
+            self.target_states['heavy_phase']: {
                 'mole_flow': inputs[self.target_states['heavy_phase']]['Inlet']['mole_flow'],
                 'mole_frac': frac_last['y_i'][-1]}
+                }
 
-        self.Outlet = LiquidStream(self.Liquid_1.path_data,
-                                   temp=di_last['temp'][-1],
-                                   **kw_outlet)
+        self.Outlet = {key: LiquidStream(
+            self.Liquid_1.path_data, temp=di_last['temp'][-1], **kws[key])
+            for key in ('feed', 'solvent')}
+
+        # self.Outlet = LiquidStream(self.Liquid_1.path_data,
+        #                            temp=di_last['temp'][-1],
+        #                            **kws['feed'])
 
     def plot_profiles(self, times=None, stages=None, pick_comp=None,
                       **fig_kwargs):

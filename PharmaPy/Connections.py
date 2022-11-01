@@ -388,4 +388,7 @@ class Connection:
                 # last discontinuous UO is depleted, as stated in the paper.
                 # Reference date: (2022/06/28)
 
-            self.destination_uo.Inlet = transfered_matter
+            if class_destination == 'DynamicExtractor':
+                self.destination_uo.Inlet = {'feed': transfered_matter}
+            else:
+                self.destination_uo.Inlet = transfered_matter
