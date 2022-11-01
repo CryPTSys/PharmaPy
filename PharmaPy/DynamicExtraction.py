@@ -45,7 +45,8 @@ def complete_molefrac(mole_frac, mapping):
 
 
 class DynamicExtractor:
-    def __init__(self, num_stages, k_fun=None, eff=1, gamma_model='UNIQUAC'):
+    def __init__(self, num_stages, k_fun=None, eff=1, gamma_model='UNIQUAC',
+                 stream_out='light'):
 
         self.num_stages = num_stages
 
@@ -62,6 +63,7 @@ class DynamicExtractor:
         self.eff = eff
 
         self.fixed_vals = {}
+        self.stream_out = stream_out
 
     def nomenclature(self):
         num_comp = self.num_comp
@@ -495,12 +497,26 @@ class DynamicExtractor:
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **di)
 
-        # di_last = retrieve_pde_result(di, 'stage',
-        #                               time=time[-1], x=self.num_stages)
+        di_last = retrieve_pde_result(di, x_name='stage', x=self.num_stages)
 
-        # self.Outlet = LiquidStream(self.Liquid_1.path_thermo,
-        #                            temp=di_last['temp'],
-        #                            mole_flow=di['mole_flow'])
+        frac_keys = ('x_i', 'y_i')
+        frac_last = {key: np.column_stack(
+            list(di_last[key].values())) for key in frac_keys}
+
+        inputs = self.get_inputs(time[-1])
+        if self.stream_out == 'light':
+            kw_outlet = {
+                'mole_flow': inputs[self.target_states['light_phase']]['Inlet']['mole_flow'],
+                'mole_frac': frac_last['x_i'][-1]}
+
+        else:
+            kw_outlet = {
+                'mole_flow': inputs[self.target_states['heavy_phase']]['Inlet']['mole_flow'],
+                'mole_frac': frac_last['y_i'][-1]}
+
+        self.Outlet = LiquidStream(self.Liquid_1.path_data,
+                                   temp=di_last['temp'][-1],
+                                   **kw_outlet)
 
     def plot_profiles(self, times=None, stages=None, pick_comp=None,
                       **fig_kwargs):
