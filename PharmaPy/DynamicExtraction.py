@@ -1,6 +1,6 @@
 import numpy as np
 from scipy import linalg
-from scipy.optimize import fsolve
+from scipy.optimize import root
 from assimulo.problem import Implicit_Problem
 
 from PharmaPy.Phases import classify_phases
@@ -250,22 +250,30 @@ class DynamicExtractor:
             - y_augm[:-1] * heavy_flows[:-1, np.newaxis] \
             - x_augm[1:] * light_flows[1:, np.newaxis]
 
-        dxij_dt[1:] = dxij_dt[1:] - holdup_heavy[0] * m_ij * \
-            (1 - self.eff) * dxij_dt[:-1]
+        div = holdup_light[:, np.newaxis] + holdup_heavy[:, np.newaxis] * m_ij
+
+        dxij_dt *= 1 / div
+
+        # ---------- Algebraic block
+        equilibrium_alg = np.zeros_like(y_i)
+        equilibrium_alg[0] = m_ij * x_i[0] - y_i[0]
+
+        # ---------- Modify outputs for stage two on
+        if self.num_stages > 1:
+            deriv_term = holdup_heavy[0] * m_ij * (1 - self.eff) / div[1:] * \
+                dxij_dt[:-1]
+
+            dxij_dt[1:] += deriv_term
+
+            equilibrium_alg[1:] = m_ij * (x_i[1:] - x_i[:-1] * (1 - self.eff)) \
+                - y_i[1:]
 
         if di_sdot is not None:
             dxij_dt = dxij_dt - di_sdot['x_i']
 
-        # ---------- Algebraic block
         # nij_alg = x_i * holdup_light[:, np.newaxis] \
         #     + y_i * holdup_heavy[:, np.newaxis] - mol_i
 
-        equilibrium_alg = np.zeros_like(y_i)
-        equilibrium_alg[0] = m_ij * x_i[0] - y_i[0]
-
-        if self.num_stages > 1:
-            equilibrium_alg[1:] = m_ij * \
-                (x_i[1:] - x_i[:-1] * (1 - self.eff)) - y_i[1:]
         # equilibrium_alg = m_ij * (x_augm[1:] - x_augm[:-1] * (1 - self.eff)) \
         #     - y_i
 
@@ -403,7 +411,7 @@ class DynamicExtractor:
 
             HR, HE = holdups
 
-            x_eqns = HR * xi + HE * yi - mol_i
+            x_eqns = (HR * xi + HE * yi - mol_i) / HR
 
             k_ij = self.k_fun(xi, yi, temp)
 
@@ -413,20 +421,22 @@ class DynamicExtractor:
             y_eqns[0] = m_ij * xi[0] - yi[0]
 
             if self.num_stages > 1:
-                y_eqns[1:] = m_ij[1:] * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
+                y_eqns[1:] = m_ij * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
 
             eqns = np.column_stack((x_eqns, y_eqns)).ravel()
 
             return eqns
-
-        # TODO: this initialization assumes that all the intial holdups have the same x, y and T
 
         holdups = [res.mol_light, res.mol_heavy]
         mol_i = res.mol_light * res.x_light + res.mol_heavy * res.x_heavy
 
         args_eq = (di_init['temp'], mol_i, holdups)
         x0 = np.column_stack((di_init['x_i'], di_init['y_i'])).ravel()
-        frac_noneq = fsolve(equilibrium_eqns, x0, args=args_eq)
+
+        optimopts = {'xtol': 2**(-52)}
+        frac_result = root(equilibrium_eqns, x0, args=args_eq)
+
+        frac_noneq = frac_result.x
 
         frac_noneq = frac_noneq.reshape(self.num_stages, -1)
 
@@ -507,7 +517,7 @@ class DynamicExtractor:
                                  ylabels=ylabels, **fig_kwargs)
 
         if times is not None:
-            fig.text(0.5, 0, 'stage', ha='center')
+            # fig.text(0.5, 0, 'stage', ha='center')
 
             for ax in axis:
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
