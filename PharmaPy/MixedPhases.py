@@ -469,11 +469,27 @@ class Cake:
         porosity = self.porosity
         rho_sol = self.Solid_1.getDensity()
         x_grid = self.Solid_1.x_distrib * 1e-6
+       
+        kv = 0.524  # converting number based CSD to volume based:
+       
+        del_x_dist = np.diff(x_grid)
+        node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
+        node_CSD = (csd[:-1] + csd[1:]) / 2
+        
+        # Volume of crystals in each bin
+        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
+        frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
+        
+        csd = vol_cry
+        
+        # numerator = trapezoidal_rule(x_grid, csd * alpha_x)
+        # alpha = numerator / (self.Solid_1.moments[0] + eps)
 
+        # Calculate irreducible saturation in weighted csd (volume based)
+        vol_frac = vol_cry/ np.sum(vol_cry)
+        x_grid = node_x_dist
         alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
-
-        numerator = trapezoidal_rule(x_grid, csd * alpha_x)
-        alpha = numerator / (self.Solid_1.moments[0] + eps)
+        alpha = np.sum(alpha_x * vol_frac)
 
         return alpha
 

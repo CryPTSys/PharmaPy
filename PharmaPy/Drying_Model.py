@@ -226,7 +226,7 @@ class Drying:
         y_gas = states_reord[:, 1:1 + num_comp]
         x_liq = states_reord[:, 1 + num_comp:
                              1 + num_comp + self.num_volatiles]
-
+        x_liq[:, -2] = 0
         temp_gas = states_reord[:, -2]
         temp_sol = states_reord[:, -1]
 
@@ -239,23 +239,27 @@ class Drying:
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
         # vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
         vel_gas = self.dPg_dz / \
-        (self.CakePhase.alpha * visc_gas * self.rho_sol * (1 - self.porosity))
-
+        (self.CakePhase.alpha * visc_gas * self.rho_sol * (1 - self.porosity))/ np.mean(satur)
+        
         # ---------- Drying rate term
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
         rho_gas = self.pres_gas / gas_ct / temp_gas * mw_avg_gas / 1000# kg/m**3
         rho_liq_ = self.Liquid_1.rho_liq[self.idx_volatiles]
         self.rho_liq =  1 / np.sum((x_liq/ rho_liq_), axis=1)
+        A = self.rho_liq[0]
         # Dry correction
         if self.mass_eta:
             rho_liq = self.rho_liq
-            sat_eta = satur * rho_liq / (satur*rho_liq + (1 - satur)*rho_gas)
+            
+            sat_eta = (self.porosity * satur * rho_liq)/ \
+                ((1 - self.porosity) * self.rho_sol + self.porosity * satur *rho_liq)
+            # sat_eta = satur * rho_liq / (satur*rho_liq + (1 - satur)*rho_gas)
             w_eta = x_liq
         else:
             sat_eta = satur
             w_eta = x_liq
 
-        limiter_factor = self.eta_fun(sat_eta, w_eta)
+        limiter_factor = self.eta_fun(sat_eta)#, w_eta)
 
         # Dry rate
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
@@ -285,17 +289,33 @@ class Drying:
 
     def material_balance(self, time, satur, temp_gas, temp_sol, y_gas, x_liq,
                          u_gas, dens_gas, dry_rate, inputs, return_terms=False):
-
+        
+        satur[satur < eps] = eps
         # ----- Reading inputs
         y_gas_inputs = inputs['mass_frac']
 
         # ----- Liquid phase
         dens_liq = self.rho_liq
-        dsat_dt = -dry_rate.sum(axis=1) / dens_liq / self.porosity
-
-        dxliq_dt = -1 / satur * \
+        
+        sum_dry = dry_rate.sum(axis=1)
+        # sum_dry[sum_dry < eps] = 0
+        
+        dsat_dt = -sum_dry / dens_liq / self.porosity
+        
+        dxliq_dt = -1 / satur* \
             (dry_rate.T[self.idx_volatiles] / dens_liq / self.porosity +
               x_liq.T * dsat_dt)
+            
+        # dxliq_dt = np.zeros([len(self.idx_volatiles), len(satur)])
+        
+        # for ind, val in enumerate(sum_dry):
+        #     if val == 0:
+        #         dxliq_dt[self.idx_volatiles, ind] = 0
+            
+        #     else:
+        #         dxliq_dt[self.idx_volatiles, ind] = -1 / satur[ind] * \
+        #     (dry_rate.T[self.idx_volatiles, ind] / dens_liq[ind] / self.porosity +
+        #       x_liq.T[self.idx_volatiles, ind] * dsat_dt[ind])
 
         # ----- Gas phase
         # Convective term
@@ -308,7 +328,7 @@ class Drying:
 
         convection = -u_gas * dygas_dz / epsilon_gas
         # Transfer term
-        transfer_gas = dry_rate.T / epsilon_gas / dens_gas
+        transfer_gas = dry_rate.T / epsilon_gas / dens_gas/ (1 - satur)
         # Dynamic saturation correction term
         total_mass_correction = y_gas.T / (1 - satur) * dsat_dt
 
@@ -346,31 +366,37 @@ class Drying:
 
         cpl_mix = self.Liquid_1.getCp(temp=temp_sol, mass_frac=xliq_extended,
                                       basis='mass')
-        sensible_heat = cpg_mix * (temp_gas - temp_sol) * dry_rate.sum(axis=1)
+        temp_wb = 22+273
+        sensible_heat = cpg_mix * (temp_gas - temp_wb) * dry_rate.sum(axis=1)
 
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = rho_gas / self.rho_liq * cpg_mix
-        heat_loss = self.h_T_loss * self.a_V * (temp_gas - self.T_ambient)
-        # heat_loss = 0  # This line is for assumption of no heat loss
-        # fluxes_Tg = high_resolution_fvm(temp_gas,
-        #                                 boundary_cond=temp_gas_inputs)
+        # heat_loss = self.h_T_loss * self.a_V * (temp_gas - self.T_ambient)
+        heat_loss = self.h_T_loss * self.cake_height * (2*np.pi*1.5/2/100) *(temp_gas - self.T_ambient)
+        heat_loss = 0  # This line is for assumption of no heat loss
+        fluxes_Tg = high_resolution_fvm(temp_gas,
+                                        boundary_cond=temp_gas_inputs)
 
-        fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
+        # fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
         dTg_dz = np.diff(fluxes_Tg) / self.dz * epsilon_gas * rho_gas
 
         conv_term = -u_gas * dTg_dz * cpg_mix * rho_gas
 
         dTg_dt = (conv_term + sensible_heat - heat_transf - heat_loss) / denom_gas
-
+        
         # Empty port
-        #dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
+        # dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
+        # dTg_dt =  (conv_term - heat_loss) / denom_gas
 
         # print(dTg_dt[0])
 
         # ----- Condensed phases equations
         dens_liq = self.rho_liq
-        heat_loss_cond = self.h_T_loss * self.a_V * (temp_sol - self.T_ambient)
-        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat).sum(axis=1)
+        # heat_loss_cond = self.h_T_loss * self.a_V * (temp_sol - self.T_ambient)
+        heat_loss_cond = self.h_T_loss * self.cake_height * (2*np.pi*1.5/2/100) *(temp_sol - self.T_ambient)
+        # heat_loss_cond = 0
+        # heat_transf = 0
+        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat*2).sum(axis=1)
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
@@ -540,10 +566,10 @@ class Drying:
 
         # sim.linear_solver = 'SPGMR'
         time, states = sim.simulate(runtime)
-
+        
         if not verbose:
           sim.verbosity = 50
-
+        
         self.retrieve_results(time, states)
 
         return time, states
