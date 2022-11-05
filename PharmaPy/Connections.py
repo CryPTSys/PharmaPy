@@ -283,6 +283,9 @@ class Connection:
 
     def FeedConnection(self):
         self.Matter = self.source_uo.Outlet
+        if isinstance(self.Matter, dict):
+            self.Matter = self.Matter[self.source_uo.default_output]
+
         self.num_species = self.Matter.num_species
 
         self.Matter.y_upstream = self.source_uo.outputs

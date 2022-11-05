@@ -13,30 +13,66 @@ from assimulo.solvers import IDA
 import scipy.optimize
 import scipy.sparse
 
-from itertools import cycle
+# from itertools import cycle
 from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 
 
 class DistillationColumn:
-    def __init__(self, col_P, q_feed, LK, HK,
-                 per_LK, per_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', N_feed=None):
+    def __init__(self, pres, q_feed, LK, HK,
+                 x_LK, x_HK, reflux=None, num_plates=None,
+                 gamma_model='ideal', num_feed=None):
+        """
+        Create an object to solve a steady-state distillation column
+
+        Parameters
+        ----------
+        pres : float
+            column pressure [Pa].
+        q_feed : float
+            fraction of liquid in the feed stream in molar basis.
+        LK : str
+            name of the light key component.
+        HK : str
+            name of the heavy key component.
+        x_LK : float
+            desired mole fraction of the light key in the top product.
+        x_HK : float
+            desired mole fraction of the heavy key in the top product.
+        reflux : float, optional
+            reflux ratio (L/D), begin L the internal liquid flow and D the
+            distillate flow. The default is None.
+        num_plates : int, optional
+            number of equilibrium stages. If not provided, it will be estimated
+            using the YYY method. The default is None.
+        gamma_model : str, optional
+            name of the thermodynamic model used for activity coefficient
+            calculation. It can be 'UNIQUAC', 'UNIFAC' or 'ideal'.
+            The default is 'ideal'.
+        num_feed : int, optional
+            feed tray (trays are numbered from top to bottom).
+            The default is None.
+
+        Returns
+        -------
+        PharmaPy DistillationColumn object.
+
+        """
 
         self.num_plates = num_plates
         self.reflux = reflux
         self.q_feed = q_feed
-        self.col_P = col_P
+        self.pres = pres
 
         self.LK = LK
         self.HK = HK
-        self.per_HK = per_HK
-        self.per_LK = per_LK
+        self.x_HK = x_HK
+        self.x_LK = x_LK
 
         self.gamma_model = gamma_model
 
-        self.N_feed = N_feed  # Num plate from bottom
-        self.per_NLK = 100  # Sharp split all NLK recovred in distillate
-        self.per_NHK = 0  # Sharp split no NHK in distillate
+        self.num_feed = num_feed  # Num plate from bottom
+        self.x_NLK = 1  # Sharp split all NLK recovred in distillate
+        self.x_NHK = 0  # Sharp split no NHK in distillate
 
         self._Inlet = None
         self._Phases = None
@@ -54,7 +90,7 @@ class DistillationColumn:
             'bot_flowrate': {'dim': 1, 'units': 'mole/sec'},
             'dist_flowrate': {'dim': 1, 'units': 'mole/sec'},
             'reflux': {'dim': 1},
-            'N_feed': {'dim': 1}, 'x_dist': {'dim': len(self.name_species)},
+            'num_feed': {'dim': 1}, 'x_dist': {'dim': len(self.name_species)},
             'x_bot': {'dim': len(self.name_species)},
             'min_reflux': {'dim': 1}, 'N_min': {'dim': 1}
         }
@@ -75,7 +111,7 @@ class DistillationColumn:
     @Inlet.setter
     def Inlet(self, inlet):
         self._Inlet = inlet
-        self._Inlet.pres = self.col_P
+        self._Inlet.pres = self.pres
         self.feed_flowrate = inlet.mole_flow
         self.z_feed = inlet.mole_frac
 
@@ -93,67 +129,84 @@ class DistillationColumn:
 
         return inputs
 
-    def estimate_comp(self, name_species, feed_flowrate, z_feed, LK, HK, LK_index, HK_index):
-        # Determine Light Key and Heavy Key component numbers
+    def get_alpha(self, pres, x_frac):
+        temp_bubble = self.Inlet.getBubblePoint(pres, mole_frac=x_frac)
 
-        bubble_pure = self.Inlet.AntoineEquation(pres=self.col_P)
+        k_vals = self.Inlet.getKeqVLE(temp=temp_bubble,
+                                      pres=pres, x_liq=x_frac,
+                                      gamma_model=self.gamma_model)
+
+        alpha = k_vals/k_vals[self.HK_index]
+
+        return alpha
+
+    def estimate_comp(self, name_species, feed_flow, z_feed,
+                      LK, HK, LK_index, HK_index):
+
+        # ---------- Determine Light Key and Heavy Key component numbers
+        bubble_pure = self.Inlet.AntoineEquation(pres=self.pres)
         volatility_order = np.argsort(bubble_pure)
 
         hk_loc = np.where(volatility_order == HK_index)[0][0]
         lk_loc = np.where(volatility_order == LK_index)[0][0]
 
+        lighter_idx = volatility_order[:lk_loc]
+        heavier_idx = volatility_order[hk_loc + 1:]
+
         if hk_loc != lk_loc + 1:
             print('High key and low key indices are not adjacent')
 
-        # Calculate Distillate and Bottom flow rates
-        bot_flowrate = (feed_flowrate*z_feed[HK_index]*(1-self.per_HK/100)
-                        + feed_flowrate*z_feed[LK_index]*(1-self.per_LK/100)
-                        + sum(feed_flowrate *
-                              z_feed[:LK_index])*(1-self.per_NLK/100)
-                        + sum(feed_flowrate*z_feed[HK_index+1:])*(1-self.per_NHK/100))
-        dist_flowrate = feed_flowrate - bot_flowrate
+        # ---------- Calculate Distillate and Bottom flow rates
+        bot_flow = feed_flow * (z_feed[HK_index] * ((1 - self.x_HK)) +
+                                z_feed[LK_index] * ((1 - self.x_LK)) +
+                                z_feed[lighter_idx].sum() * (1 - self.x_NLK) +
+                                z_feed[heavier_idx].sum() * (1 - self.x_NHK))
 
-        if bot_flowrate < 0 or dist_flowrate < 0:
+        dist_flow = feed_flow - bot_flow
+
+        if bot_flow < 0 or dist_flow < 0:
             print('negative flow rates, given value not feasible')
 
-        # Estimate component fractions
+        # ---------- Estimate component fractions
         x_dist = np.zeros_like(z_feed)
         x_bot = np.zeros_like(z_feed)
 
-        x_bot[:LK_index] = (sum(feed_flowrate*z_feed[:LK_index])
-                            * (1-self.per_NLK/100)/bot_flowrate)
-        x_bot[LK_index] = (feed_flowrate*z_feed[LK_index]
-                           * (1-self.per_LK/100)/bot_flowrate)
-        x_bot[HK_index] = (feed_flowrate*z_feed[HK_index]
-                           * (1-self.per_HK/100)/bot_flowrate)
-        x_bot[HK_index+1:] = (sum(feed_flowrate*z_feed[HK_index+1:])
-                              * (1-self.per_NHK/100)/bot_flowrate)
+        x_bot[lighter_idx] = feed_flow * z_feed[lighter_idx] * \
+            (1 - self.x_NLK) / bot_flow
+        x_bot[LK_index] = feed_flow * z_feed[LK_index] * \
+            (1 - self.x_LK) / bot_flow
+        x_bot[HK_index] = feed_flow * z_feed[HK_index] * \
+            (1 - self.x_HK) / bot_flow
+        x_bot[heavier_idx] = feed_flow * z_feed[heavier_idx] * \
+            (1 - self.x_NHK) / bot_flow
 
-        x_dist = (feed_flowrate*z_feed - bot_flowrate*x_bot)/dist_flowrate
+        x_dist = (feed_flow*z_feed - bot_flow*x_bot) / dist_flow
 
         # Fenske equation
-        k_vals_bot = self._Inlet.getKeqVLE(pres=self.col_P, x_liq=x_bot)
-        k_vals_dist = self._Inlet.getKeqVLE(pres=self.col_P, x_liq=x_dist)
-        alpha_fenske = (k_vals_dist[LK_index]/k_vals_dist[HK_index] *
-                        k_vals_bot[LK_index]/k_vals_bot[HK_index])**0.5
-        N_min = (np.log(self.per_LK/100/(1-self.per_LK/100) /
-                        ((self.per_HK/100)/(1-self.per_HK/100)))
-                 / np.log(alpha_fenske))
-        self.N_min = N_min
-        return x_dist, x_bot, dist_flowrate, bot_flowrate
+        alpha_top = self.get_alpha(self.pres, x_dist)
+        alpha_bottom = self.get_alpha(self.pres, x_bot)
+        alpha_fenske = (alpha_top[LK_index] * alpha_bottom[LK_index])**0.5
+
+        num_min = np.log(
+            self.x_LK / (1 - self.x_LK) * (1 - self.x_HK) / self.x_HK) / \
+            np.log(alpha_fenske)
+
+        self.num_min = num_min
+
+        return x_dist, x_bot, dist_flow, bot_flow
 
     def get_k_vals(self, x_oneplate=None, temp=None):
         if x_oneplate is None:
             x_oneplate = self.z_feed
-        k_vals = self._Inlet.getKeqVLE(pres=self.col_P, temp=temp,
+        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp,
                                        x_liq=x_oneplate)
         return k_vals
 
     def VLE(self, y_oneplate=None, temp=None, need_x_vap=True):
         # VLE uses vapor stream, need vapor stream object temporarily.
         temporary_vapor = VaporStream(path_thermo=self._Inlet.path_data,
-                                      pres=self.col_P, mole_flow=self.feed_flowrate, mole_frac=y_oneplate)
-        res = temporary_vapor.getDewPoint(pres=self.col_P, mass_frac=None,
+                                      pres=self.pres, mole_flow=self.feed_flowrate, mole_frac=y_oneplate)
+        res = temporary_vapor.getDewPoint(pres=self.pres, mass_frac=None,
                                           mole_frac=y_oneplate, thermo_method=self.gamma_model, x_liq=need_x_vap)
         # Program needs VLE function to return output in x,Temp format
         return res[::-1]
@@ -163,18 +216,20 @@ class DistillationColumn:
         # Calculate operating lines
         LK_index = self.LK_index
         HK_index = self.HK_index
-        k_vals = self.get_k_vals(x_oneplate=self.z_feed)
+        # k_vals = self.get_k_vals(x_oneplate=self.z_feed)
 
-        alpha = k_vals/k_vals[HK_index]
+        # alpha = k_vals/k_vals[HK_index]
+        alpha = self.get_alpha(self.pres, self.z_feed)
         # Estimate Reflux ratio
         # First Underwood equation
         # (1-q is 0), Feed flow rate cancelled from both sides, 10^-10 is to avoid division by 0
 
         def f(phi): return (sum(alpha * self.z_feed /
                                 (alpha - phi + np.finfo(float).eps)))**2
+
         bounds = ((alpha[HK_index], alpha[LK_index]),)
         phi = scipy.optimize.minimize(
-            f, (alpha[LK_index] + alpha[HK_index])/2, bounds=bounds, tol=10**-10)
+            f, (alpha[LK_index] + alpha[HK_index])/2, bounds=bounds, tol=1e-10)
         phi = phi.x
         # Second underwood equation
         V_min = sum(alpha*dist_flowrate*x_dist/(alpha-phi))
@@ -209,10 +264,10 @@ class DistillationColumn:
                 x_new, T_new = self.VLE(y[0])
                 x[0] = x_new
                 T[0] = T_new
-                if self.N_feed:  # Feed plate specified
+                if self.num_feed:  # Feed plate specified
                     for i in range(1, num_plates+1):
                         # Rectifying section
-                        if i < self.N_feed+1:
+                        if i < self.num_feed+1:
                             y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                             x_new, T_new = self.VLE(y[i])
                             x[i] = x_new
@@ -297,7 +352,7 @@ class DistillationColumn:
 
             # Rectifying section
             while (y_top_op[LK_index]/y_top_op[HK_index] < y_bot_op[LK_index]/y_bot_op[HK_index]):
-                y.append((np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist))
+                y.append((np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist))
                 x_new, T_new = self.VLE(y[-1])
                 x.append(x_new)
                 T.append(T_new)
@@ -305,11 +360,11 @@ class DistillationColumn:
                 if counter2 > 100:
                     break
                 counter2 += 1
-                y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
-                y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
+                y_bot_op = (np.array(x_new) * Lm/Vm - (Lm/Vm - 1) * x_bot)
+                y_top_op = (np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist)
 
             # Feed plate
-            N_feed = counter2
+            num_feed = counter2
 
             # Stripping section
             # When reflux is specified and num_plates is not calculated x returned contains one extra evaluation, not true for case when num_plates is specified. This is why fudge factors are added
@@ -322,20 +377,25 @@ class DistillationColumn:
                     break
                 counter1 += 1
 
-            num_plates = len(y)-1  # Remove distillate stream, reboiler
+            num_plates = len(y) - 1  # Remove distillate stream, reboiler
 
         else:  # Num plates specified
+
+            if num_plates < 0:
+                num_plates = np.ceil(self.num_min * abs(num_plates))
+                self.num_plates = num_plates
+
             # Calculate compositions
-            x = np.zeros((num_plates+1, self.num_species))
-            y = np.zeros((num_plates+1, self.num_species))
-            T = np.zeros(num_plates+1)
+            x = np.zeros((num_plates + 1, self.num_species))
+            y = np.zeros((num_plates + 1, self.num_species))
+            T = np.zeros(num_plates + 1)
 
             y[0] = x_dist
             x_new, T_new = self.VLE(y[0])
             x[0] = x_new
             T[0] = T_new
 
-            if self.N_feed is None:  # Feed plate not specified
+            if self.num_feed is None:  # Feed plate not specified
                 y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                 y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                 flag_rect_section_present = 0
@@ -351,7 +411,7 @@ class DistillationColumn:
 
                         y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
                         y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
-                        N_feed = i  # To get feed plate, only last value used, cant write outside if cause elif structure will be violated
+                        num_feed = i  # To get feed plate, only last value used, cant write outside if cause elif structure will be violated
                         flag_rect_section_present = 1
 
                     # Stripping section
@@ -361,17 +421,17 @@ class DistillationColumn:
                         x[i] = x_new
                         T[i] = T_new
                         if not(flag_rect_section_present):
-                            N_feed = num_plates
+                            num_feed = num_plates
             else:  # Feed plate specified
-                N_feed = self.N_feed
+                num_feed = self.num_feed
                 for i in range(1, num_plates+1):
                     # Rectifying section
-                    if i < self.N_feed:
+                    if i < self.num_feed:
                         y[i] = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
                         x_new, T_new = self.VLE(y[i])
                         x[i] = x_new
                         T[i] = T_new
-                        N_feed = self.N_feed
+                        num_feed = self.num_feed
                     # Stripping section
                     else:
                         y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bot)
@@ -379,22 +439,22 @@ class DistillationColumn:
                         x[i] = x_new
                         T[i] = T_new
 
-        self.N_feed = N_feed
+        self.num_feed = num_feed
 
         self.retrieve_results(num_plates, x, y, T, bot_flowrate, dist_flowrate,
-                              reflux, N_feed, x_dist, x_bot, self.min_reflux, self.N_min)
+                              reflux, num_feed, x_dist, x_bot, self.min_reflux, self.num_min)
         return num_plates
 
     def solve_unit(self, runtime=None, t0=0):
         x_dist, x_bot, dist_flowrate, bot_flowrate = self.estimate_comp(self.name_species, self.feed_flowrate, self.z_feed,
                                                                         self.LK, self.HK, self.LK_index, self.HK_index)
         reflux = self.calc_reflux(x_dist, x_bot, dist_flowrate, bot_flowrate,
-                                  self.reflux, self.num_plates, self.col_P)
+                                  self.reflux, self.num_plates, self.pres)
         num_plates = self.calc_plates(
             x_dist, x_bot, dist_flowrate, bot_flowrate, reflux, self.num_plates)
         return
 
-    def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, N_feed, x_dist, x_bot, min_reflux, N_min):
+    def retrieve_results(self, num_plates, x, y, T, bot_flowrate, dist_flowrate, reflux, num_feed, x_dist, x_bot, min_reflux, N_min):
 
         if not(isinstance(x, np.ndarray)):
             x = np.array(x)
@@ -402,7 +462,7 @@ class DistillationColumn:
             T = np.array(T)
         dist_result = {'num_plates': num_plates, 'x': x.T, 'y': y.T, 'T': T,
                        'bot_flowrate': bot_flowrate, 'dist_flowrate': dist_flowrate, 'reflux': reflux,
-                       'N_feed': N_feed, 'x_dist': x_dist, 'x_bot': x_bot, 'min_reflux': min_reflux, 'N_min': N_min
+                       'num_feed': num_feed, 'x_dist': x_dist, 'x_bot': x_bot, 'min_reflux': min_reflux, 'N_min': N_min
                        }
 
         self.result = DynamicResult(self.states_di, **dist_result)
@@ -418,27 +478,64 @@ class DistillationColumn:
 
 
 class DynamicDistillation():
-    def __init__(self, col_P, q_feed, LK, HK,
-                 per_LK, per_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', N_feed=None):
+    def __init__(self, pres, q_feed, LK, HK,
+                 x_LK, x_HK, reflux=None, num_plates=None,
+                 gamma_model='ideal', num_feed=None):
+        """ Create an object to solve a dynamic distillation column
+
+        Parameters
+        ----------
+        pres : float
+            column pressure [Pa].
+        q_feed : float
+            fraction of liquid in the feed stream in molar basis.
+        LK : str
+            name of the light key component.
+        HK : str
+            name of the heavy key component.
+        x_LK : float
+            desired mole fraction of the light key in the top product.
+        x_HK : float
+            desired mole fraction of the heavy key in the top product.
+        reflux : float, optional
+            reflux ratio (L/D), begin L the internal liquid flow and D the
+            distillate flow. The default is None.
+        num_plates : int, optional
+            number of equilibrium stages. If not provided, it will be estimated
+            using the YYY method. The default is None.
+        gamma_model : str, optional
+            name of the thermodynamic model used for activity coefficient
+            calculation. It can be 'UNIQUAC', 'UNIFAC' or 'ideal'.
+            The default is 'ideal'.
+        num_feed : int, optional
+            feed tray (trays are numbered from top to bottom).
+            The default is None.
+
+        Returns
+        -------
+        PharmaPy DistillationColumn object.
+
+        """
 
         self.num_plates = num_plates
 
         self.reflux = reflux
         self.q_feed = q_feed
-        self.col_P = col_P
+        self.pres = pres
         self.LK = LK
         self.HK = HK
-        self.per_HK = per_HK
-        self.per_LK = per_LK
+        self.x_HK = x_HK
+        self.x_LK = x_LK
 
         self.gamma_model = gamma_model
-        self.N_feed = N_feed  # Num plate from bottom
+        self.num_feed = num_feed  # Num plate from bottom
 
         self._Phases = None
         self._Inlet = None
 
         self.oper_mode = 'Continuous'
+
+        self.outputs = None
 
     def flatten_states(self):
         pass
@@ -515,16 +612,16 @@ class DynamicDistillation():
         # Total reflux conditions (Startup)
         # Steady state values (Based on steady state column)
         column_user_inputs = {
-            'col_P': self.col_P,  # Pa
+            'pres': self.pres,  # Pa
             'num_plates': self.num_plates,  # exclude reboiler
             'reflux': self.reflux,  # L/D
             'q_feed': self.q_feed,  # Feed q value
             'LK': self.LK,  # LK
             'HK': self.HK,  # HK
-            'per_LK': self.per_LK,  # % recovery LK in distillate
-            'per_HK': self.per_HK,  # % recovery HK in distillate
+            'x_LK': self.x_LK,  # % recovery LK in distillate
+            'x_HK': self.x_HK,  # % recovery HK in distillate
             # 'holdup': self.holdup,
-            'N_feed': self.N_feed
+            'num_feed': self.num_feed
                               }
 
         steady_col = DistillationColumn(**column_user_inputs)
@@ -533,16 +630,16 @@ class DynamicDistillation():
 
         # # Calculate compositions for starup at total reflux
         # column_total_reflux = {
-        #     'col_P': self.col_P,  # Pa
+        #     'pres': self.pres,  # Pa
         #     'num_plates': steady_col.result.num_plates,  # exclude reboiler
         #     'reflux': 1e5,  # L/D
         #     'q_feed': self.q_feed,  # Feed q value
         #     'LK': self.LK,  # LK
         #     'HK': self.HK,  # HK
-        #     'per_LK': self.per_LK,  # % recovery LK in distillate
-        #     'per_HK': self.per_HK,  # % recovery HK in distillate
+        #     'x_LK': self.x_LK,  # % recovery LK in distillate
+        #     'x_HK': self.x_HK,  # % recovery HK in distillate
         #     # 'holdup': self.holdup,
-        #     'N_feed': steady_col.result.N_feed
+        #     'num_feed': steady_col.result.num_feed
         #                        }
 
         # total_reflux_col = DistillationColumn(**column_total_reflux)
@@ -556,11 +653,11 @@ class DynamicDistillation():
         self.bot_flowrate = steady_col.result.bot_flowrate
         self.dist_flowrate = steady_col.result.dist_flowrate
         self.reflux = steady_col.result.reflux
-        self.N_feed = steady_col.result.N_feed
+        self.num_feed = steady_col.result.num_feed
         self.x_dist = steady_col.result.x_dist
         self.x_bot = steady_col.result.x_bot
         self.min_reflux = steady_col.result.min_reflux
-        self.N_min = steady_col.result.N_min
+        self.num_min = steady_col.result.N_min
 
     def unit_model(self, time, states, d_states):
         '''This method will work by itself and does not need any user manipulation.
@@ -584,8 +681,8 @@ class DynamicDistillation():
 
         # GET STARTUP CONDITIONS
         (bot_flowrate, dist_flowrate,
-         reflux, N_feed, M_const) = (self.bot_flowrate, self.dist_flowrate,
-                                     self.reflux, self.N_feed, self.holdup)
+         reflux, num_feed, M_const) = (self.bot_flowrate, self.dist_flowrate,
+                                       self.reflux, self.num_feed, self.holdup)
 
         # CALCULATE COLUMN FLOWS
         # Rectifying section
@@ -598,7 +695,7 @@ class DynamicDistillation():
 
         dx_dt = np.zeros_like(x)
 
-        k_vals = self._Inlet.getKeqVLE(pres=self.col_P, temp=temp,
+        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp,
                                        x_liq=x)
 
         residuals_temp = (x * (k_vals - 1)).sum(axis=1)
@@ -606,18 +703,18 @@ class DynamicDistillation():
 
         # Rectifying section
         dx_dt[0] = Vn/M_const * (y[1] - x[0])  # Reflux tank
-        dx_dt[1:N_feed - 1] = 1/M_const * (
-            Vn * y[2:N_feed] + Ln * x[0:N_feed - 2] -
-            Vn * y[1:N_feed - 1] - Ln * x[1:N_feed - 1])
+        dx_dt[1:num_feed - 1] = 1/M_const * (
+            Vn * y[2:num_feed] + Ln * x[0:num_feed - 2] -
+            Vn * y[1:num_feed - 1] - Ln * x[1:num_feed - 1])
 
         # Stripping section
-        dx_dt[N_feed - 1] = 1/M_const * (
-            Vm * y[N_feed] + Ln * x[N_feed - 2] + self.feed_flowrate * z_feed -
-            Vn * y[N_feed - 1] - Lm * x[N_feed - 1])  # Feed plate
+        dx_dt[num_feed - 1] = 1/M_const * (
+            Vm * y[num_feed] + Ln * x[num_feed - 2] + self.feed_flowrate * z_feed -
+            Vn * y[num_feed - 1] - Lm * x[num_feed - 1])  # Feed plate
 
-        dx_dt[N_feed: - 1] = 1/M_const * (
-            Vm * y[N_feed + 1:] + Lm * x[N_feed - 1:-2] -
-            Vm * y[N_feed: - 1] - Lm*x[N_feed:-1])
+        dx_dt[num_feed: - 1] = 1/M_const * (
+            Vm * y[num_feed + 1:] + Lm * x[num_feed - 1:-2] -
+            Vm * y[num_feed: - 1] - Lm*x[num_feed:-1])
 
         # Reboiler, y_in for reboiler is the same as x_out
         # dx_dt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
@@ -637,7 +734,7 @@ class DynamicDistillation():
         # init_states = np.column_stack((self.T0, self.x0))
 
         x_init = self.Liquid_1.mole_frac.copy()
-        temp_init = self.Liquid_1.getBubblePoint(pres=self.col_P,
+        temp_init = self.Liquid_1.getBubblePoint(pres=self.pres,
                                                  mole_frac=x_init)
 
         init_states = np.tile(np.hstack((temp_init, x_init)),

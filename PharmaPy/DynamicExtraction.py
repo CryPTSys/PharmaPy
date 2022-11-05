@@ -45,8 +45,7 @@ def complete_molefrac(mole_frac, mapping):
 
 
 class DynamicExtractor:
-    def __init__(self, num_stages, k_fun=None, eff=1, gamma_model='UNIQUAC',
-                 stream_out='light'):
+    def __init__(self, num_stages, k_fun=None, eff=1, gamma_model='UNIQUAC'):
 
         self.num_stages = num_stages
 
@@ -59,14 +58,18 @@ class DynamicExtractor:
         self._Inlet = None
         self.inlets = {}
 
+        self.names_states_in = ('mole_flow', 'temp', 'mole_frac')
+
         self.heavy_phase = None
         self.eff = eff
 
         self.fixed_vals = {}
-        self.stream_out = stream_out
+        # self.stream_out = stream_out
 
         self.profiles_runs = []
         self.oper_mode = 'Continuous'
+        self.is_continuous = True
+        self.default_output = 'feed'
 
     def nomenclature(self):
         num_comp = self.num_comp
@@ -92,6 +95,8 @@ class DynamicExtractor:
         self.alg_map = get_alg_map(self.states_di, self.num_stages)
 
         self.fstates_di = {}
+
+        self.names_states_out = ('mole_frac', 'mole_flow', 'temp')
 
     def flatten_states(self):
         pass
@@ -246,7 +251,7 @@ class DynamicExtractor:
 
         x_augm, y_augm, temp_augm, light_flows, heavy_flows = augm_arrays
 
-        # rho_light, rho_heavy = rhos
+        # print(x_augm.sum(axis=1))
 
         # ---------- Equilibrium
         k_ij = self.k_fun(x_i, y_i, temp)  # TODO: make this stage-wise
@@ -263,8 +268,8 @@ class DynamicExtractor:
         dxij_dt *= 1 / div
 
         # ---------- Algebraic block
-        equilibrium_alg = np.zeros_like(y_i)
-        equilibrium_alg[0] = m_ij * x_i[0] - y_i[0]
+        equilibrium_alg = m_ij * (x_augm[1:] - x_augm[:-1] * (1 - self.eff)) \
+            - y_i
 
         # ---------- Modify outputs for stage two on
         if self.num_stages > 1:
@@ -273,8 +278,8 @@ class DynamicExtractor:
 
             dxij_dt[1:] += deriv_term
 
-            equilibrium_alg[1:] = m_ij * (x_i[1:] - x_i[:-1] * (1 - self.eff)) \
-                - y_i[1:]
+            # equilibrium_alg[1:] = m_ij * (x_i[1:] - x_i[:-1] * (1 - self.eff)) \
+            #     - y_i[1:]
 
         if di_sdot is not None:
             dxij_dt = dxij_dt - di_sdot['x_i']
@@ -505,6 +510,7 @@ class DynamicExtractor:
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **di)
 
+        # Create time-dependent results for the last stage (outlet)
         di_last = retrieve_pde_result(di, x_name='stage', x=self.num_stages)
 
         frac_keys = ('x_i', 'y_i')
@@ -513,18 +519,32 @@ class DynamicExtractor:
 
         inputs = self.get_inputs(time[-1])
 
+        flow_light = inputs[self.target_states['light_phase']]['Inlet']['mole_flow']
+        flow_heavy = inputs[self.target_states['heavy_phase']]['Inlet']['mole_flow']
+
         kws = {
             self.target_states['light_phase']: {
-                'mole_flow': inputs[self.target_states['light_phase']]['Inlet']['mole_flow'],
+                'mole_flow': flow_light,
                 'mole_frac': frac_last['x_i'][-1]},
             self.target_states['heavy_phase']: {
-                'mole_flow': inputs[self.target_states['heavy_phase']]['Inlet']['mole_flow'],
+                'mole_flow': flow_heavy,
                 'mole_frac': frac_last['y_i'][-1]}
                 }
 
         self.Outlet = {key: LiquidStream(
             self.Liquid_1.path_data, temp=di_last['temp'][-1], **kws[key])
             for key in ('feed', 'solvent')}
+
+        # Complete di_last with appropriate keys
+        if self.target_states['light_phase'] == self.default_output:
+            di_last['mole_frac'] = frac_last['x_i']
+        else:
+            di_last['mole_frac'] = frac_last['y_i']
+
+        di_last['mole_flow'] = np.repeat(kws[self.default_output]['mole_flow'],
+                                         len(time))
+
+        self.outputs = di_last
 
         # self.Outlet = LiquidStream(self.Liquid_1.path_data,
         #                            temp=di_last['temp'][-1],
@@ -535,8 +555,10 @@ class DynamicExtractor:
 
         if pick_comp is None:
             states_plot = ('x_i', 'y_i', 'temp')
+            num_species_plot = len(self.name_species)
         else:
             states_plot = (('x_i', pick_comp), ('y_i', pick_comp), 'temp')
+            num_species_plot = len(pick_comp)
 
         ylabels = ('x_i', 'y_i', 'T')
 
@@ -545,9 +567,22 @@ class DynamicExtractor:
                                  ylabels=ylabels, **fig_kwargs)
 
         if times is not None:
-            # fig.text(0.5, 0, 'stage', ha='center')
+            marks = ('s', 'o', '^', 'd', '+')
 
             for ax in axis:
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+            for ct, ax in enumerate(axis):
+                lines = ax.lines
+
+                for ind, line in enumerate(lines):
+                    mark = marks[ind % num_species_plot]
+
+                    line.set_marker(mark)
+                    line.set_markerfacecolor('None')
+
+                ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         elif stages is not None:

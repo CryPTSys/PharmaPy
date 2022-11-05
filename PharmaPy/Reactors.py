@@ -537,6 +537,10 @@ class _BaseReactor:
 
             ax[1].legend(('$T_{reactor}$', '$T_{ht}$'))
 
+        for axis in ax:
+            axis.xaxis.set_minor_locator(AutoMinorLocator(2))
+            axis.yaxis.set_minor_locator(AutoMinorLocator(2))
+
         fig.tight_layout()
 
         fig.text(0.5, 0, 'time (s)', ha='center')
