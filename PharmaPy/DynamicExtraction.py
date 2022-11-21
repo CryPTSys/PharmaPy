@@ -463,7 +463,7 @@ class DynamicExtractor:
 
         return di_init
 
-    def solve_unit(self, runtime, sundials_opts=None):
+    def solve_unit(self, runtime, sundials_opts=None, verbose=True):
 
         di_init = self.initialize_model()
         di_init = {key: di_init[key] for key in self.name_states}
@@ -481,6 +481,9 @@ class DynamicExtractor:
         solver = IDA(problem)
         solver.make_consistent('IDA_YA_YDP_INIT')
         solver.suppress_alg = True
+
+        if not verbose:
+            solver.verbosity = 50
 
         if sundials_opts is not None:
             for name, val in sundials_opts.items():

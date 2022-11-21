@@ -406,6 +406,32 @@ class LiquidPhase(ThermoPhysicalManager):
         else:
             return temp_bubble
 
+    def getBubblePressure(self, temp=None, mass_frac=None, mole_frac=None,
+                          thermo_method='ideal', y_vap=False):
+
+            if mass_frac is None and mole_frac is None:
+                mole_frac = self.mole_frac
+
+            elif mole_frac is None:
+                mole_frac = self.frac_to_frac(mass_frac=mass_frac)
+
+            if temp is None:
+                temp = self.temp
+
+            def bubble_fn(pr):
+                k_vals = self.getKeqVLE(temp, pr, mole_frac,
+                                        gamma_model=thermo_method)
+
+                obj = np.dot(mole_frac, (k_vals - 1))
+
+                return obj
+
+            pres_pure = self.AntoineEquation(temp=temp)
+            pres_seed = np.dot(mole_frac, pres_pure)
+            pres_bubble = newton(bubble_fn, pres_seed, full_output=False)
+
+            return pres_bubble
+
     def getProps(self, basis='mass'):
         cpmass, cpmole = self.getCpMix(self.temp, self.mass_frac)
         rhoMass, rhoMole = self.getDensityMix(self.mass_frac, temp=self.temp)

@@ -415,16 +415,27 @@ class Mixer:
 
         energy_in = sum([mass * enth for (mass, enth) in zip(mass_in, h_in)])
 
-        def temp_root(temp):
-            h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
-                                              mass_frac=massfrac)
+        def temp_root(temp, ind=None):
+            if ind is None:
+                h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
+                                                  mass_frac=massfrac)
 
-            balance = energy_in - total_mass * h_out
+                balance = energy_in - total_mass * h_out
+            else:
+                h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
+                                                  mass_frac=massfrac[ind])
+                balance = energy_in[ind] - total_mass[ind] * h_out
 
             return balance
 
         temp_seed = sum(temp_in) / 2
-        temp_bce = fsolve(temp_root, temp_seed)
+        # temp_bce = fsolve(temp_root, temp_seed)  # TODO: this is very slow
+
+        temp_seed = temp_seed[0]
+        temp_bce = np.zeros(massfrac.shape[0])
+        for idx in range(len(temp_bce)):
+            temp_bce[idx] = fsolve(temp_root, temp_seed, args=(idx, ))
+            temp_seed = temp_bce[idx]
 
         return total_mass, massfrac, temp_bce
 

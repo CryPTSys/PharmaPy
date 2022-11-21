@@ -37,17 +37,17 @@ from scipy.optimize import newton
 import copy
 import string
 
-try:
-    from jax import jacfwd
-    import jax.numpy as jnp
-    # from autograd import jacobian as autojac
-    # from autograd import make_jvp
-except:
-    print()
-    print(
-        'JAX is not available to perform automatic differentiation. '
-        'Install JAX if supported by your operating system (Linux, Mac).')
-    print()
+# try:
+#     from jax import jacfwd
+#     import jax.numpy as jnp
+#     # from autograd import jacobian as autojac
+#     # from autograd import make_jvp
+# except:
+#     print()
+#     print(
+#         'JAX is not available to perform automatic differentiation. '
+#         'Install JAX if supported by your operating system (Linux, Mac).')
+#     print()
 
 import numpy as np
 
@@ -668,15 +668,15 @@ class _BaseCryst:
 
         return jac_params
 
-    def jac_states_ad(self, time, states, params):
-        def wrap_states(st): return self.unit_model(time, st, params)
-        jac_states = jacfwd(wrap_states)(states)
+    # def jac_states_ad(self, time, states, params):
+    #     def wrap_states(st): return self.unit_model(time, st, params)
+    #     jac_states = jacfwd(wrap_states)(states)
 
-        return jac_states
+    #     return jac_states
 
-    def jac_params_ad(self, time, states, params):
-        def wrap_params(theta): return self.unit_model(time, states, theta)
-        jac_params = jacfwd(wrap_params)(params)
+    # def jac_params_ad(self, time, states, params):
+    #     def wrap_params(theta): return self.unit_model(time, states, theta)
+    #     jac_params = jacfwd(wrap_params)(params)
 
         return jac_params
 

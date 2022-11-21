@@ -40,14 +40,21 @@ def ParseDatabase(path_datafile, to_arrays=True):
 
     for entry in entries:
         vals = []
+        tref_hvap = []
         for val in original_data.values():
             item = val.get(entry)
             if isinstance(item, dict):
                 item = item['value']
 
+                if entry == 'delta_hvap':
+                    tref_hvap.append(val.get(entry)['temp_ref'])
+
             vals.append(item)
 
         dd[entry] = vals
+
+        if len(tref_hvap) > 0:
+            dd['tref_hvap'] = tref_hvap
 
     # Convert to arrays  # TODO: improve this
     if to_arrays:
