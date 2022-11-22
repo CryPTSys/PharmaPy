@@ -72,6 +72,11 @@ class _BaseDistillation:
                       'index': self.name_species}
             }
 
+        self.fstates_di = {
+            'y_vap': {'dim': len(self.name_species),
+                      'index': self.name_species}
+            }
+
     def get_inputs(self, time):
         inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
@@ -162,6 +167,25 @@ class _BaseDistillation:
 
         return num_stages
 
+    def kirkbride_correlation(self, inputs, material_bce, num_plates):
+        z_lk = inputs['mole_frac'][self.LK_index]
+        z_hk = inputs['mole_frac'][self.HK_index]
+
+        x_dist = material_bce['x_dist']
+        x_bot = material_bce['x_bottom']
+
+        bot_flow = material_bce['bottom_flow']
+        dist_flow = material_bce['dist_flow']
+
+        num_ratio = ((z_hk / z_lk) *
+                     (x_bot[self.LK_index] / x_dist[self.HK_index])**2 *
+                     (bot_flow / dist_flow))**0.206
+
+        num_strip = num_plates / (num_ratio + 1)
+        num_rect = num_plates - num_strip
+
+        return np.round(num_rect), np.round(num_strip)
+
     def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate):
         LK_index = self.LK_index
         HK_index = self.HK_index
@@ -196,6 +220,9 @@ class _BaseDistillation:
 
         num_min = self.calc_num_min(x_dist, x_bot)
 
+        mat_bce = {'x_dist': x_dist, 'x_bottom': x_bot,
+                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}
+
         # Actual reflux
         if self.reflux is None or self.reflux == 0:
             print('Using reflux = 1.5 * min_reflux')
@@ -205,7 +232,7 @@ class _BaseDistillation:
         elif self.reflux > 0 and self.reflux < self.min_reflux:
             print(
                 'Specified reflux less than min_reflux, calculation proceeds '
-                'with 1.5*min_reflux')
+                'with 1.5 * min_reflux')
 
             reflux = 1.5 * self.min_reflux
 
@@ -227,15 +254,31 @@ class _BaseDistillation:
                       )
             num_plates = self.num_plates
 
-        mat_bce = {'x_dist': x_dist, 'x_bottom': x_bot,
-                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}
+        # Feed stage
+        if self.num_feed is None:
+            inputs = self.get_inputs(time=0)['Inlet']  # TODO: check this
+            num_rect, num_strip = self.kirkbride_correlation(inputs, mat_bce,
+                                                             num_plates)
+
+            if num_rect > num_strip:
+                num_feed = num_rect
+                num_rect -= 1
+            else:
+                num_feed = num_rect + 1
+                num_strip -= 1
+
+        elif self.num_feed > num_plates:
+            raise ValueError(
+                'Feed number is larger than total number of plates')
+        else:
+            num_feed = self.num_feed
 
         out = {'material_balances': mat_bce,
                'min_reflux': min_reflux, 'num_min': num_min,
-               'reflux': reflux, 'num_plates': num_plates}
+               'reflux': reflux, 'num_plates': num_plates,
+               'num_feed': num_feed}
 
         return out
-
 
 
 class DistillationColumn(_BaseDistillation):
@@ -534,7 +577,7 @@ class DynamicDistillation(_BaseDistillation):
         self.names_states_in = self.names_states_out
 
         num_comp = len(self.name_species)
-        len_in = [1, num_comp]
+        len_in = [1, num_comp, 1]
 
         states_in_dict = dict(zip(self.names_states_in, len_in))
         self.states_in_dict = {'Inlet': states_in_dict}
@@ -564,26 +607,24 @@ class DynamicDistillation(_BaseDistillation):
         self.nomenclature()
 
     def column_startup(self):
-        # Total reflux conditions (Startup)
-        # Steady state values (Based on steady state column)
-
-        # steady_col = DistillationColumn(**column_user_inputs)
-        # steady_col.Inlet = self._Inlet
         result = self.calculate_heuristics()
 
         global_mbce = result['material_balances']
 
-        self.num_plates = result['num_plates']
+        self.num_plates = int(result['num_plates'])
+        self.num_feed = int(result['num_feed'])
+
         self.bot_flowrate = global_mbce['bottom_flow']
         self.dist_flowrate = global_mbce['dist_flow']
         self.reflux = result['reflux']
-        # self.num_feed = num_feed
+
         self.x_dist = global_mbce['x_dist']
         self.x_bot = global_mbce['x_bottom']
+
         self.min_reflux = result['min_reflux']
         self.num_min = result['num_min']
 
-        # self.sorted_by_volatility = steady_col.sorted_by_volatility
+        self.heuristics = result
 
     def unit_model(self, time, states, d_states):
         di_states = unpack_discretized(states, self.len_out, self.name_states)
@@ -601,6 +642,7 @@ class DynamicDistillation(_BaseDistillation):
         x = x_liq
         inputs = self.get_inputs(time)['Inlet']
         z_feed = inputs['mole_frac']
+        feed_flow = inputs['mole_flow']
 
         # GET STARTUP CONDITIONS
         (bot_flowrate, dist_flowrate,
@@ -613,34 +655,35 @@ class DynamicDistillation(_BaseDistillation):
         Vn = Ln + dist_flowrate
 
         # Stripping section
-        Lm = Ln + self.feed_flowrate + self.feed_flowrate * (self.q_feed - 1)
+        Lm = Ln + self.feed_flowrate * self.q_feed
         Vm = Lm - bot_flowrate
 
         dx_dt = np.zeros_like(x)
 
-        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp,
-                                       x_liq=x)
+        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp, x_liq=x)
 
         residuals_temp = (x * (k_vals - 1)).sum(axis=1)
         y = k_vals * x
 
+        # Reflux tank
+        dx_dt[0] = Vn/M_const * (y[1] - x[0])
+
         # Rectifying section
-        dx_dt[0] = Vn/M_const * (y[1] - x[0])  # Reflux tank
-        dx_dt[1:num_feed - 1] = 1/M_const * (
-            Vn * y[2:num_feed] + Ln * x[0:num_feed - 2] -
-            Vn * y[1:num_feed - 1] - Ln * x[1:num_feed - 1])
+        dx_dt[1:num_feed] = 1/M_const * (
+            Vn * y[2:num_feed + 1] + Ln * x[:num_feed - 1] -
+            Vn * y[1:num_feed] - Ln * x[1:num_feed])
+
+        # Feed plate
+        dx_dt[num_feed] = 1/M_const * (
+            Vm * y[num_feed + 1] + Ln * x[num_feed - 1] + feed_flow * z_feed -
+            Vn * y[num_feed] - Lm * x[num_feed])
 
         # Stripping section
-        dx_dt[num_feed - 1] = 1/M_const * (
-            Vm * y[num_feed] + Ln * x[num_feed - 2] + self.feed_flowrate * z_feed -
-            Vn * y[num_feed - 1] - Lm * x[num_feed - 1])  # Feed plate
-
-        dx_dt[num_feed: - 1] = 1/M_const * (
-            Vm * y[num_feed + 1:] + Lm * x[num_feed - 1:-2] -
-            Vm * y[num_feed: - 1] - Lm*x[num_feed:-1])
+        dx_dt[num_feed + 1:-1] = 1/M_const * (
+            Vm * y[num_feed + 2:] + Lm * x[num_feed:-2] -
+            Vm * y[num_feed + 1:-1] - Lm*x[num_feed + 1:-1])
 
         # Reboiler, y_in for reboiler is the same as x_out
-        # dx_dt[-1] = 1/M_const * (Vm*x[-1] + Lm*x[-2] - Vm*y[-1] - Lm*x[-1])
         dx_dt[-1] = 1/M_const * (Lm*x[-2] - Vm*y[-1] - bot_flowrate*x[-1])
         mat_bal = np.column_stack((residuals_temp, dx_dt))
 
@@ -702,8 +745,24 @@ class DynamicDistillation(_BaseDistillation):
         dp['time'] = time
         dp['plate'] = np.arange(self.num_plates + 1)
 
-        self.result = DynamicResult(di_states=self.states_di, di_fstates=None,
-                                    **dp)
+        # y_vap
+        y_vap = {key: [] for key in dp['x_liq']}
+        for ind, row in enumerate(dp['temp']):
+            x_liquid = np.column_stack(
+                [val[ind] for val in dp['x_liq'].values()])
+
+            k_vals = self.Liquid_1.getKeqVLE(pres=self.pres, temp=row,
+                                             x_liq=x_liquid)
+            y_vals = k_vals * x_liquid
+
+            for idx, key in enumerate(y_vap):
+                y_vap[key].append(y_vals[:, idx])
+
+        y_vap = {key: np.vstack(val) for key, val in y_vap.items()}
+        dp['y_vap'] = y_vap
+
+        self.result = DynamicResult(di_states=self.states_di,
+                                    di_fstates=self.fstates_di, **dp)
 
         self.outputs = dp
         # [component_index, time, plate]

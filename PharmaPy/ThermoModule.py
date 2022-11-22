@@ -540,10 +540,11 @@ class ThermoPhysicalManager:
 
         crit = isinstance(temp, np.ndarray) and temp.ndim == 1
         if crit:
-            supercrit = np.matrix(temp).T > self.t_crit
             p_vap = self.AntoineEquation(temp)
+            supercrit = np.ones_like(p_vap) * temp[:, np.newaxis] > self.t_crit
             if np.any(supercrit):
-                p_vap[supercrit] = self.henry_constant[supercrit]
+                for row in supercrit:
+                    p_vap[:, row] = self.henry_constant[row]
         else:
             supercrit = temp > self.t_crit
             p_vap = self.AntoineEquation(temp)
