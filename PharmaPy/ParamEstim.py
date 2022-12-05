@@ -1229,7 +1229,8 @@ class MultipleCurveResolution(ParameterEstimation):
             y_runs, weighted_resid, sens_runs = self.get_local_analysis(params)
 
         if type(self.objfun_iter) is list:
-            objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            # objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            objfun_val = np.linalg.norm(weighted_resid)**2
             self.objfun_iter.append(objfun_val)
 
         # residuals = np.concatenate(resid_runs)

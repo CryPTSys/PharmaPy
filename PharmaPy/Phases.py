@@ -115,7 +115,7 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.ind_solv = ind_solv
 
-        self.temp = np.float(temp)
+        self.temp = float(temp)
         self.pres = pres
 
         self.mass = mass
@@ -888,7 +888,8 @@ class SolidPhase(ThermoPhysicalManager):
     def name(self, name):
         self._name = name
 
-    def updatePhase(self, x_distrib=None, distrib=None, mass=None):
+    def updatePhase(self, x_distrib=None, distrib=None, mass=None,
+                    moments=None):
         if x_distrib is not None:
             self.x_distrib = x_distrib
 
@@ -903,6 +904,9 @@ class SolidPhase(ThermoPhysicalManager):
         if mass is not None:
             self.mass = mass
             self.vol = mass / self.getDensity()
+
+        if moments is not None:
+            self.moments = moments
 
     def convert_distribution(self, x_distrib=None, num_distr=None,
                              vol_distr=None, mass=0):

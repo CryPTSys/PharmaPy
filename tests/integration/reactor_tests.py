@@ -8,7 +8,7 @@ Created on Mon Apr 18 10:57:33 2022
 import unittest
 import json
 from glob import glob
-from  numpy import genfromtxt, savetxt, allclose
+from  numpy import genfromtxt, savetxt, allclose, vstack
 
 from PharmaPy.Reactors import PlugFlowReactor
 from PharmaPy.Streams import LiquidStream
@@ -30,7 +30,9 @@ class PlugFlowReactorTests(unittest.TestCase):
 
         tau = data_objects['inlet'].pop('tau')
         data_objects['inlet']['vol_flow'] = data_objects['phase']['vol'] / tau
+
         data_objects['kinetics']['k_params'] *= 1/60
+        data_objects['kinetics']['path'] = datapath
 
         time_integration = genfromtxt('data/pfr_test_expected_times.csv',
                                       delimiter=',')
@@ -40,6 +42,7 @@ class PlugFlowReactorTests(unittest.TestCase):
         # PharmaPy objects
         inlet = LiquidStream(datapath, **data_objects['inlet'])
         phase = LiquidPhase(datapath, **data_objects['phase'])
+
         kinetics = RxnKinetics(**data_objects['kinetics'])
         utility = CoolingWater(**data_objects['utility'])
 
@@ -57,14 +60,18 @@ class PlugFlowReactorTests(unittest.TestCase):
         filenames.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
         flags = []
+        molefracs = self.m.result.mole_conc
+        zipped = list(zip(*[ar.T for ar in molefracs.values()]))
+
         for ind, name in enumerate(filenames):
             expected_conc = genfromtxt(name, delimiter=',')
 
             # I'm excluding the solvent in this comparison
 
             abstol = 1e-4  # TODO: is this determined by the tolerances of assimulo?
-            flag = allclose(expected_conc, self.m.concPerVolElem[ind][:, :-1],
-                            atol=abstol)
+
+            per_vol_elem = vstack(zipped[ind]).T[:, :-1]
+            flag = allclose(expected_conc, per_vol_elem, atol=abstol)
 
             flags.append(flag)
 

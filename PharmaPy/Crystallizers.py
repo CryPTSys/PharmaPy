@@ -806,7 +806,7 @@ class _BaseCryst:
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
-            if self.method == 'moments':  # mu_n are expected in um**n
+            if self.method == 'moments':  # mu_n are expected in m**n
                 init_solid = self.Solid_1.moments
                 exp = np.arange(0, self.Solid_1.num_mom)
                 init_solid = init_solid * (1e6)**exp
@@ -945,7 +945,7 @@ class _BaseCryst:
 
     def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None,
-                         scale_factor=1e-3, run_args=None, reord_sens=True):
+                         scale_factor=1e-3, run_args={}, reord_sens=True):
         self.reset()
         self.params_iter = params
 
@@ -975,7 +975,8 @@ class _BaseCryst:
             if self.method == 'moments':
                 t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                        eval_sens=True,
-                                                       verbose=False)
+                                                       verbose=False,
+                                                       **run_args)
 
                 if reord_sens:
                     sens = reorder_sens(sens, separate_sens=False)
@@ -986,7 +987,8 @@ class _BaseCryst:
             else:
                 t_prof, states_out = self.solve_unit(time_grid=t_vals,
                                                      eval_sens=False,
-                                                     verbose=False)
+                                                     verbose=False,
+                                                     **run_args)
 
                 result = states_out
 
@@ -994,7 +996,8 @@ class _BaseCryst:
             if self.method == 'moments':
                 t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                        eval_sens=True,
-                                                       verbose=False)
+                                                       verbose=False,
+                                                       **run_args)
 
                 # dy/dt for each state separately
                 sens_sep = reorder_sens(sens, separate_sens=True)
@@ -1288,7 +1291,7 @@ class BatchCryst(_BaseCryst):
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
-            c_sat = self.Kinetics.get_solubility(temp)
+            c_sat = self.Kinetics.get_solubility(temp, w_conc)
 
             moms = states[:self.num_distr]
             idx_moms = np.arange(1, len(moms))

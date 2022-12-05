@@ -78,7 +78,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
             else:
                 props = vals
             try:
-                props = np.array(props, dtype=np.float)
+                props = np.array(props, dtype=float)
             except:
                 pass
 
