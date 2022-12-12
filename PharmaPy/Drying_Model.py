@@ -415,9 +415,10 @@ class Drying:
 
             return [dTg_dt, dTcond_dt]
 
-    def solve_unit(self, deltaP, runtime, p_atm=101325, any_event=True,
+    def solve_unit(self, deltaP, runtime=None, time_grid=None, any_event=True,
                    verbose=True, sundials_opts=None):
-
+        
+        p_atm=101325
         # ---------- Initialization
         # Volatile components
         idx_liquid = np.arange(0, self.Liquid_1.num_species)
@@ -565,6 +566,7 @@ class Drying:
                 setattr(sim, key, val)
 
         # sim.linear_solver = 'SPGMR'
+        
         time, states = sim.simulate(runtime)
         
         if not verbose:
