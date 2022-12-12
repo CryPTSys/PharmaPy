@@ -40,14 +40,21 @@ def ParseDatabase(path_datafile, to_arrays=True):
 
     for entry in entries:
         vals = []
+        tref_hvap = []
         for val in original_data.values():
             item = val.get(entry)
             if isinstance(item, dict):
                 item = item['value']
 
+                if entry == 'delta_hvap':
+                    tref_hvap.append(val.get(entry)['temp_ref'])
+
             vals.append(item)
 
         dd[entry] = vals
+
+        if len(tref_hvap) > 0:
+            dd['tref_hvap'] = tref_hvap
 
     # Convert to arrays  # TODO: improve this
     if to_arrays:
@@ -71,7 +78,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
             else:
                 props = vals
             try:
-                props = np.array(props, dtype=np.float)
+                props = np.array(props, dtype=float)
             except:
                 pass
 
@@ -233,7 +240,8 @@ class ThermoPhysicalManager:
                 else:
                     mole_fr = mole_frac[:, idx]
 
-                enthalpyOut = np.dot(integral, mole_fr.T)
+                # enthalpyOut = np.dot(integral, mole_fr.T)
+                enthalpyOut = (integral * mole_fr).sum(axis=1)
 
             if len(enthalpyOut) == 1:
                 enthalpyOut = enthalpyOut[0]
@@ -304,6 +312,16 @@ class ThermoPhysicalManager:
             rhoMix = 1 / np.dot(mole_frac, 1 / rhoMole)
 
         return rhoMix
+
+    def getMolWeight(self, mole_frac=None, mass_frac=None):
+        if mass_frac is None and mole_frac is None:
+            mole_frac = self.mole_frac
+        elif mass_frac is not None:
+            mole_frac = self.frac_to_frac(mass_frac=mass_frac)
+
+        mw_av = np.dot(self.mw, mole_frac.T)
+
+        return mw_av
 
     def getViscosityPure(self, phase='liquid', temp=None):
         if temp is None:
@@ -522,10 +540,11 @@ class ThermoPhysicalManager:
 
         crit = isinstance(temp, np.ndarray) and temp.ndim == 1
         if crit:
-            supercrit = np.matrix(temp).T > self.t_crit
             p_vap = self.AntoineEquation(temp)
+            supercrit = np.ones_like(p_vap) * temp[:, np.newaxis] > self.t_crit
             if np.any(supercrit):
-                p_vap[supercrit] = self.henry_constant[supercrit]
+                for row in supercrit:
+                    p_vap[:, row] = self.henry_constant[row]
         else:
             supercrit = temp > self.t_crit
             p_vap = self.AntoineEquation(temp)

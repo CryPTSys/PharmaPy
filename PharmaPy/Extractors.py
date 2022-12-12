@@ -37,10 +37,11 @@ def material_setter(instance, oper_mode):
 
 
 class ContinuousExtractor:
-    def __init__(self, gamma_method='UNIQUAC'):
+    def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
 
         self._Inlet = None
-        self.k_i = None
+
+        self.k_fun = k_fun
 
         self.gamma_method = gamma_method
 
@@ -104,6 +105,11 @@ class ContinuousExtractor:
 
             return k_i
 
+        if self.k_fun is None:
+            k_fun = get_ki
+        else:
+            k_fun = self.k_fun
+
         def func_phi(phi, k_i):
             f_phi = z_i * (1 - k_i) / (1 + phi*(k_i - 1))
 
@@ -122,7 +128,7 @@ class ContinuousExtractor:
         count = 0
 
         while error > tol and count < max_iter:
-            k_i = get_ki(x_1_seed, x_2_seed, self.temp)
+            k_i = k_fun(x_1_seed, x_2_seed, self.temp)
             phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
 
             x_1_k = z_i / (1 + phi_k*(k_i - 1))
@@ -251,8 +257,8 @@ class ContinuousExtractor:
                                    moles=liquid_b,
                                    temp=self.temp, pres=self.pres)
 
-        dens_a = Liquid_a.getDensity()
-        dens_b = Liquid_b.getDensity()
+        dens_a = Liquid_a.getDensity(basis='mole')
+        dens_b = Liquid_b.getDensity(basis='mole')
 
         if phase_part > 0 and phase_part < 1:
             if dens_a > dens_b:
@@ -269,17 +275,19 @@ class ContinuousExtractor:
         # Result object
         if dens_a > dens_b:
             di = {'x_light': xb_liq, 'x_heavy': xa_liq,
-                  'moles_heavy': liquid_a, 'moles_light': liquid_b}
+                  'mol_heavy': liquid_a, 'mol_light': liquid_b,
+                  'rho_light': dens_b, 'rho_heavy': dens_a}
         else:
             di = {'x_light': xa_liq, 'x_heavy': xb_liq,
-                  'moles_heavy': liquid_b, 'moles_light': liquid_a}
+                  'mol_heavy': liquid_b, 'mol_light': liquid_a,
+                  'rho_light': dens_a, 'rho_heavy': dens_b}
 
         self.result = DynamicResult(self.states_di, **di)
 
 
 class BatchExtractor(ContinuousExtractor):
-    def __init__(self, gamma_method='UNIQUAC'):
-        super().__init__(gamma_method=gamma_method)
+    def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
+        super().__init__(k_fun, gamma_method)
 
         self._Phases = None
 

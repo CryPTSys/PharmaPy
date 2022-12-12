@@ -415,16 +415,27 @@ class Mixer:
 
         energy_in = sum([mass * enth for (mass, enth) in zip(mass_in, h_in)])
 
-        def temp_root(temp):
-            h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
-                                              mass_frac=massfrac)
+        def temp_root(temp, ind=None):
+            if ind is None:
+                h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
+                                                  mass_frac=massfrac)
 
-            balance = energy_in - total_mass * h_out
+                balance = energy_in - total_mass * h_out
+            else:
+                h_out = self.Liquid_1.getEnthalpy(temp, temp_ref=self.temp_refer,
+                                                  mass_frac=massfrac[ind])
+                balance = energy_in[ind] - total_mass[ind] * h_out
 
             return balance
 
         temp_seed = sum(temp_in) / 2
-        temp_bce = fsolve(temp_root, temp_seed)
+        # temp_bce = fsolve(temp_root, temp_seed)  # TODO: this is very slow
+
+        temp_seed = temp_seed[0]
+        temp_bce = np.zeros(massfrac.shape[0])
+        for idx in range(len(temp_bce)):
+            temp_bce[idx] = fsolve(temp_root, temp_seed, args=(idx, ))
+            temp_seed = temp_bce[idx]
 
         return total_mass, massfrac, temp_bce
 
@@ -772,7 +783,8 @@ class DynamicCollector:
 
         return dtemp_dt
 
-    def solve_unit(self, runtime=None, time_grid=None, verbose=True):
+    def solve_unit(self, runtime=None, time_grid=None, verbose=True,
+                   sundials_opts=None):
         self.names_states_in = self.names_states_in[self.model_type]
         self.names_states_out = self.names_states_out[self.model_type]
 
@@ -872,6 +884,13 @@ class DynamicCollector:
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time)
             solver = CVode(problem)
+
+            if sundials_opts is not None:
+                for name, val in sundials_opts.items():
+                    setattr(solver, name, val)
+
+                    if name == 'time_limit':
+                        solver.report_continuously = True
 
             if not verbose:
                 solver.verbosity = 50

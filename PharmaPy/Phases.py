@@ -115,7 +115,7 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self.ind_solv = ind_solv
 
-        self.temp = np.float(temp)
+        self.temp = float(temp)
         self.pres = pres
 
         self.mass = mass
@@ -405,6 +405,32 @@ class LiquidPhase(ThermoPhysicalManager):
             return temp_bubble, y_frac
         else:
             return temp_bubble
+
+    def getBubblePressure(self, temp=None, mass_frac=None, mole_frac=None,
+                          thermo_method='ideal', y_vap=False):
+
+            if mass_frac is None and mole_frac is None:
+                mole_frac = self.mole_frac
+
+            elif mole_frac is None:
+                mole_frac = self.frac_to_frac(mass_frac=mass_frac)
+
+            if temp is None:
+                temp = self.temp
+
+            def bubble_fn(pr):
+                k_vals = self.getKeqVLE(temp, pr, mole_frac,
+                                        gamma_model=thermo_method)
+
+                obj = np.dot(mole_frac, (k_vals - 1))
+
+                return obj
+
+            pres_pure = self.AntoineEquation(temp=temp)
+            pres_seed = np.dot(mole_frac, pres_pure)
+            pres_bubble = newton(bubble_fn, pres_seed, full_output=False)
+
+            return pres_bubble
 
     def getProps(self, basis='mass'):
         cpmass, cpmole = self.getCpMix(self.temp, self.mass_frac)
@@ -862,7 +888,8 @@ class SolidPhase(ThermoPhysicalManager):
     def name(self, name):
         self._name = name
 
-    def updatePhase(self, x_distrib=None, distrib=None, mass=None):
+    def updatePhase(self, x_distrib=None, distrib=None, mass=None,
+                    moments=None):
         if x_distrib is not None:
             self.x_distrib = x_distrib
 
@@ -877,6 +904,9 @@ class SolidPhase(ThermoPhysicalManager):
         if mass is not None:
             self.mass = mass
             self.vol = mass / self.getDensity()
+
+        if moments is not None:
+            self.moments = moments
 
     def convert_distribution(self, x_distrib=None, num_distr=None,
                              vol_distr=None, mass=0):

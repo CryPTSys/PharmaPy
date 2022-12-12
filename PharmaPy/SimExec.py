@@ -450,19 +450,27 @@ class SimulationExec:
 
     def get_raw_inlets(self, uo, basis='mass'):
         if hasattr(uo, 'Inlet'):
-            inlets = [uo.Inlet]
+            if isinstance(uo.Inlet, dict):
+                inlets = uo.Inlet
+            else:
+                inlets = [uo.Inlet]
         elif uo.__class__.__name__ == 'Mixer':
             inlets = uo.Inlets
         else:
             inlets = [None]
 
-        inlets = [inlet for inlet in inlets
-                  if inlet is not None and inlet.y_upstream is None]
+        if not isinstance(inlets, dict):
+            inlets = {'Inlet_%i' % num: obj for num, obj in enumerate(inlets)}
 
-        inlet_count = 1
+        raws = {key: val for key, val in inlets.items()
+                if val is not None and val.y_upstream is None}
+
+        # inlets = [inlet for inlet in inlets
+        #           if inlet is not None and inlet.y_upstream is None]
+
         out = {}
 
-        for inlet in inlets:
+        for name, inlet in raws.items():
             if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
                 streams = inlet.Phases
             else:
@@ -537,9 +545,7 @@ class SimulationExec:
             for key in from_inlet:
                 di[key].update(from_inlet[key])
 
-            out['Inlet_%i' % inlet_count] = di
-
-            inlet_count += 1
+            out[name] = di
 
         return out
 

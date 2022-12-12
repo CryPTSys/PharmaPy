@@ -283,6 +283,9 @@ class Connection:
 
     def FeedConnection(self):
         self.Matter = self.source_uo.Outlet
+        if isinstance(self.Matter, dict):
+            self.Matter = self.Matter[self.source_uo.default_output]
+
         self.num_species = self.Matter.num_species
 
         self.Matter.y_upstream = self.source_uo.outputs
@@ -388,4 +391,7 @@ class Connection:
                 # last discontinuous UO is depleted, as stated in the paper.
                 # Reference date: (2022/06/28)
 
-            self.destination_uo.Inlet = transfered_matter
+            if class_destination == 'DynamicExtractor':
+                self.destination_uo.Inlet = {'feed': transfered_matter}
+            else:
+                self.destination_uo.Inlet = transfered_matter
