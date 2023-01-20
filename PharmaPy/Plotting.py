@@ -304,69 +304,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         ax = ax.flatten()
 
     states_and_fstates = {**uo.states_di, **uo.fstates_di}
-    if x_vals is not None:
-        if len(x_vals) ==1:
-            ls = [0.99]
-            colors = [[None]] * len(cm)
-        else:
-            ls = np.linspace(0.2, 1, len(x_vals))
-            colors = [cmap(ls) for cmap in cm]
-        
-        y = get_state_distrib(uo.result, *state_names, x=x_vals,
-                              x_name=x_name)
-        
-        names = list(uo.keys())
-        x_vals = getattr(uo.result, x_name)
-        
-        for z, z_pos in enumerate(x_vals):
-            for ind, name in enumerate(names):
-                axis = ax[ind]
-                y_plot = y[name]
-
-                if isinstance(y_plot, list):
-                    for st, ar in enumerate(y_plot):
-                        ind_cm = st % len(cm)
-                        axis.plot(x_vals, ar[z], color=colors[ind_cm][z])
-                else:
-                    axis.plot(x_vals, y_plot[z], color=colors[0][z])
-
-                axis.set_ylabel(names[ind])
-                
-        for ind, name in enumerate(names):
-            axis = ax[ind]
-            index_y = states_and_fstates[name].get('index', False)
-            if ylabels is None:
-                ylabel = names[ind]
-            else:
-                ylabel = latexify_name(ylabels[ind])
-
-            units = states_and_fstates[name].get('units', '')
-            if len(units) > 0:
-                unit_name = latexify_name(units, units=True)
-                ylabel = ylabel + ' (' + unit_name + ')'
-
-            axis.set_ylabel(ylabel)
-
-            if index_y and legend:
-                if isinstance(state_names[ind], (tuple, list)):
-                    picks = state_names[ind][1]
-                    picks = get_indexes(index_y, picks)
-
-                    index_y = [index_y[i] for i in picks]
-
-                axis.legend(index_y, loc='best')
-
-        for axis in ax:
-            if len(axis.lines) == 0:
-                axis.remove()
-
-        fig.text(0.5, 0, x_name)
-
-        if len(ax) == 1:
-            ax = ax[0]
-
-    return fig, ax
-            
+    
     if times is not None:
         if len(times) == 1:
             colors = [[None]] * len(cm)
