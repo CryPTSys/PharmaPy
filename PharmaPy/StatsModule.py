@@ -31,7 +31,6 @@ class ParallelProblem:
         return params
 
 
-
 class StatisticsClass:
 
     def __init__(self, estimation_instance, alpha=0.95):
@@ -417,7 +416,6 @@ class StatisticsClass:
 
             # Store
             boot_params[ind] = params
-
 
         toc = time.time()
 

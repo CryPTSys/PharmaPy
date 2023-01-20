@@ -37,17 +37,17 @@ from scipy.optimize import newton
 import copy
 import string
 
-try:
-    from jax import jacfwd
-    import jax.numpy as jnp
-    # from autograd import jacobian as autojac
-    # from autograd import make_jvp
-except:
-    print()
-    print(
-        'JAX is not available to perform automatic differentiation. '
-        'Install JAX if supported by your operating system (Linux, Mac).')
-    print()
+# try:
+#     from jax import jacfwd
+#     import jax.numpy as jnp
+#     # from autograd import jacobian as autojac
+#     # from autograd import make_jvp
+# except:
+#     print()
+#     print(
+#         'JAX is not available to perform automatic differentiation. '
+#         'Install JAX if supported by your operating system (Linux, Mac).')
+#     print()
 
 import numpy as np
 
@@ -310,13 +310,6 @@ class _BaseCryst:
 
         self.mask_params = np.array(self.mask_params)
 
-        ind_true = np.where(self.mask_params)[0]
-        ind_false = np.where(~self.mask_params)[0]
-
-        self.params_fixed = self.Kinetics.concat_params()[ind_false]
-
-        self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
-
     @property
     def Utility(self):
         return self._Utility
@@ -533,17 +526,8 @@ class _BaseCryst:
 
             return dcsd_dt, np.array(mass_transfer)
 
-    def unit_model(self, time, states, params, sw=None,
+    def unit_model(self, time, states, params=None, sw=None,
                    mat_bce=False, enrgy_bce=False):
-
-        # ---------- Prepare inputs
-        if len(self.params_fixed) > 1:
-            params_all = np.concatenate((params, self.params_fixed))
-            params_all = params_all[self.ind_maskpar]
-        else:
-            params_all = params
-
-        self.Kinetics.set_params(params_all)
 
         di_states = unpack_states(states, self.dim_states, self.name_states)
 
@@ -684,15 +668,15 @@ class _BaseCryst:
 
         return jac_params
 
-    def jac_states_ad(self, time, states, params):
-        def wrap_states(st): return self.unit_model(time, st, params)
-        jac_states = jacfwd(wrap_states)(states)
+    # def jac_states_ad(self, time, states, params):
+    #     def wrap_states(st): return self.unit_model(time, st, params)
+    #     jac_states = jacfwd(wrap_states)(states)
 
-        return jac_states
+    #     return jac_states
 
-    def jac_params_ad(self, time, states, params):
-        def wrap_params(theta): return self.unit_model(time, states, theta)
-        jac_params = jacfwd(wrap_params)(params)
+    # def jac_params_ad(self, time, states, params):
+    #     def wrap_params(theta): return self.unit_model(time, states, theta)
+    #     jac_params = jacfwd(wrap_params)(params)
 
         return jac_params
 
@@ -822,7 +806,7 @@ class _BaseCryst:
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
-            if self.method == 'moments':  # mu_n are expected in um**n
+            if self.method == 'moments':  # mu_n are expected in m**n
                 init_solid = self.Solid_1.moments
                 exp = np.arange(0, self.Solid_1.num_mom)
                 init_solid = init_solid * (1e6)**exp
@@ -961,7 +945,7 @@ class _BaseCryst:
 
     def paramest_wrapper(self, params, t_vals,
                          modify_phase=None, modify_controls=None,
-                         scale_factor=1e-3, run_args=None):
+                         scale_factor=1e-3, run_args={}, reord_sens=True):
         self.reset()
         self.params_iter = params
 
@@ -969,7 +953,7 @@ class _BaseCryst:
 
         self.elapsed_time = 0
 
-        if isinstance(modify_phase, dict):
+        if isinstance(modify_phase, dict) and len(modify_phase) > 0:
 
             if 'Liquid' not in modify_phase and 'Solid' not in modify_phase:
                 raise ValueError(
@@ -991,15 +975,20 @@ class _BaseCryst:
             if self.method == 'moments':
                 t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                        eval_sens=True,
-                                                       verbose=False)
+                                                       verbose=False,
+                                                       **run_args)
 
-                sens = reorder_sens(sens, separate_sens=False)
+                if reord_sens:
+                    sens = reorder_sens(sens, separate_sens=False)
+                else:
+                    sens = np.stack(sens)
 
                 result = (states, sens)
             else:
                 t_prof, states_out = self.solve_unit(time_grid=t_vals,
                                                      eval_sens=False,
-                                                     verbose=False)
+                                                     verbose=False,
+                                                     **run_args)
 
                 result = states_out
 
@@ -1007,7 +996,8 @@ class _BaseCryst:
             if self.method == 'moments':
                 t_prof, states, sens = self.solve_unit(time_grid=t_vals,
                                                        eval_sens=True,
-                                                       verbose=False)
+                                                       verbose=False,
+                                                       **run_args)
 
                 # dy/dt for each state separately
                 sens_sep = reorder_sens(sens, separate_sens=True)
@@ -1019,7 +1009,8 @@ class _BaseCryst:
 
                 sens_sep = dict(zip(di_keys, sens_sep))
 
-                result = self.param_wrapper(self.result, sens_sep)
+                result = self.param_wrapper(self.result, sens_sep,
+                                            reord_sens=reord_sens)
 
         return result
 
@@ -1092,6 +1083,9 @@ class _BaseCryst:
 
         # axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
         axis.set_xscale('log')
+
+        fig.texts[0].remove()
+        axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
 
         return fig, axis
 
@@ -1297,7 +1291,7 @@ class BatchCryst(_BaseCryst):
 
             num_states = len(states)
             conc_tg = w_conc[self.target_ind]
-            c_sat = self.Kinetics.get_solubility(temp)
+            c_sat = self.Kinetics.get_solubility(temp, w_conc)
 
             moms = states[:self.num_distr]
             idx_moms = np.arange(1, len(moms))
@@ -1940,8 +1934,13 @@ class MSMPR(_BaseCryst):
                                         mass_frac=solid_comp,
                                         mass_flow=massflow_sol)  # TODO
 
+            if isinstance(inputs['Inlet']['vol_flow'], float):
+                vol_flow = inputs['Inlet']['vol_flow']
+            else:
+                vol_flow = inputs['Inlet']['vol_flow'][-1]
+
             self.Outlet = SlurryStream(
-                vol_flow=inputs['Inlet']['vol_flow'][-1],
+                vol_flow=vol_flow,
                 x_distrib=self.x_grid,
                 distrib=dp['distrib'][-1])
 

@@ -1428,12 +1428,15 @@ class ContinuousEvaporator:
         rho_mol = pres / gas_ct / temp  # mol/m**3
         rho_gas = rho_mol * (mw_vap / 1000)  # kg/m**3
 
-        vel_vap = np.sqrt(np.maximum(eps, 2 * (pres - self.pres)/rho_gas))
+        delta_p = (pres - self.pres)
+        vel_vap = np.sqrt(np.maximum(eps, 2 * delta_p/rho_gas))
+        # g_vapor = 2 / rho_gas * delta_p / (np.sqrt(abs(delta_p) + eps))  # See Sahlodin
+        # vel_vap = np.sqrt(np.maximum(0, g_vapor))
 
         flow_vap = rho_mol * self.area_out * vel_vap * self.cv_gas * self.k_vap
 
         flow_liq = self.k_liq * (vol_liq - self.vol_liq_set) + input_flow
-        flow_liq = np.maximum(eps, flow_liq)
+        flow_liq = np.maximum(0, flow_liq - flow_vap)
 
         return vol_liq, vol_vap, flow_liq, flow_vap
 

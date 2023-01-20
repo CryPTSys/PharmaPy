@@ -235,10 +235,11 @@ class SimulationResult:
 
                     num *= num_discr
 
-                    if di['type'] == 'diff':
-                        num_diff.append(num)
-                    elif di['type'] == 'alg':
-                        num_alg.append(num)
+                    if 'type' in di:
+                        if di['type'] == 'diff':
+                            num_diff.append(num)
+                        elif di['type'] == 'alg':
+                            num_alg.append(num)
 
                 if sum(num_diff) == 0:
                     model_type = 'ALG'
@@ -276,21 +277,29 @@ class SimulationResult:
         info = {}
         for ind, name in enumerate(uo_dict):
             matter_obj = uo_dict[name].Outlet
+
+            if not isinstance(matter_obj, dict):
+                matter_obj = {'Outlet': matter_obj}
+            else:
+                matter_obj = {'Outlet_%s' % key: val
+                              for key, val in matter_obj.items()}
+
             info[name] = {}
 
-            if 'Stream' in matter_obj.__class__.__name__:
-                fields = fields_stream
-            else:
-                fields = fields_phase
+            for out_name, matter in matter_obj.items():
+                if 'Stream' in matter.__class__.__name__:
+                    fields = fields_stream
+                else:
+                    fields = fields_phase
 
-            if matter_obj.__module__ == 'PharmaPy.MixedPhases':
-                matter_obj = matter_obj.Phases
+                if matter.__module__ == 'PharmaPy.MixedPhases':
+                    matter = matter.Phases
 
-            entries = get_stream_info(matter_obj, fields)
-            entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
-                       for key, val in entries.items()}
+                entries = get_stream_info(matter, fields)
+                entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
+                           for key, val in entries.items()}
 
-            info[name]['Outlet'] = entries
+                info[name][out_name] = entries
 
         di_multiindex = get_di_multiindex(info)
         mux = pd.MultiIndex.from_tuples(di_multiindex.keys())

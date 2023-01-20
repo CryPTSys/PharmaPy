@@ -243,15 +243,20 @@ class RxnKinetics:
 
         name_species = list(db.keys())
 
+        # Stoichiometry
         if rxn_list is not None:
             di, partic_species = disect_rxns(rxn_list)
             stoich_matrix = get_stoich(di, partic_species)
+        else:
+            stoich_matrix = np.atleast_2d(stoich_matrix)
 
         perm_idx = get_permutation_indexes(name_species, partic_species)
         stoich_matrix = stoich_matrix[:, perm_idx]
 
         partic_species = [partic_species[ind] for ind in perm_idx]
         self.partic_species = partic_species
+
+        self.num_rxns, self.num_species = stoich_matrix.shape
 
         if temp_ref is None:
             temp_ref = np.inf
@@ -273,10 +278,6 @@ class RxnKinetics:
             self.kinetic_model = kinetic_model
             self.df_dstates = df_dstates
             self.df_dthetaf = df_dtheta
-
-        # Stoichiometry
-        stoich_matrix = np.atleast_2d(stoich_matrix)
-        self.num_rxns, self.num_species = stoich_matrix.shape
 
         # Normalize stoichiometric coefficients
         first_negative = (stoich_matrix < 0).argmax(axis=1)
@@ -343,12 +344,21 @@ class RxnKinetics:
 
             self.fit_paramsf = True
             if self.elem_flag:
-                if params['params_f'] is None:
+                params_f = params.get('params_f', None)
+                if params_f is None:
                     is_reactant = self.stoich_matrix < 0
                     orders = abs(is_reactant * self.stoich_matrix)
                     self.fit_paramsf = False
                 else:
-                    orders = np.asarray(params['params_f'])
+                    order_map = self.stoich_matrix < 0
+
+                    params_f = params['params_f']
+                    if not isinstance(params_f[0], (list, tuple)):
+                        params_f = [params_f]
+
+                    orders = np.zeros_like(self.stoich_matrix)
+                    for ind, order in enumerate(params_f):
+                        orders[ind, order_map[ind]] = order
 
                 if orders.ndim == 1:
                     orders = orders[np.newaxis, ...]
@@ -395,20 +405,20 @@ class RxnKinetics:
         self.num_params = len(self.name_params)
         self.params = dict(zip(self.name_params, (self.phi_1, self.phi_2)))
 
-    def set_stoichiometry(self, stoich_matrix):
+    # def set_stoichiometry(self, stoich_matrix):
 
-        stoich_matrix = np.atleast_2d(stoich_matrix)
-        self.num_rxns, self.num_species = stoich_matrix.shape
+    #     stoich_matrix = np.atleast_2d(stoich_matrix)
+    #     self.num_rxns, self.num_species = stoich_matrix.shape
 
-        # Normalize stoichiometric coefficients
-        first_negative = (stoich_matrix < 0).argmax(axis=1)
-        ref_stoich = np.zeros(self.num_rxns)
+    #     # Normalize stoichiometric coefficients
+    #     first_negative = (stoich_matrix < 0).argmax(axis=1)
+    #     ref_stoich = np.zeros(self.num_rxns)
 
-        for ind in range(self.num_rxns):
-            ref_stoich[ind] = stoich_matrix[ind, first_negative[ind]]
+    #     for ind in range(self.num_rxns):
+    #         ref_stoich[ind] = stoich_matrix[ind, first_negative[ind]]
 
-        self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
-        self.stoich_matrix = stoich_matrix
+    #     self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
+    #     self.stoich_matrix = stoich_matrix
 
     def concat_params(self):
 
@@ -836,6 +846,7 @@ class CrystKinetics:
                 nucl_sec = self.secondary_fn(sup_sat, moments, temp,
                                              self.temp_ref, par_sec,
                                              *args_sec)
+
                 dissol = 0
             else:
                 growth = 0

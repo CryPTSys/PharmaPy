@@ -143,8 +143,9 @@ class SimulationExec:
                     count += 1
 
                 # Processing times
-                time_prof = instance.result.time
-                time_processing[name] = time_prof[-1] - time_prof[0]
+                if hasattr(instance, 'time'):
+                    time_prof = instance.result.time
+                    time_processing[name] = time_prof[-1] - time_prof[0]
 
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):
@@ -165,7 +166,7 @@ class SimulationExec:
         self.result = SimulationResult(self)
         self.connections = connections
 
-    def SetParamEstimation(self, x_data, y_data=None, spectra=None,
+    def SetParamEstimation(self, x_data, y_data=None, y_spectra=None,
                            fit_spectra=False,
                            wrapper_kwargs=None,
                            phase_modifiers=None, control_modifiers=None,
@@ -302,7 +303,7 @@ class SimulationExec:
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed=param_seed, x_data=x_data, spectra=spectra,
+                param_seed=param_seed, time_data=x_data, y_spectra=y_spectra,
                 kwargs_fun=kwargs_wrapper,
                 **inputs_paramest)
         else:
@@ -449,19 +450,27 @@ class SimulationExec:
 
     def get_raw_inlets(self, uo, basis='mass'):
         if hasattr(uo, 'Inlet'):
-            inlets = [uo.Inlet]
+            if isinstance(uo.Inlet, dict):
+                inlets = uo.Inlet
+            else:
+                inlets = [uo.Inlet]
         elif uo.__class__.__name__ == 'Mixer':
             inlets = uo.Inlets
         else:
             inlets = [None]
 
-        inlets = [inlet for inlet in inlets if inlet is not None]
-        inlets = [inlet for inlet in inlets if inlet.y_upstream is None]
+        if not isinstance(inlets, dict):
+            inlets = {'Inlet_%i' % num: obj for num, obj in enumerate(inlets)}
 
-        inlet_count = 1
+        raws = {key: val for key, val in inlets.items()
+                if val is not None and val.y_upstream is None}
+
+        # inlets = [inlet for inlet in inlets
+        #           if inlet is not None and inlet.y_upstream is None]
+
         out = {}
 
-        for inlet in inlets:
+        for name, inlet in raws.items():
             if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
                 streams = inlet.Phases
             else:
@@ -474,12 +483,14 @@ class SimulationExec:
                 name_stream = get_name_object(stream)
 
                 di[name_stream] = {}
-                inlet = getattr(uo, 'Inlet_orig', getattr(uo, 'Inlet'))
 
                 dens = stream.getDensity(basis=basis)
 
                 if uo.oper_mode == 'Batch':
-                    elapsed_time = 1
+                    if basis == 'mass':
+                        total = stream.mass
+                    elif basis == 'mole':
+                        total = stream.moles
                 elif inlet.DynamicInlet is None:
                     time = uo.result.time[-1] - uo.result.time[0]
                     if basis == 'mass':
@@ -534,9 +545,7 @@ class SimulationExec:
             for key in from_inlet:
                 di[key].update(from_inlet[key])
 
-            out['Inlet_%i' % inlet_count] = di
-
-            inlet_count += 1
+            out[name] = di
 
         return out
 
@@ -588,32 +597,36 @@ class SimulationExec:
                          for j in out[i]
                          for k in out[i][j]}
 
-        multi_index = pd.MultiIndex.from_tuples(di_multiindex)
-        raw_df = pd.DataFrame(list(di_multiindex.values()), index=multi_index)
+        if len(di_multiindex) == 0:
+            raw_df = pd.DataFrame()
+        else:
+            multi_index = pd.MultiIndex.from_tuples(di_multiindex)
+            raw_df = pd.DataFrame(list(di_multiindex.values()),
+                                  index=multi_index)
 
-        if totals:
-            if basis == 'mass':
-                mass_frac = raw_df.filter(regex='mass_frac').values
+            if totals:
+                if basis == 'mass':
+                    mass_frac = raw_df.filter(regex='mass_frac').values
 
-                mass = raw_df['mass'].values[:, np.newaxis]
-                mass_comp = mass_frac * mass
+                    mass = raw_df['mass'].values[:, np.newaxis]
+                    mass_comp = mass_frac * mass
 
-                cols = ['mass_%s' % comp for comp in self.NamesSpecies]
-                cols = ['mass'] + cols
+                    cols = ['mass_%s' % comp for comp in self.NamesSpecies]
+                    cols = ['mass'] + cols
 
-                raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
-                                      columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
+                                          columns=cols, index=raw_df.index)
 
-            elif basis == 'moles':
-                mole_frac = raw_df.filter(regex='mole_frac').values
-                moles = raw_df['moles'].values[:, np.newaxis]
-                moles_comp = mole_frac * moles
+                elif basis == 'moles':
+                    mole_frac = raw_df.filter(regex='mole_frac').values
+                    moles = raw_df['moles'].values[:, np.newaxis]
+                    moles_comp = mole_frac * moles
 
-                cols = ['moles_%s' % comp for comp in self.NamesSpecies]
-                cols = ['moles'] + cols
+                    cols = ['moles_%s' % comp for comp in self.NamesSpecies]
+                    cols = ['moles'] + cols
 
-                raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
-                                      columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
+                                          columns=cols, index=raw_df.index)
 
         return raw_df
 

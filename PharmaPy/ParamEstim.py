@@ -59,40 +59,112 @@ def mcr_spectra(conc, spectra):
     return conc_plus, absortivity_pred, absorbance_pred
 
 
-def get_masked_ydata(y_list, masks, assign_missing=None):
-    nrow, ncol = masks.shape
-    y_out = np.zeros((nrow, ncol))
+def enforce_two_d(ar):
+    if isinstance(ar, np.ndarray) and ar.ndim == 1:
+        ar = ar.reshape(-1, 1)
 
-    for col, mask in enumerate(masks.T):
-        y_out[mask, col] = y_list[col]
+    return ar
+
+
+def convert_types(data, two_d=False):
+    if isinstance(data, dict):
+        data = list(data.values())
+    elif isinstance(data, np.ndarray):
+        data = [data]
+
+    out = []
+    for val in data:
+        if isinstance(val, dict):
+            proc = convert_types(val, two_d)
+            val = dict(zip(val.keys(), proc))
+
+        elif isinstance(val, (list, tuple)):
+            val = convert_types(val, two_d)
+        else:
+            if two_d:
+                val = enforce_two_d(val)
+
+        out.append(val)
+
+    return out
+
+
+def get_masked_ydata(y_list, masks, assign_missing=None, merge=True):
+    y_out = []
+
+    for y, mask in zip(y_list, masks):
+        nrow = len(mask)
+        ncol = y.shape[1]
+
+        y_ar = np.zeros((nrow, ncol))
+
+        y_ar[mask] = y
 
         if assign_missing is not None:
 
             if isinstance(assign_missing, (np.ndarray, list)):
-                y_out[~mask] = assign_missing[~mask]
+                y_ar[~mask] = assign_missing[~mask]
             else:
-                y_out[~mask] = assign_missing
+                y_ar[~mask] = assign_missing
+
+        y_out.append(y_ar)
+
+    if merge:
+        y_out = np.hstack(y_out)
 
     return y_out
 
 
-def analyze_data(x_list, y_list):
+def get_array_list(values):
+    out = []
+    for val in values:
+        if isinstance(val, list):
+            out += val
+        elif isinstance(val, tuple):
+            out += list(val)
+        elif isinstance(val, np.ndarray):
+            out.append(val)
+
+    return out
+
+
+def analyze_data(x, y, merge_y=True):
+
+    def get_di(keys, data):
+        return dict(zip(keys, data))
+
     x_model = []
     x_mask = []
 
     y_masked = []
-    for x_data, y_data in zip(x_list, y_list):
-        if isinstance(x_data, (list, tuple)):
+    for x_data, y_data in zip(x, y):  # experiment loop
+        if isinstance(y_data, dict) and isinstance(y_data, dict):
+            pass_x = get_array_list(x_data.values())
+            pass_y = list(y_data.values())
+
+            x_unif, x_ma, y_ma = analyze_data([pass_x], [pass_y],
+                                              merge_y=False)
+
+            # Save data
+            x_model.append(x_unif[0])
+
+            keys = y_data.keys()
+            x_masks = [row for row in x_ma[0].T]
+            x_mask.append(get_di(keys, x_masks))
+
+            y_masked.append(get_di(keys, y_ma[0]))
+
+        elif isinstance(x_data, (list, tuple)):
             x_all = np.sort(np.hstack(x_data))
             x_unique = np.unique(x_all)
 
             x_common = [np.isin(x_unique, data) for data in x_data]
-            x_common = np.column_stack(x_common)
+            # x_common = np.column_stack(x_common)
 
             x_model.append(x_unique)
-            x_mask.append(x_common)
+            x_mask.append(np.column_stack(x_common))
 
-            y_mask = get_masked_ydata(y_data, x_common, np.nan)
+            y_mask = get_masked_ydata(y_data, x_common, np.nan, merge=merge_y)
             y_masked.append(y_mask)
         else:
             x_model.append(x_data)
@@ -106,6 +178,28 @@ def analyze_data(x_list, y_list):
 class Experiment:
     def __init__(self):
         pass
+
+
+def flatten_spectral_sens(sens):
+    """
+    Flatten 3D spectral sensitivity into 2D array consistent with parameter
+    estimation
+
+    Parameters
+    ----------
+    sens : 3D numpy array
+        .
+
+    Returns
+    -------
+    out : 2D numpy array
+        .
+
+    """
+    n_par, n_times, n_lambda = sens.shape
+    out = sens.T.reshape(n_lambda * n_times, n_par)
+
+    return out
 
 
 class ParameterEstimation:
@@ -213,19 +307,8 @@ class ParameterEstimation:
         # --------------- Data
         self.experim_names = None
 
-        if isinstance(x_data, dict) and isinstance(y_data, dict):
-            self.experim_names = list(x_data.keys())
-
-            x_data = list(x_data.values())
-            y_data = list(y_data.values())
-
-        elif isinstance(y_data, np.ndarray):
-            x_data = [x_data]
-            y_data = [y_data]
-
-        y_data = [ar.reshape(-1, 1)
-                  if isinstance(ar, np.ndarray) and ar.ndim == 1
-                  else ar for ar in y_data]
+        x_data = convert_types(x_data)
+        y_data = convert_types(y_data, two_d=True)
 
         x_model, x_masks, y_data = analyze_data(x_data, y_data)
 
@@ -269,7 +352,11 @@ class ParameterEstimation:
             if self.x_masks[ind] is None:
                 num_data.append(self.y_data[ind].size)
             else:
-                num_data.append(self.x_masks[ind].sum())
+                if isinstance(self.x_masks[ind], dict):
+                    num = [sum(mask) for mask in self.x_masks[ind].values()]
+                    num_data.append(sum(num))
+                else:
+                    num_data.append(self.x_masks[ind].sum())
 
         self.num_data_total = sum(num_data)
         self.num_data = num_data
@@ -405,6 +492,8 @@ class ParameterEstimation:
                 num_states = y_prof.shape[1]
                 sens_run = self.select_sens(sens, num_states)
 
+            # Replace missing data with model values so as residuals are zero
+            # for those entries
             y_data = self.y_data[ind].copy()
             x_mask = self.x_masks[ind]
             if x_mask is not None:
@@ -539,7 +628,11 @@ class ParameterEstimation:
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):
-            y_model = self.resid_runs[ind] + self.y_data[ind]
+            y_data = self.y_data[ind]
+            if isinstance(y_data, dict):
+                y_data = np.hstack(list(y_data.values()))
+
+            y_model = self.resid_runs[ind] + y_data
             self.y_model.append(y_model)
 
         covar_params = self.get_covariance()
@@ -687,6 +780,9 @@ class ParameterEstimation:
         markers = cycle(['o', 's', '^', '*', 'P', 'X'])
         for ind, y_model in enumerate(y_model):
             y_data = self.y_data[ind]
+
+            if isinstance(y_data, dict):
+                y_data = np.hstack(list(y_data.values()))
 
             axis.scatter(y_model.T.flatten(), y_data.T.flatten(),
                          label=experim_names[ind], marker=next(markers),
@@ -884,41 +980,73 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, spectra=None,
+    def __init__(self, func, param_seed, time_data, y_spectra,
                  global_analysis=True,
-                 args_fun=None,
+                 args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
                  jac_fun=None, dx_finitediff=None,
-                 measured_ind=None, weight_matrix=None,
+                 measured_ind=None, non_spectral_ind=None, weight_matrix=None,
                  name_params=None, name_states=None):
 
-        super().__init__(func, param_seed, time_data, spectra,
-                         args_fun, optimize_flags, jac_fun,
-                         dx_finitediff, measured_ind, weight_matrix,
+        super().__init__(func, param_seed, time_data, y_spectra, measured_ind,
+                         args_fun, kwargs_fun, optimize_flags, jac_fun,
+                         dx_finitediff, weight_matrix,
                          name_params, name_states)
 
         self.fit_spectra = True
-        self.spectra = [data.T for data in self.y_data]
-        self.len_spectra = [data.shape[0] for data in self.spectra]
-        self.size_spectra = [data.size for data in self.spectra]
 
-        self.spectra_tot = np.vstack(self.spectra)
-        self.stdev_tot = np.concatenate(self.stdev_data)
+        y_spectral = []
+        y_data = []
+        for y in self.y_data:
+            if isinstance(y, dict):
+                if 'spectra' not in y:
+                    raise ValueError(
+                        "Data dictionary must have the 'spectra' key")
+
+                y_spectral.append(y)
+
+            elif isinstance(y, np.ndarray):
+                y_di = {'spectra': y}
+                y_spectral.append(y_di)
+
+        self.len_spectra = [data['spectra'].shape[0] for data in y_spectral]
+        self.size_spectra = [data['spectra'].size for data in y_spectral]
+
+        keys = list(set().union(*[di.keys() for di in y_spectral]))
+
+        y_concat = {}
+        for key in keys:
+            li = [di[key] for di in y_spectral if key in di]
+            y_concat[key] = np.vstack(li)
+
+        self.spectra_tot = y_concat['spectra']
+        self.y_concat = np.hstack(list(y_concat.values()))
 
         self.global_analysis = global_analysis
+
+        if isinstance(measured_ind, (tuple, list, range)):
+            self.measured_ind = {'spectra': measured_ind}
+
+        if weight_matrix is None:
+            size_sigma = y_spectral[0]['spectra'].shape[1]
+            size_sigma += len(self.measured_ind.get('non_spectra', []))
+
+            self.sigma_inv = np.eye(size_sigma)
 
     def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
         eye = np.eye(c_target.shape[0])
         proj_orthogonal = eye - np.dot(c_target, c_plus)
 
-        sens_pick = sens_states[self.map_variable][:, :, self.measured_ind]
+        if sens_states.shape[0] == sum(self.map_variable):
+            sens_pick = sens_states
+        else:
+            sens_pick = sens_states[self.map_variable]
 
         first_term = proj_orthogonal @ sens_pick @ c_plus
         second_term = first_term.transpose((0, 2, 1))
         sens_an = (first_term + second_term) @ spectra_pred
 
-        n_par, n_times, n_lambda = sens_an.shape
-        sens_proj = sens_an.T.reshape(n_lambda * n_times, n_par)
+        sens_proj = flatten_spectral_sens(sens_an)
 
         return sens_proj
 
@@ -926,30 +1054,54 @@ class MultipleCurveResolution(ParameterEstimation):
         states = self.function(params, x_vals, *args)
 
         _, epsilon, absorbance = mcr_spectra(
-            states[:, self.measured_ind], spectra)
+            states[:, self.spectral_ind], spectra)
 
         return absorbance.T.ravel()
 
     def get_global_analysis(self, params,):
         c_runs = []
+        states_non = []
         sens_conc = []
+
+        has_non = 'non_spectra' in self.measured_ind
+        y_data_non = []
         for ind in range(self.num_datasets):
-            result = self.function(params, self.x_fit[ind],
-                                   reorder=False,
-                                   *self.args_fun[ind])
+            result = self.function(params, self.x_model[ind],
+                                   reord_sens=False,
+                                   *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, tuple):
-                conc_prof, sens_states = result
+                states, sens_states = result
                 sens_conc.append(sens_states)
             else:
-                conc_prof = result
+                states = result
 
-            conc_target = conc_prof[:, self.measured_ind]
+            conc_target = states[:, self.measured_ind['spectra']]
+
+            if has_non:
+                non_spectra = states[:, self.measured_ind['non_spectra']]
+
+                y_non = self.y_data[ind]['non_spectra'].copy()
+                x_mask = self.x_masks[ind]['non_spectra']
+                if x_mask is not None:
+                    y_non[~x_mask] = non_spectra[~x_mask]
+
+                states_non.append(non_spectra)
+                y_data_non.append(y_non)
 
             # MCR
             c_runs.append(conc_target)
 
         conc_tot = np.vstack(c_runs)
+
+        if has_non:
+            states_non = np.vstack(states_non)
+            y_data_non = np.vstack(y_data_non)
+
+            resid_non = states_non - y_data_non
+
+        else:
+            resid_non = []
 
         # MCR
         conc_plus = np.linalg.pinv(conc_tot)
@@ -964,25 +1116,46 @@ class MultipleCurveResolution(ParameterEstimation):
             sens = numerical_jac_data(self.func_aux, params, args_merged,
                                       dx=self.dx_fd)[:, self.map_variable]
         else:
-            sens_tot = np.concatenate(sens_conc, axis=1)
-            sens = self.get_sens_projection(conc_tot, conc_plus,
-                                            sens_tot, spectra_pred)
+            sens_tot = np.concatenate(sens_conc, axis=1)  # (n_par x n_times x n_states)
+            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
 
-        residuals = (spectra_pred - self.spectra_tot).T.ravel() / \
-            self.stdev_tot
+            sens_spectra = self.get_sens_projection(conc_tot, conc_plus,
+                                                    sens_mcr, spectra_pred)
+
+            if has_non:
+                sens_regular = sens_tot[:, :,
+                                        self.measured_ind['non_spectra']]
+
+                sens_regular = flatten_spectral_sens(sens_regular)
+
+                sens = np.vstack([sens_spectra, sens_regular])
+            else:
+                sens = sens_spectra
+
+        residuals = spectra_pred - self.spectra_tot
+        if has_non:
+            residuals = np.hstack((residuals, resid_non))
+
+        weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
         trim_sens = np.cumsum(self.size_spectra)[:-1]
 
         y_runs = np.split(spectra_pred, trim_y, axis=0)
-        y_runs = [array.T.ravel() for array in y_runs]
+        # y_runs = [array.T.ravel() for array in y_runs]
 
         sens_runs = np.split(sens, trim_sens, axis=0)
-        resid_runs = np.split(residuals, trim_sens)
+        resid_runs = np.split(residuals, trim_y, axis=0)
+
+        self.resid_runs = resid_runs
+        self.y_runs = y_runs
+        self.sens_runs = sens_runs
 
         self.epsilon_mcr = absorptivity_pure
 
-        return y_runs, resid_runs, sens_runs
+        weighted_resid = weighted_resid.T.ravel()
+
+        return y_runs, weighted_resid, sens_runs
 
     def get_local_analysis(self, params):
         y_runs = []
@@ -991,10 +1164,12 @@ class MultipleCurveResolution(ParameterEstimation):
         c_runs = []
         epsilon_mcr = []
 
+        weighted_resid = []
+
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_fit[ind],
                                    reorder=False,
-                                   *self.args_fun[ind])
+                                   *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, tuple):
                 conc_prof, sens_states = result
@@ -1002,7 +1177,7 @@ class MultipleCurveResolution(ParameterEstimation):
                 conc_prof = result
                 sens_states = None
 
-            conc_target = conc_prof[:, self.measured_ind]
+            conc_target = conc_prof[:, self.spectral_ind]
 
             # MCR
             conc_plus = np.linalg.pinv(conc_target)
@@ -1021,46 +1196,51 @@ class MultipleCurveResolution(ParameterEstimation):
                 sens = self.get_sens_projection(conc_target, conc_plus,
                                                 sens_states, spectra_pred)
 
-            resid = (spectra_pred - self.spectra[ind]).T.ravel()
-            resid_run = resid / self.stdev_data[ind]
+            resid_run = spectra_pred - self.spectra[ind]
+            weighted_resid = np.dot(resid_run, self.sigma_inv)
 
             y_runs.append(spectra_pred.T.ravel())
             resid_runs.append(resid_run)
             sens_runs.append(sens)
 
+        self.resid_runs = resid_runs
+        self.y_runs = y_runs
+        self.sens_runs = sens_runs
+
         self.epsilon_mcr = epsilon_mcr
 
-        return y_runs, resid_runs, sens_runs
+        weighted_resid = [elem.T.ravel() for elem in weighted_resid]
+        weighted_resid = np.concatenate(weighted_resid)
+
+        return y_runs, weighted_resid, sens_runs
 
     def get_objective(self, params, residual_vec=False):
-        # Reconstruct parameter set with fixed and non-fixed indexes
-        params = self.reconstruct_params(params)
 
         if type(self.params_iter) is list:
             self.params_iter.append(params)
 
+        # Reconstruct parameter set with fixed and non-fixed indexes
+        params = self.reconstruct_params(params)
+
         if self.global_analysis:
-            y_runs, resid_runs, sens_runs = self.get_global_analysis(params)
+            y_runs, weighted_resid, sens_runs = self.get_global_analysis(params)
 
         else:
-            y_runs, resid_runs, sens_runs = self.get_local_analysis(params)
-
-        self.y_runs = y_runs
-        self.sens_runs = sens_runs
-        self.resid_runs = resid_runs
+            y_runs, weighted_resid, sens_runs = self.get_local_analysis(params)
 
         if type(self.objfun_iter) is list:
-            objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            # objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
+            objfun_val = np.linalg.norm(weighted_resid)**2
             self.objfun_iter.append(objfun_val)
 
-        residuals = np.concatenate(resid_runs)
-        self.residuals = residuals
+        # residuals = np.concatenate(resid_runs)
+        self.residuals = weighted_resid
 
         # Return objective
         if residual_vec:
-            return residuals
+            return weighted_resid
         else:
-            residual = 1/2 * residuals.dot(residuals)
+            residual = 1/2 * np.dot(weighted_resid, weighted_resid)
             return residual
 
 

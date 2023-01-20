@@ -102,7 +102,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
                     elif len(time) > 1:
                         field = np.outer(np.ones_like(time), field)
@@ -118,7 +118,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
 
                     if field is None:
                         field = get_missing_field(
-                            dict_states_in[phase][state], len(time))
+                            di[state], len(time))
 
                     di_out[phase][state] = field
     return di_out
@@ -151,19 +151,35 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
         inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
         inputs = {'Inlet': inputs}
 
-    elif stream.y_upstream is not None:
+    elif stream.y_upstream is not None and stream.time_upstream is not None:
         t_inlet = stream.time_upstream
         y_inlet = stream.y_inlet
 
         ins = {}
         for key, val in y_inlet.items():
-            ins[key] = interpolate_inputs(time, t_inlet, val, **kwargs_interp)
+            ins[key] = interpolate_inputs(time, t_inlet, val,
+                                          **kwargs_interp)
 
         inputs = {}
         for phase, names in dict_states_in.items():
             inputs[phase] = {}
             for key, vals in ins.items():
                 if key in names:
+                    inputs[phase][key] = vals
+
+    elif stream.y_upstream is not None:
+        inputs = {}
+
+        for phase, names in dict_states_in.items():
+            inputs[phase] = {}
+            for key, vals in stream.y_inlet.items():
+                if key in names:
+                    if isinstance(time, np.ndarray) and len(time) > 1:
+                        vals = np.outer(np.ones_like(time), vals)
+
+                        if vals.shape[1] == 1:
+                            vals = vals.flatten()
+
                     inputs[phase][key] = vals
 
     else:
@@ -267,6 +283,9 @@ class Connection:
 
     def FeedConnection(self):
         self.Matter = self.source_uo.Outlet
+        if isinstance(self.Matter, dict):
+            self.Matter = self.Matter[self.source_uo.default_output]
+
         self.num_species = self.Matter.num_species
 
         self.Matter.y_upstream = self.source_uo.outputs
@@ -279,12 +298,36 @@ class Connection:
             self.Matter.time_upstream = time_prof[-1]
 
     def ConvertUnits(self):
-        states_up = self.source_uo.names_states_out
-
         mode_source = self.source_uo.oper_mode
         mode_dest = self.destination_uo.oper_mode
 
-        if mode_source == 'Continuous' and mode_dest != 'Batch':
+        flow_flag = (mode_source == 'Continuous' and mode_dest != 'Batch')
+        btf_flag = self.source_uo.__class__.__name__ == 'BatchToFlowConnector'
+
+        if flow_flag:
+            states_up = self.source_uo.names_states_out
+
+            class_destination = self.destination_uo.__class__.__name__
+            if class_destination == 'DynamicCollector':
+                if self.source_uo.__class__.__name__ == 'MSMPR':
+                    states_down = self.destination_uo.names_states_in['crystallizer']
+                else:
+                    states_down = self.destination_uo.names_states_in['liquid_mixer']
+
+            else:
+                states_down = self.destination_uo.names_states_in
+
+            name_analyzer = NameAnalyzer(
+                states_up, states_down, self.num_species,
+                len(getattr(self.Matter, 'distrib', []))
+                )
+
+            # Convert units and pass states to self.Matter
+            converted_states = name_analyzer.convertUnitsNew(self.Matter)
+            self.Matter.y_inlet = converted_states
+
+        elif btf_flag:
+            states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
             if class_destination == 'DynamicCollector':
@@ -318,6 +361,8 @@ class Connection:
 
         elif mode_dest == 'Batch':
             self.destination_uo.Phases = transfered_matter
+            # if class_destination == 'BatchToFlowConnector':
+            #     self.destination_uo.names_states_out = self.source_uo.names_states_out
 
         elif mode_dest == 'Semibatch':
             if class_destination == 'DynamicCollector':
@@ -339,11 +384,14 @@ class Connection:
             # Transfering from batch to continuous (how to approach this?)
             if self.source_uo.oper_mode != 'Continuous':
                 pass
-                # TODO: bit TODO. We need to define how Batch/Semibatch
+                # TODO: big TODO. We need to define how Batch/Semibatch
                 # followed by continuous will be handled. The most practical
                 # approach would be to solve thhe the downstream continuous
                 # section for a period of time such as the material from the
                 # last discontinuous UO is depleted, as stated in the paper.
                 # Reference date: (2022/06/28)
 
-            self.destination_uo.Inlet = transfered_matter
+            if class_destination == 'DynamicExtractor':
+                self.destination_uo.Inlet = {'feed': transfered_matter}
+            else:
+                self.destination_uo.Inlet = transfered_matter

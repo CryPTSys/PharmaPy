@@ -173,12 +173,38 @@ def get_states_result(result, *state_names):
     return time, out
 
 
+def name_yaxes(ax, states_fstates, names, ylabels, legend):
+    for ind, name in enumerate(names):
+        axis = ax[ind]
+        if ylabels is None:
+            ylabel = names[ind]
+        else:
+            ylabel = latexify_name(ylabels[ind])
+
+        units = states_fstates[name].get('units', '')
+        if len(units) > 0:
+            unit_name = latexify_name(units, units=True)
+            ylabel = ylabel + ' (' + unit_name + ')'
+
+        axis.set_ylabel(ylabel)
+
+
+def set_legend(ax, states_fstates, names, state_names, legend):
+    for ind, name in enumerate(names):
+        index_y = states_fstates[name].get('index', False)
+        if index_y and legend:
+            if isinstance(state_names[ind], (tuple, list)):
+                picks = state_names[ind][1]
+                picks = get_indexes(index_y, picks)
+
+                index_y = [index_y[i] for i in picks]
+
+            ax[ind].legend(index_y, loc='best')
+
+
 def plot_function(uo, state_names, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
-    # if hasattr(uo, 'result'):
     time, data = get_states_result(uo.result, *state_names)
-    # else:
-        # time, data = get_state_data(uo, *state_names)
 
     if fig_map is None:
         fig_map = range(len(data))
@@ -343,10 +369,9 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
             
     if times is not None:
         if len(times) == 1:
-            ls = [0.99]
             colors = [[None]] * len(cm)
         else:
-            ls = np.linspace(0.2, 1, len(times))
+            ls = np.linspace(0.2, 0.8, len(times))
             colors = [cmap(ls) for cmap in cm]
 
         y = get_state_distrib(uo.result, *state_names, time=times,
@@ -367,31 +392,8 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
                 else:
                     axis.plot(x_vals, y_plot[t], color=colors[0][t])
 
-                axis.set_ylabel(names[ind])
-
-        for ind, name in enumerate(names):
-            axis = ax[ind]
-            index_y = states_and_fstates[name].get('index', False)
-            if ylabels is None:
-                ylabel = names[ind]
-            else:
-                ylabel = latexify_name(ylabels[ind])
-
-            units = states_and_fstates[name].get('units', '')
-            if len(units) > 0:
-                unit_name = latexify_name(units, units=True)
-                ylabel = ylabel + ' (' + unit_name + ')'
-
-            axis.set_ylabel(ylabel)
-
-            if index_y and legend:
-                if isinstance(state_names[ind], (tuple, list)):
-                    picks = state_names[ind][1]
-                    picks = get_indexes(index_y, picks)
-
-                    index_y = [index_y[i] for i in picks]
-
-                axis.legend(index_y, loc='best')
+        name_yaxes(ax, states_and_fstates, names, ylabels, legend)
+        set_legend(ax, states_and_fstates, names, state_names, legend)
 
         for axis in ax:
             if len(axis.lines) == 0:
@@ -401,5 +403,30 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
         if len(ax) == 1:
             ax = ax[0]
+
+    else:
+        if len(x_vals) == 1:
+            colors = [[None]] * len(cm)
+        else:
+            ls = np.linspace(0.2, 0.8, len(x_vals))
+            colors = [cmap(ls) for cmap in cm]
+
+        y_di = get_state_distrib(uo.result, *state_names, x=x_vals,
+                                 x_name=x_name)
+
+        names = list(y_di.keys())
+
+        time = uo.result.time
+        for ct, x in enumerate(x_vals):
+            for ind, (state, y) in enumerate(y_di.items()):
+                if isinstance(y, list):
+                    for st, ar in enumerate(y):
+                        ind_cm = st % len(cm)
+                        ax[ind].plot(time, ar[:, ct], color=colors[ind_cm][ct])
+                else:
+                    ax[ind].plot(time, y[:, ct], color=colors[0][ct])
+
+        name_yaxes(ax, states_and_fstates, names, ylabels, legend)
+        set_legend(ax, states_and_fstates, names, state_names, legend)
 
     return fig, ax
