@@ -304,7 +304,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         ax = ax.flatten()
 
     states_and_fstates = {**uo.states_di, **uo.fstates_di}
-
+    
     if times is not None:
         if len(times) == 1:
             colors = [[None]] * len(cm)

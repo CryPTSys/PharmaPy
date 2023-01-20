@@ -59,25 +59,53 @@ def upwind_fvm(f, boundary_cond):
 
 
 def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
-    if csd is None:
-        csd = solid_phase.distrib
+    # if csd is None:
+    #     csd = solid_phase.distrib
 
-    x_grid = solid_phase.x_distrib
+    # x_grid = solid_phase.x_distrib
 
-    alpha_x = 180 * (1 - porosity) / \
-        (porosity**3 * (x_grid*1e-6)**2 * rho_sol * sphericity**2)
+    # alpha_x = 180 * (1 - porosity) / \
+    #     (porosity**3 * (x_grid*1e-6)**2 * rho_sol * sphericity**2)
 
-    numerator = trapezoidal_rule(x_grid, csd * alpha_x)
-    denominator = solid_phase.moments[0]
+    # numerator = trapezoidal_rule(x_grid, csd * alpha_x)
+    # denominator = solid_phase.moments[0]
 
-    alpha = numerator / (denominator + eps)
+    # alpha = numerator / (denominator + eps)
+    csd = solid_phase.distrib
+    rho_sol = solid_phase.getDensity()
+    x_grid = solid_phase.x_distrib * 1e-6
+   
+    kv = 0.524  # converting number based CSD to volume based:
+   
+    del_x_dist = np.diff(x_grid)
+    node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
+    node_CSD = (csd[:-1] + csd[1:]) / 2
+    
+    # Volume of crystals in each bin
+    vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
+    frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
+    
+    csd = vol_cry
+    
+    # Calculate irreducible saturation in weighted csd (volume based)
+    vol_frac = vol_cry/ np.sum(vol_cry)
+    x_grid = node_x_dist
+    alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
+    alpha = np.sum(alpha_x * vol_frac)
 
-    return alpha
+    return alpha/1e2
 
 
 def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
     surf_tens, rho_liq = props
 
+    kv = 0.524  # converting number based CSD to volume based:
+   
+    del_x_dist = np.diff(x_vec)
+    node_x_dist = (x_vec[:-1] + x_vec[1:]) / 2
+    node_CSD = (csd[:-1] + csd[1:]) / 2
+    
+    x_vec = node_x_dist
     if isinstance(surf_tens, float) or isinstance(rho_liq, float):
         capillary_number = porosity**3 * x_vec**2 * \
             (rho_liq*grav*height + deltaP) / (1 - porosity)**2 / height / surf_tens
@@ -86,13 +114,19 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
             porosity**3 * x_vec**2,
             (rho_liq*grav*height + deltaP)/(1 - porosity)**2 / height / surf_tens
             )
-
+    # Volume of crystals in each bin
+    vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
+    frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
+    
+    csd = vol_cry
+    
     s_inf = 0.155 * (1 + 0.031*capillary_number**(-0.49))
-
     s_inf = np.where(s_inf > 1, 1, s_inf)
-
-    integrand = s_inf.T * csd
-    s_inf = trapezoidal_rule(x_vec, integrand.T) / mu_zero
+    
+    # Calculate irreducible saturation in weighted csd (volume based)
+    vol_frac = vol_cry/ np.sum(vol_cry)
+    
+    s_inf = np.sum(vol_frac *s_inf)
 
     return s_inf
 
@@ -174,13 +208,15 @@ class DeliquoringStep:
         self.delta_z = np.diff(z_grid_red)
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
-
+        
+        self.name_species = self.Liquid_1.name_species
+        
         self.states_di = {
-            'mass_conc' : {# 'index': index_z,
-                         'dim':2, 'units': 'kg/m3', 'type':'diff'},
             'saturation' :{# 'index': index_z,
                            'dim': 1,
                            'units': '', 'type': 'diff'},
+            'mass_conc' : {'index': self.name_species,
+                         'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'diff'} # Order of the states matters
                 }
 
         self.fstates_di = {
@@ -190,16 +226,15 @@ class DeliquoringStep:
         self.name_states = list(self.states_di.keys())
         self.dim_states = [a['dim'] for a in self.states_di.values()]
 
-        self.name_species = self.Liquid_1.name_species
-
-        self.nonmenclature()
+        self.nomenclature()
 
     def nomenclature(self):
         self.names_states_in = ['mass', 'temp',
                                 'mass_frac', 'total_distrib']  #from filter states_out
         self.names_states_out = self.names_states_in
 
-        self.name_states = ['mass_conc', 'saturation', 'mean_saturation_value']
+    def get_inputs(self, time):
+        pass
 
     def unit_model(self, theta, states):
         states_reord = states.reshape(-1, self.Liquid_1.num_species + 1)
@@ -256,8 +291,8 @@ class DeliquoringStep:
                    verbose=True):
 
         # Solid properties
-        csd = self.Solid_1.distrib * 1e6
-        diam_i = self.Solid_1.x_distrib * 1e-6  # um
+        csd = self.Solid_1.distrib #* 1e6
+        diam_i = self.Solid_1.x_distrib# * 1e-6  # um
         mom_zero = self.Solid_1.moments[0]
         alpha = self.CakePhase.alpha
 
@@ -357,65 +392,72 @@ class DeliquoringStep:
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
-
-        inputs = self.get_inputs(time)['Inlet']
-
-        dp = unpack_discretized(states, self.dim_states, self.name_states,
-                                indexes=indexes, inputs=inputs)
-
-        s_red = states[:, ::num_species + 1]
+        
+        dp = {}
+        
+        dp_reduced= unpack_discretized(states, self.dim_states, self.name_states,
+                                indexes=indexes)
+        
+        s_red = dp_reduced['saturation']
+    
+        # s_red = states[:, ::num_species + 1]
         satProf = s_red * (1 - self.sat_inf) + self.sat_inf
 
         conc_diff = self.rho_j - self.conc_mean_init
 
-        concPerSpecies = []
-        mass_j = []
-        mass_bar_j = []
+        concPerSpecies = {}
+        mass_j = {}
+        mass_bar_j = {}
 
         porosity = self.CakePhase.porosity
 
-        for ind in range(num_species):
-            conc_sp = states[:, (ind + 1)::(num_species + 1)]
+        for ind, name in enumerate(indexes['mass_conc']):
+            conc_sp = dp_reduced['mass_conc'][name]
 
             conc_sp = conc_sp * conc_diff[:,ind] + self.conc_mean_init[:,ind]
             mass_sp = porosity * satProf * conc_sp
             massbar = porosity * satProf * conc_sp / \
                 ((1 - porosity)*self.rho_s + porosity*satProf*self.rho_j[ind])
 
-            concPerSpecies.append(conc_sp)
-            mass_j.append(mass_sp)
-            mass_bar_j.append(massbar)
+            concPerSpecies[name] = conc_sp
+            mass_j[name] = mass_sp
+            mass_bar_j[name] = massbar
 
         self.timeProf = time
         self.satProf = satProf
 
         dp['time'] = time
         dp['z'] = self.z_centers
-
+        dp['saturation'] = self.satProf
+        dp['mass_conc'] =  concPerSpecies       
+        
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
+        
         self.mean_sat = trapezoidal_rule(self.z_centers, s_red.T) * \
             (1 - self.sat_inf) + self.sat_inf
 
         # dp['mean_saturation_value'] = self.mean_sat
-
-        concPerVolElement = np.split(states, self.num_nodes, axis=1)
-        concPerVolElement = [
-            array[:, 1:] * conc_diff[ind] + self.conc_mean_init[ind]
-            for ind, array in enumerate(concPerVolElement)]
+        
+        
+        concPerVolElement = {}
+        concPerVolElement = dp_reduced['mass_conc']
+        
+        for name in indexes['mass_conc']:
+            concPerVolElement[name] = concPerSpecies[name] * conc_diff[:, ind] \
+                + self.conc_mean_init[:,ind]
 
         self.concPerSpecies = concPerSpecies
         self.massCompPerCakeUnitVolume = mass_j
         self.massjPerMassCake = mass_bar_j
         self.concPerVolElement = concPerVolElement
 
-        dp['mass_conc'] = self.concPerSpecies
+        last_state = {}
+        for name in self.concPerSpecies.keys():
+            last_state[name] = self.concPerSpecies[name][-1][-1]
 
-        last_state = []
-        for array in self.concPerSpecies:
-            last_state.append(array[-1])
-
-        self.mass_conc_T = np.array(last_state).transpose()
-
-        self.Liquid_1.updatePhase(mass_conc=self.mass_conc_T)
+        self.mass_conc= list(last_state.values())
+        
+        self.Liquid_1.updatePhase(mass_conc=self.mass_conc)
 
 
         liquid_out = copy.deepcopy(self.Liquid_1)
@@ -671,8 +713,8 @@ class Filter:
         dens_sol = self.Solid_1.getDensity()
         if self.alpha is None:
             self.alpha = get_alpha(self.Solid_1, sphericity=1,
-                                   porosity=epsilon,
-                                   rho_sol=dens_sol)
+                                    porosity=epsilon,
+                                    rho_sol=dens_sol)
 
         self.params = (self.alpha, self.r_medium)
         if self.log_params:
@@ -835,7 +877,7 @@ class Filter:
         self.time_filt = visc_liq/self.deltaP * (
             self.alpha*self.c_solids/2 * (vol_filtrate/self.area_filt)**2 +
             self.r_medium * (vol_filtrate/self.area_filt))
-        # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc\
+        # self.time_filt = visc_liq * self.alpha * vol_filtrate * solid_conc * vol_slurry\
         #     / (2 * self.area_filt**2 * self.deltaP)\
         #     + visc_liq * self.r_medium * vol_filtrate/ (self.area_filt * self.deltaP)
         self.retrieve_results(time, states, dens_liq, dens_sol, epsilon)
@@ -1011,7 +1053,23 @@ class DisplacementWashing:
         classify_phases(self)  # Enumerate phases: Liquid_1,..., Solid_1, ...
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
+        
+        self.name_species = self.Liquid_1.name_species
+        
+        self.states_di = {
+            'mass_conc' : {'index': self.name_species,
+                         'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'algebraic'}} # Order of the states matters
 
+        self.fstates_di = {
+            'mean_mass_conc' : {'index': self.name_species, 
+                     'dim': len(self.name_species), 'units': 'kg/m**3', 'type': 'alg'},
+            'washing_time' : {#'index': index_z,
+                              'dim':1, 'units': 's', 'type': 'alg'}}
+
+        self.name_states = list(self.states_di.keys())
+        self.dim_states = [a['dim'] for a in self.states_di.values()]
+
+        self.nomenclature()
     @property
     def Inlet(self):
         return self._Inlet
@@ -1037,8 +1095,12 @@ class DisplacementWashing:
         return diff_eff
 
     def nomenclature(self):
-        self.names_states_in = ['mass_conc', 'temp']
+        self.names_states_in = ['mass_conc', 'temp',
+                                'mass_frac', 'total_distrib']  #from filter states_out
         self.names_states_out = self.names_states_in
+
+    def get_inputs(self, time):
+        pass
 
     def material_balance(self, z_pos, time, vel, diff, lambd):
 
@@ -1085,7 +1147,7 @@ class DisplacementWashing:
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
         lambd_ads = 1 / (1 - self.k_ads + self.k_ads/epsilon)
 
-        c_zero = self.CakePhase.Liquid_1.mass_conc
+        c_zero = np.array(self.CakePhase.Liquid_1.mass_conc)
 
         # Solid
         epsilon = self.Solid_1.getPorosity(diam_filter=self.diam_unit)
@@ -1119,8 +1181,6 @@ class DisplacementWashing:
         # ---------- Solve
         time_total = wash_ratio * cake_height / vel_liq
 
-
-
         if time_vals is None:
             time_vals = np.linspace(eps, time_total)
         elif time_vals[-1] > time_total:
@@ -1141,7 +1201,11 @@ class DisplacementWashing:
             conc_star = conc_adim
 
         conc = conc_star * (c_zero - c_inlet) + c_inlet
-        conc_all = conc_adim * (c_zero - c_inlet) + c_inlet
+        conc_all = np.zeros_like(conc_adim)
+        
+        for i in range(self.num_t):
+            conc_all[:,i] = conc_adim[:,i] * (c_zero - c_inlet) + c_inlet
+        # conc_all = conc_adim * (c_zero - c_inlet) + c_inlet
 
         # Average final concentration and material balance
         integral = trapezoidal_rule(z_vals, conc_star)
@@ -1163,10 +1227,25 @@ class DisplacementWashing:
         return conc, conc_star, c_cake, c_effl
 
     def retrieve_results(self, z_coord, time_coord, conc):
+        num_species = self.Liquid_1.num_species
+        
+        indexes = {key: self.states_di[key].get('index', None)
+                   for key in self.name_states}
+        
+        conc_T = np.transpose(conc, (1, 0, 2))
+        
+        dp= unpack_discretized(conc_T, self.dim_states, self.name_states,
+                               indexes=indexes)
+                
         self.zProf = z_coord
         self.timeProf = time_coord
         self.concProf = conc
-
+        
+        dp['time'] = np.asarray(self.timeProf)
+        dp['z'] = self.zProf
+        
+        self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
+        
         if conc.ndim == 3:
             concPerVolElem = []
             for ind in range(self.num_z):
