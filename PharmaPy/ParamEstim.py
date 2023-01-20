@@ -407,7 +407,7 @@ class ParameterEstimation:
         # ---------- States
         if name_states is None:
             self.name_states = [r'$y_{}$'.format(ind + 1)
-                                for ind in range(self.num_states)]
+                                for ind in self.measured_ind]
         else:
             self.name_states = name_states
 
