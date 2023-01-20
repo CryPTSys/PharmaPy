@@ -87,6 +87,7 @@ class Drying:
         self.state_event_list = state_events
 
         self.outputs = None
+        self.elapsed_time = 0
 
     @property
     def Phases(self):
@@ -238,7 +239,7 @@ class Drying:
         sat_red = np.maximum(0, sat_red)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
         # vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
-        vel_gas = self.dPg_dz / \
+        vel_gas = self.dPg_dz/ \
         (self.CakePhase.alpha * visc_gas * self.rho_sol * (1 - self.porosity))/ np.mean(satur)
         
         # ---------- Drying rate term
@@ -246,7 +247,6 @@ class Drying:
         rho_gas = self.pres_gas / gas_ct / temp_gas * mw_avg_gas / 1000# kg/m**3
         rho_liq_ = self.Liquid_1.rho_liq[self.idx_volatiles]
         self.rho_liq =  1 / np.sum((x_liq/ rho_liq_), axis=1)
-        A = self.rho_liq[0]
         # Dry correction
         if self.mass_eta:
             rho_liq = self.rho_liq
@@ -291,6 +291,7 @@ class Drying:
                          u_gas, dens_gas, dry_rate, inputs, return_terms=False):
         
         satur[satur < eps] = eps
+        satur[satur >= 1] = 1 - eps
         # ----- Reading inputs
         y_gas_inputs = inputs['mass_frac']
 
@@ -320,6 +321,7 @@ class Drying:
         # ----- Gas phase
         # Convective term
         epsilon_gas = self.porosity * (1 - satur)
+        epsilon_gas[epsilon_gas <= eps] = eps
 
         # fluxes_yg = high_resolution_fvm(y_gas, boundary_cond=y_gas_inputs)
         fluxes_yg = upwind_fvm(y_gas, boundary_cond=y_gas_inputs)
@@ -368,7 +370,7 @@ class Drying:
                                       basis='mass')
         temp_wb = 22+273
         sensible_heat = cpg_mix * (temp_gas - temp_wb) * dry_rate.sum(axis=1)
-
+        
         heat_transf = self.h_T_j * self.a_V * (temp_gas - temp_sol)
         drying_terms = rho_gas / self.rho_liq * cpg_mix
         # heat_loss = self.h_T_loss * self.a_V * (temp_gas - self.T_ambient)
@@ -376,8 +378,9 @@ class Drying:
         heat_loss = 0  # This line is for assumption of no heat loss
         fluxes_Tg = high_resolution_fvm(temp_gas,
                                         boundary_cond=temp_gas_inputs)
-
+        
         # fluxes_Tg = upwind_fvm(temp_gas, boundary_cond=temp_gas_inputs)
+        # sensible_heat = cpg_mix * np.diff(fluxes_Tg) * dry_rate.sum(axis=1)
         dTg_dz = np.diff(fluxes_Tg) / self.dz * epsilon_gas * rho_gas
 
         conv_term = -u_gas * dTg_dz * cpg_mix * rho_gas
@@ -394,15 +397,18 @@ class Drying:
         dens_liq = self.rho_liq
         # heat_loss_cond = self.h_T_loss * self.a_V * (temp_sol - self.T_ambient)
         heat_loss_cond = self.h_T_loss * self.cake_height * (2*np.pi*1.5/2/100) *(temp_sol - self.T_ambient)
-        # heat_loss_cond = 0
-        # heat_transf = 0
-        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat*2).sum(axis=1)
+        heat_loss_cond = 0
+        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat * 2).sum(axis=1)
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
         dTcond_dt = (-drying_terms + heat_transf - heat_loss_cond) / denom_cond
-
-
+        
+        ## ---- Trial for lumping both cond/gas phase into one
+        # dTtotal_dt = (conv_term + sensible_heat - drying_terms - heat_loss_cond)/ (denom_gas + denom_cond)
+        
+        # dTg_dt, dTcond_dt = dTtotal_dt, dTtotal_dt
+        
         if return_terms:
             self.convec_term = u_gas * dTg_dz
             self.drying = drying_terms/ denom_gas
@@ -452,10 +458,20 @@ class Drying:
 
         if x_liq_init.ndim == 1:
             x_liq_init = x_liq_init[idx_volatiles]
-            states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
+            
+            if len(satur_init) != 1:
+                states_tuple = (y_gas_init, x_liq_init, temp_gas_init, temp_cond_init)
 
-            states_stacked = np.hstack(states_tuple)
-            states_prev = np.tile(states_stacked, (self.num_nodes, 1))
+                states_stacked = np.hstack(states_tuple)
+                state_tiled = np.tile(states_stacked, (self.num_nodes, 1))
+                states_prev = np.column_stack((satur_init, state_tiled))
+                
+            else:
+                
+                states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
+    
+                states_stacked = np.hstack(states_tuple)
+                states_prev = np.tile(states_stacked, (self.num_nodes, 1))
 
         else:
             x_liq_init = x_liq_init[:, idx_volatiles]
@@ -528,14 +544,14 @@ class Drying:
                                     num=self.num_nodes)
 
         # Irreducible saturation
-        x_csd = self.Solid_1.x_distrib * 1e-6
-        csd = self.Solid_1.distrib * 1e6
+        x_csd = self.Solid_1.x_distrib #* 1e-6
+        csd = self.Solid_1.distrib# * 1e6
         mom_zero = self.Solid_1.moments[0]
 
-        rholiq_mass = np.mean(rho_liq[0] * self.Liquid_1.mw_av[0])  # kg/m**3
+        # rholiq_mass = np.mean(rho_liq[0] * self.Liquid_1.mw_av[0])  # kg/m**3
         self.s_inf = get_sat_inf(x_csd, csd, deltaP, porosity,
                                  self.cake_height, mom_zero,
-                                 (np.mean(surf_tens), rholiq_mass))
+                                 (np.mean(surf_tens), rho_liq[0]))#rholiq_mass))
 
         # ---------- Solve model
         model = self.unit_model
@@ -567,7 +583,14 @@ class Drying:
 
         # sim.linear_solver = 'SPGMR'
         
-        time, states = sim.simulate(runtime)
+        if runtime is not None:
+            final_time = runtime + self.elapsed_time
+
+        if time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
+            self.elapsed_time = time_grid[0]
+
+        time, states = sim.simulate(final_time,  ncp_list=time_grid)
         
         if not verbose:
           sim.verbosity = 50
@@ -579,7 +602,8 @@ class Drying:
     def retrieve_results(self, time, states):
         time = np.array(time)
         self.timeProf = time
-
+        self.elapsed_time += time[-1]
+        
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 

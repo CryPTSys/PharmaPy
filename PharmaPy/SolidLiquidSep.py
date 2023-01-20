@@ -93,7 +93,7 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
     alpha = np.sum(alpha_x * vol_frac)
 
-    return alpha
+    return alpha/1e2
 
 
 def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
@@ -291,8 +291,8 @@ class DeliquoringStep:
                    verbose=True):
 
         # Solid properties
-        csd = self.Solid_1.distrib * 1e6
-        diam_i = self.Solid_1.x_distrib * 1e-6  # um
+        csd = self.Solid_1.distrib #* 1e6
+        diam_i = self.Solid_1.x_distrib# * 1e-6  # um
         mom_zero = self.Solid_1.moments[0]
         alpha = self.CakePhase.alpha
 
