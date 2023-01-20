@@ -1,15 +1,21 @@
 # ---------- With installer ----------
 After installing miniconda, do the following:
 
-Step 1: Open an Anaconda PowerShell ("powershell" for short) by clicking on: Start --> Anaconda3 (XX-bit) --> Anaconda PowerShell Prompt (Miniconda3)
+Step 1:
+	WINDOWS: Open an Anaconda PowerShell ("powershell" for short) by clicking on: Start --> Anaconda3 (XX-bit) --> Anaconda PowerShell Prompt (Miniconda3). Right clic on it and execute as an administrator
+	LINUX/MAC: Open a new terminal where the this file is.
 
-Step 2: Copy (CTRL+C) the path to the installation files (where this very file is). This can be done by clicking on the top horizontal bar of the file explorer, which will highlight the path we need to go to. For instance, after copying, my path is C:\Users\dcasasor\OneDrive - purdue.edu\postdoc\PharmaPy_dcasasor
+Step 2 (WINDOWS only): Copy (CTRL+C) the path to the installation files (where this file is). This can be done by clicking on the top horizontal bar of the file explorer, which will highlight the path we need to go to. For instance, after copying, my path is C:\Users\dcasasor\OneDrive - purdue.edu\postdoc\PharmaPy_dcasasor
 
-Step 3: Introduce the following command in the powershell: cd '<path_in_step_2>' and hit Enter. Do not include the <> characters, but do include the quotes. You can paste (CTRL+V) the path you copied in Step 2 to avoid transcription errors
+Step 3 (WINDOWS only): Introduce the following command in the powershell: cd '<path_in_step_2>' and hit Enter. Do not include the <> characters, but do include the quotes. Replace text in between the <> characters with the path you copied in Step 2. Use CTRL+V to avoid transcription errors
 
-Step 4: In the powershell, do: .\InstallPharmaPy.bat and hit Enter. Follow the instructions on screen
+Step 4: After this step, both PharmaPy dependencies and PharmaPy itself should be installed
+	WINDOWS: Do .\InstallOnWindows.bat and hit Enter. Follow the instructions on screen
+	LINUX/MAC: To give permissions to the installation file, do chmod +x InstallOnMac.sh. Then, execute it with ./InstallOnMac.sh. Follow the instructions on screen
 
-Step 5: After installation, test PharmaPy by moving to the tests/ directory (cd tests) and then running: python reactor_tests.py
+Step 5: Activate the new environment bydoing: conda activate <name_of_environment> (exclude <>)
+
+Step 6: Test PharmaPy by moving to the tests/ directory (cd tests) and then running: python reactor_tests.py
 
 # ---------- Manual installation ----------
 Step 1: Create a conda environment named <env_name> (optional)
