@@ -47,29 +47,6 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
     
     return kinetic_term
 
-
-def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
-                         reformulate):
-
-    phi_1, phi_2, s_1, s_2 = params
-    absup = np.maximum(eps, sup_sat)
-
-    if moms.ndim == 1:
-        mom_3 = moms[3]
-    else:
-        mom_3 = moms[:, 3]
-
-    if reformulate:
-        pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
-    else:
-        pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
-
-    nucl_sec = pre_exp * sup_sat * absup**(s_1 - 1) * \
-        kv_cry**s_2 * np.maximum(0, mom_3)**s_2
-
-    return nucl_sec
-
-
 def disect_rxns(rxns, sep='-->'):
 
     out = {}
@@ -708,17 +685,9 @@ class CrystKinetics:
         else:
             self.get_solubility = solub_fn
 
-        self.custom_sec = False
-        
         mu_sec = {'area': 2, 'volume': 3}
         self.mu_sec_nucl = mu_sec[mu_sec_nucl]
 
-        # if secondary_fn is None:
-        #     self.secondary_fn = secondary_nucleation
-        # else:
-        #     self.secondary_fn = secondary_fn
-        #     self.custom_sec = True
-        
         if custom_mechanisms is None:
             custom_mechanisms = {}
         elif not isinstance(custom_mechanisms, dict):
@@ -871,7 +840,7 @@ class CrystKinetics:
             
         par_p, par_s, par_g, par_d = self.params.values()
 
-        if self.custom_sec:
+        if 'nucl_sec' in self.custom_mechanisms:
             args_sec = ()
             par_sec = self.params_sec
         else:
@@ -883,47 +852,13 @@ class CrystKinetics:
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
                 
-                # mechs = {}
                 subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
-                # for key in subset_mech:
-                #     mechs[key] = self.custom_mechanisms[key](
-                #         args + [self.params[key]])
-                        
-                # for name in subset_mech:
-                #     if name not in mechs:
-                #         mechs[name] = cryst_mechanism(sup_sat, temp,
-                #                                       self.temp_ref,
-                #                                       self.params[name],
-                #                                       self.reformulate_kin)
-                        
-                # nucl_prim = cryst_mechanism(sup_sat, temp, self.temp_ref,
-                #                             par_p, self.reformulate_kin)
-
-                # growth = cryst_mechanism(sup_sat, temp, self.temp_ref, par_g,
-                #                          self.reformulate_kin)
-
-                # nucl_sec = self.secondary_fn(sup_sat, moments, temp,
-                #                              self.temp_ref, par_sec,
-                #                              *args_sec)
-
-                # dissol = 0
-                # mechs['dissolution'] = 0
             else:
-                # growth = 0
-                # nucl_prim = 0
-                # nucl_sec = 0
                 
                 subset_mech = ('dissolution', )
 
-                # dissol = cryst_mechanism(sup_sat, temp, self.temp_ref, par_d,
-                #                          self.reformulate_kin)
-                
             mechs = {}
-            # subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
-            # for key in subset_mech:
-            #     mechs[key] = self.custom_mechanisms[key](
-            #         args + [self.params[key]])
-                    
+            
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
@@ -940,11 +875,6 @@ class CrystKinetics:
                     mechs[ky] = 0
 
             # Returns
-            # self.prim_nucl = nucl_prim
-            # self.sec_nucl = nucl_sec
-            # self.growth = growth  # um/s
-            # self.dissol = dissol  # um/s
-            
             self.prim_nucl = mechs['nucl_prim']
             self.sec_nucl = mechs['nucl_sec']
             self.growth = mechs['growth']  # um/s
