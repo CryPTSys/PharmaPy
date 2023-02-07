@@ -93,7 +93,7 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
     alpha = np.sum(alpha_x * vol_frac)
 
-    return alpha/1e2
+    return alpha
 
 
 def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):

@@ -648,8 +648,8 @@ class ParameterEstimation:
         dof = self.num_data_total - self.num_params
         mse = 1 / dof * np.dot(resid.T, resid)
 
-        covar = mse * np.linalg.inv(hessian_approx)
-
+        # covar = mse * np.linalg.inv(hessian_approx)
+        covar = np.linalg.inv(hessian_approx)
         # Correlation matrix
         sigma = np.sqrt(covar.diagonal())
         d_matrix = np.diag(1/sigma)

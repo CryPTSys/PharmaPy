@@ -15,3 +15,6 @@ class PharmaPyNonImplementedError(NotImplementedError):
 
 class PharmaPySpecificationError(AttributeError):
     pass
+
+class PharmaPyTypeError(TypeError):
+    pass

@@ -1840,7 +1840,6 @@ class MSMPR(_BaseCryst):
             ht_term = capacitance * vol  # return capacitance
         elif 'temp' in self.states_uo:
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
-
         if heat_prof:
             heat_components = np.hstack([source_term, ht_term, flow_term])
             return heat_components
