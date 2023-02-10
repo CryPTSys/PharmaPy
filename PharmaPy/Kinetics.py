@@ -919,10 +919,6 @@ class CrystKinetics:
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
                     
-            # for ky in self.names_mechanisms:
-            #     if ky not in subset_mech:
-            #         mechs[ky][positive_map] = 0
-                    
             subset_mech = ('dissolution', )
             
             args = [sup_negative, conc_sat_negative, moments_negative, 
@@ -941,34 +937,6 @@ class CrystKinetics:
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
                     
-            # for ky in self.names_mechanisms:
-            #     if ky not in subset_mech:
-            #         mechs[ky][~positive_map] = 0
-            
-            # nucl_prim = np.zeros_like(sup_sat)
-            # nucl_prim[positive_map] = cryst_mechanism(
-            #     sup_positive, temp_positive, self.temp_ref, par_p,
-            #     self.reformulate_kin, conc_sat)
-
-            # # Growth
-            # growth = np.zeros_like(sup_sat)
-            # growth[positive_map] = cryst_mechanism(
-            #     sup_positive, temp_positive, self.temp_ref, par_g,
-            #     self.reformulate_kin, conc_sat)
-
-            # # Secondary nucleation
-            # nucl_sec = np.zeros_like(sup_sat)
-            # moms_positive = moments[positive_map]
-            # nucl_sec[positive_map] = self.secondary_fn(
-            #     sup_positive, moms_positive, temp_positive, self.temp_ref,
-            #     par_sec, *args_sec)
-
-            # # Dissolution
-            # dissol = np.zeros_like(sup_sat)
-            # dissol[~positive_map] = cryst_mechanism(
-            #     sup_negative, temp_negative, self.temp_ref, par_d,
-            #     self.reformulate_kin, conc_sat)
-
         if nucl_sec_out:
             return mechs['nucl_prim'], mechs['nucl_sec'], mechs['growth'], mechs['dissolution']
         else:
