@@ -41,9 +41,12 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
     
     if sec:
-        mom = np.maximum(0, moms[order])
+        if moms.ndim == 1:
+            mom = np.maximum(0, moms[order]) # For vector moms
+        
+        elif moms.ndim == 2:
+            mom= np.maximum(0, moms[:, order]) # for matrix
         kinetic_term *= (mom * kv)**s_2
-    # kinetic_term = pre_exp * (sup_sat) * sat_conc
     
     return kinetic_term
 
