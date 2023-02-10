@@ -896,9 +896,6 @@ class CrystKinetics:
             moments_positive = moments[positive_map]
             moments_negative = moments[~positive_map]
             
-            temp_ref_positive = self.temp_ref[positive_map]
-            temp_ref_negative = self.temp_ref[~positive_map]
-            
             subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
             
             mechs = {}
@@ -907,7 +904,7 @@ class CrystKinetics:
                 mechs[name] = np.zeros_like(sup_sat)
                 
             args = [sup_positive, conc_sat_positive, moments_positive, 
-                    temp_positive, temp_ref_positive]        
+                    temp_positive, self.temp_ref]        
             
             for name in subset_mech:
                 if name in self.custom_mechanisms:
@@ -915,20 +912,21 @@ class CrystKinetics:
                     mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
                     mechs[name][positive_map] = cryst_mechanism(sup_positive, 
+                                                                moments_positive,
                                                                 temp_positive,
-                                                                temp_ref_positive,
+                                                                self.temp_ref,
                                                                 self.params[name],
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
                     
-            for ky in self.names_mechanisms:
-                if ky not in subset_mech:
-                    mechs[ky][positive_map] = 0
+            # for ky in self.names_mechanisms:
+            #     if ky not in subset_mech:
+            #         mechs[ky][positive_map] = 0
                     
             subset_mech = ('dissolution', )
             
             args = [sup_negative, conc_sat_negative, moments_negative, 
-                    temp_negative, temp_ref_negative]        
+                    temp_negative, self.temp_ref]        
             
             for name in subset_mech:
                 if name in self.custom_mechanisms:
@@ -936,14 +934,17 @@ class CrystKinetics:
                     mechs[name][~positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
                     mechs[name][~positive_map] = cryst_mechanism(sup_negative, 
+                                                                 moments_negative,
                                                                 temp_negative,
-                                                                temp_ref_negative,
+                                                                self.temp_ref,
                                                                 self.params[name],
-                                                                self.reformulate_kin)
+                                                                self.reformulate_kin,
+                                                                kv_cry, self.mu_sec_nucl)
                     
-            for ky in self.names_mechanisms:
-                if ky not in subset_mech:
-                    mechs[ky][~positive_map] = 0
+            # for ky in self.names_mechanisms:
+            #     if ky not in subset_mech:
+            #         mechs[ky][~positive_map] = 0
+            
             # nucl_prim = np.zeros_like(sup_sat)
             # nucl_prim[positive_map] = cryst_mechanism(
             #     sup_positive, temp_positive, self.temp_ref, par_p,
