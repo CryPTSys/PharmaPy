@@ -873,8 +873,14 @@ class _BaseCryst:
         self.vol_tank *= 1 / self.vol_offset
 
         if 'temp_ht' in self.states_uo:
+            
+            if len(self.profiles_runs) == 0:
+                temp_ht = self.Liquid_1.temp
+            else:
+                temp_ht = self.profiles_runs[-1]['temp_ht'][-1]
+                
             states_init = np.concatenate(
-                (states_init, [self.Liquid_1.temp, self.Liquid_1.temp]))
+                (states_init, [self.Liquid_1.temp, temp_ht]))
 
             self.len_states += [1, 1]
         elif 'temp' in self.states_uo:
@@ -1907,7 +1913,7 @@ class MSMPR(_BaseCryst):
 
         self.Liquid_1.temp = dp['temp'][-1]
 
-        vol_liq = 1 - self.Solid_1.kv * dp['mu_n'][-1, 3]
+        vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * \self.Slurry.vol_slurry
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
         self.Slurry.distrib = None
