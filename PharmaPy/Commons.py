@@ -49,7 +49,8 @@ def flatten_states(state_list):
     else:
         out = {}
         for name in name_states:
-            ar = [di[name] for di in state_list]
+            ar = [di[name] if ind == 0 else di[name][1:]
+                  for ind, di in enumerate(state_list)]
             if ar[0].ndim == 1:
                 out[name] = np.concatenate(ar)
             else:
