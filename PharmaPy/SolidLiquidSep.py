@@ -816,7 +816,7 @@ class Filter:
         solid_conc = max(0, solid_conc)
 
         # Initial state
-        vol_slurry = self.SlurryPhase.vol_slurry / slurry_div
+        vol_slurry = self.SlurryPhase.vol / slurry_div
         frac_liq = self.SlurryPhase.getFractions()[0]
 
         vol_liq_cake = vol_slurry * solid_conc/dens_sol * epsilon/(1 - epsilon)

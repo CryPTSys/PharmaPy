@@ -494,7 +494,7 @@ class Mixer:
                                        mass_frac=phase_wsolids.Solid_1.mass_frac,
                                        distrib=distrib,
                                        x_distrib=phase_wsolids.Solid_1.x_distrib)
-                self.Outlet = Slurry(vol_slurry=vol_total)
+                self.Outlet = Slurry(vol=vol_total)
 
             self.Outlet.Phases = (liquid_out, solid_out)
         else:
@@ -847,7 +847,7 @@ class DynamicCollector:
             self.retrieve_results(time, states)
             # self.Outlet = SemiCryst.Outlet
 
-            vol_phase = self.Outlet.vol_slurry
+            vol_phase = self.Outlet.vol
             if isinstance(vol_phase, np.ndarray):
                 vol_phase = vol_phase[0]
 
