@@ -241,7 +241,7 @@ class _BaseCryst:
             self.__original_phase_dict__ = [
                 copy.deepcopy(phase.__dict__) for phase in self.Slurry.Phases]
 
-            self.vol_slurry = copy.copy(self.Slurry.vol_slurry)
+            self.vol_slurry = copy.copy(self.Slurry.vol)
             if isinstance(self.vol_slurry, np.ndarray):
                 self.vol_phase = self.vol_slurry[0]
             else:
@@ -536,7 +536,7 @@ class _BaseCryst:
 
         di_states = complete_dict_states(time, di_states,
                                          ('temp', 'temp_ht', 'vol'),
-                                         self.Liquid_1, self.controls)
+                                         self.Slurry, self.controls)
 
         # ---------- Physical properties
         self.Liquid_1.updatePhase(mass_conc=di_states['mass_conc'])
@@ -866,15 +866,21 @@ class _BaseCryst:
                 self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
 
             else:
-                self.vol_tank = self.Slurry.vol_slurry
+                self.vol_tank = self.Slurry.vol
 
         self.diam_tank = (4/np.pi * self.vol_tank)**(1/3)
         self.area_base = np.pi/4 * self.diam_tank**2
         self.vol_tank *= 1 / self.vol_offset
 
         if 'temp_ht' in self.states_uo:
+            
+            if len(self.profiles_runs) == 0:
+                temp_ht = self.Liquid_1.temp
+            else:
+                temp_ht = self.profiles_runs[-1]['temp_ht'][-1]
+                
             states_init = np.concatenate(
-                (states_init, [self.Liquid_1.temp, self.Liquid_1.temp]))
+                (states_init, [self.Liquid_1.temp, temp_ht]))
 
             self.len_states += [1, 1]
         elif 'temp' in self.states_uo:
@@ -1593,7 +1599,7 @@ class BatchCryst(_BaseCryst):
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
 
-        self.Outlet = Slurry(vol_slurry=vol_slurry)
+        self.Outlet = Slurry(vol=vol_slurry)
         self.Outlet.Phases = (liquid_out, solid_out)
 
         self.outputs = dp
@@ -1840,7 +1846,6 @@ class MSMPR(_BaseCryst):
             ht_term = capacitance * vol  # return capacitance
         elif 'temp' in self.states_uo:
             ht_term = self.u_ht*area_ht*(temp - temp_ht)
-
         if heat_prof:
             heat_components = np.hstack([source_term, ht_term, flow_term])
             return heat_components
@@ -1902,13 +1907,15 @@ class MSMPR(_BaseCryst):
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
-        self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * self.vol_mult)
+        
+        vol_slurry = self.Slurry.vol
+        self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
 
         self.Solid_1.temp = dp['temp'][-1]
 
         self.Liquid_1.temp = dp['temp'][-1]
 
-        vol_liq = 1 - self.Solid_1.kv * dp['mu_n'][-1, 3]
+        vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
         self.Slurry.distrib = None
@@ -1950,7 +1957,7 @@ class MSMPR(_BaseCryst):
             liquid_out = copy.deepcopy(self.Liquid_1)
             solid_out = copy.deepcopy(self.Solid_1)
 
-            self.Outlet = Slurry(vol_slurry=self.vol_mult)
+            self.Outlet = Slurry(vol=self.vol_mult)
 
         # self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
