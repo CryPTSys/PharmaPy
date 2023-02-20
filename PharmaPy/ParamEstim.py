@@ -330,6 +330,8 @@ class ParameterEstimation:
             measured_ind = list(range(y_data[0].shape[1]))
 
         self.measured_ind = measured_ind
+        self.num_model_states = None
+        self.sens_second = None  # sensitivities returned along with obj fun
 
         # ---------- Arguments
         if args_fun is None:
@@ -460,40 +462,28 @@ class ParameterEstimation:
         # --------------- Solve
         y_runs = []
         resid_runs = []
-        sens_runs = []
+        sens_second = []
 
         for ind in range(self.num_datasets):
-            # Solve
+            # Solve model
             result = self.function(params, self.x_model[ind],
                                    *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, (tuple, list)):  # func also returns the jacobian
                 y_prof, sens = result
 
+                sens_second.append(sens)
+
             else:  # call a separate function for jacobian
                 y_prof = result
 
-                if self.jac_fun is None:
-                    pass_to_fun = (self.x_model[ind], self.args_fun[ind],
-                                   self.kwargs_fun[ind])
-
-                    pick_p = np.where(self.map_variable)[0]
-                    sens = numerical_jac_data(self.func_aux, params,
-                                              pass_to_fun, dx=self.dx_fd,
-                                              pick_x=pick_p)
-                else:
-                    sens = self.jac_fun(params, self.x_model[ind],
-                                        *self.args_fun[ind],
-                                        **self.kwargs_fun[ind])
-
             if y_prof.ndim == 1:
                 y_run = y_prof.reshape(-1, 1)
-                sens_run = sens
+                self.num_model_states = 1
 
             else:
                 y_run = y_prof[:, self.measured_ind]
-                num_states = y_prof.shape[1]
-                sens_run = self.select_sens(sens, num_states)
+                self.num_model_states = y_prof.shape[1]
 
             # Replace missing data with model values so as residuals are zero
             # for those entries
@@ -508,16 +498,11 @@ class ParameterEstimation:
             y_runs.append(y_run)
             resid_runs.append(resid_run)
 
-            sens_by_y = reorder_sens(sens_run)
-            weighted_sens = np.dot(sens_by_y, self.sigma_inv)
-
-            weighted_sens = reorder_sens(weighted_sens,
-                                         num_rows=len(self.x_model[ind]))
-
-            sens_runs.append(weighted_sens)
-
         weighted_residuals = [np.dot(resid, self.sigma_inv)
                               for resid in resid_runs]
+
+        if len(sens_second) > 0:
+            self.sens_second = sens_second
 
         if type(self.objfun_iter) is list:
             objfun_val = np.linalg.norm(np.concatenate(resid_runs))**2
@@ -526,7 +511,6 @@ class ParameterEstimation:
         residuals = self.optimize_flag * np.concatenate(resid_runs)
 
         if set_self:
-            self.sens_runs = sens_runs
             self.y_runs = y_runs
             self.resid_runs = resid_runs
 
@@ -542,11 +526,51 @@ class ParameterEstimation:
 
         return residual_out
 
-    def get_gradient(self, params, jac_matrix=False):
+    def get_gradient(self, params, jac_matrix=False, set_self=True):
+
+        sens_runs = []
+
+        if self.sens_second is None:
+            raw_sens = []
+            for ind in range(self.num_datasets):
+                if self.jac_fun is None:
+                    pass_to_fun = (self.x_model[ind], self.args_fun[ind],
+                                   self.kwargs_fun[ind])
+
+                    pick_p = np.where(self.map_variable)[0]
+                    sens = numerical_jac_data(self.func_aux, params,
+                                              pass_to_fun, dx=self.dx_fd,
+                                              pick_x=pick_p)
+                else:
+                    sens = self.jac_fun(params, self.x_model[ind],
+                                        *self.args_fun[ind],
+                                        **self.kwargs_fun[ind])
+
+                if self.num_model_states == 1:
+                    sens_run = sens
+
+                else:
+                    sens_run = self.select_sens(sens, self.num_model_states)
+
+                raw_sens.append(sens_run)
+
+        else:
+            raw_sens = self.sens_second
+
+        weighted_sens = []
+        for sensit in range(raw_sens):
+            sens_by_y = reorder_sens(sensit)
+            weighted = np.dot(sens_by_y, self.sigma_inv)
+
+            weighted = reorder_sens(weighted_sens,
+                                    num_rows=len(self.x_model[ind]))
+
+            weighted_sens.append(weighted)
+
         if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
             self.get_objective(params)
 
-        concat_sens = np.vstack(self.sens_runs)
+        concat_sens = np.vstack(weighted_sens)
         if not self.fit_spectra:
 
             if len(self.map_variable) == concat_sens.shape[1]:
@@ -554,6 +578,9 @@ class ParameterEstimation:
 
         self.sens = concat_sens
         jacobian = concat_sens
+
+        if set_self:
+            self.sens_runs = sens_runs
 
         if jac_matrix:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
@@ -650,10 +677,10 @@ class ParameterEstimation:
 
         dof = self.num_data_total - self.num_params
         mse = 1 / dof * np.dot(resid.T, resid)
-        
+
         if include_mse:
             covar = mse * np.linalg.inv(hessian_approx)
-            
+
         else:
             covar = np.linalg.inv(hessian_approx)
         # Correlation matrix
