@@ -1078,9 +1078,7 @@ class MultipleCurveResolution(ParameterEstimation):
         second_term = first_term.transpose((0, 2, 1))
         sens_an = (first_term + second_term) @ spectra_pred
 
-        sens_proj = flatten_spectral_sens(sens_an)
-
-        return sens_proj
+        return sens_an
 
     def func_aux(self, params, x_vals, spectra, *args):
         states = self.function(params, x_vals, *args)
@@ -1100,18 +1098,33 @@ class MultipleCurveResolution(ParameterEstimation):
         sens_tot = np.concatenate(raw_sens, axis=1)  # (n_par x n_times x n_states)
         sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
 
+        # Variable projection derivative: n_par x n_times x n_lambda
         sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
                                                 **self.resolution_results)
 
+        n_par, n_times, n_lambda = sens_spectra.shape
         if self.has_non:
             sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
-            sens_regular = flatten_spectral_sens(sens_regular)
 
-            sens = np.vstack([sens_spectra, sens_regular])
+            all_sens = np.concatenate((sens_spectra, sens_regular), axis=2)
+
+            weighted_all = all_sens @ self.sigma_inv
+
+            weighted_sp = flatten_spectral_sens(weighted_all[:, :, :n_lambda])
+            weighted_reg = flatten_spectral_sens(weighted_all[:, :, n_lambda:])
+
+            weighted_sens = np.vstack((weighted_sp, weighted_reg))
+
+            # sens_regular = flatten_spectral_sens(sens_regular)
+
+            # sens = np.vstack([sens_spectra, sens_regular])
         else:
             sens = sens_spectra
 
-        return sens.T
+            weighted_sens = sens @ self.sigma_inv
+            weighted_sens = flatten_spectral_sens(weighted_sens)
+
+        return weighted_sens.T
 
     def get_global_analysis(self, params,):
         c_runs = []
