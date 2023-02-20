@@ -1104,9 +1104,7 @@ class MultipleCurveResolution(ParameterEstimation):
                                                 **self.resolution_results)
 
         if self.has_non:
-            sens_regular = sens_tot[:, :,
-                                    self.measured_ind['non_spectra']]
-
+            sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
             sens_regular = flatten_spectral_sens(sens_regular)
 
             sens = np.vstack([sens_spectra, sens_regular])
