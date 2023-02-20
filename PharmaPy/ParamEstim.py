@@ -1111,7 +1111,7 @@ class MultipleCurveResolution(ParameterEstimation):
         else:
             sens = sens_spectra
 
-        return sens
+        return sens.T
 
     def get_global_analysis(self, params,):
         c_runs = []
