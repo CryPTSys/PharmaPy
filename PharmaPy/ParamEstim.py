@@ -528,8 +528,6 @@ class ParameterEstimation:
 
     def get_gradient(self, params, jac_matrix=False, set_self=True):
 
-        sens_runs = []
-
         if self.sens_second is None:
             raw_sens = []
             for ind in range(self.num_datasets):
@@ -546,29 +544,24 @@ class ParameterEstimation:
                                         *self.args_fun[ind],
                                         **self.kwargs_fun[ind])
 
-                if self.num_model_states == 1:
-                    sens_run = sens
-
-                else:
-                    sens_run = self.select_sens(sens, self.num_model_states)
-
-                raw_sens.append(sens_run)
+                raw_sens.append(sens)
 
         else:
             raw_sens = self.sens_second
 
         weighted_sens = []
-        for sensit in range(raw_sens):
-            sens_by_y = reorder_sens(sensit)
-            weighted = np.dot(sens_by_y, self.sigma_inv)
+        for sensit, x_model in zip(raw_sens, self.x_model):
+            sensit = self.select_sens(sensit, self.num_model_states)
 
-            weighted = reorder_sens(weighted_sens,
-                                    num_rows=len(self.x_model[ind]))
+            sens_by_y = reorder_sens(sensit)
+
+            weighted = np.dot(sens_by_y, self.sigma_inv)
+            weighted = reorder_sens(weighted, num_rows=len(x_model))
 
             weighted_sens.append(weighted)
 
-        if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
-            self.get_objective(params)
+        # if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
+        #     self.get_objective(params)
 
         concat_sens = np.vstack(weighted_sens)
         if not self.fit_spectra:
@@ -579,8 +572,8 @@ class ParameterEstimation:
         self.sens = concat_sens
         jacobian = concat_sens
 
-        if set_self:
-            self.sens_runs = sens_runs
+        # if set_self:
+        #     self.sens_runs = sens_runs
 
         if jac_matrix:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
