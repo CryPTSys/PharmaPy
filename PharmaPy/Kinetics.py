@@ -12,14 +12,23 @@ import json
 import re
 
 from PharmaPy.Commons import get_permutation_indexes
+from PharmaPy.Errors import PharmaPyTypeError
+
 # from autograd import numpy as np
 
 gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
-def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
-    phi_1, phi_2, exp = params
+def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
+                    order):
+    sec = False
+    if len(params) == 3:
+        phi_1, phi_2, exp = params
+    else:
+        phi_1, phi_2, exp, s_2 = params
+        sec = True
+        
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
 
@@ -30,31 +39,16 @@ def cryst_mechanism(sup_sat, temp, temp_ref, params, reformulate):
         pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
-
+    
+    if sec:
+        if moms.ndim == 1:
+            mom = np.maximum(0, moms[order]) # For vector moms
+        
+        elif moms.ndim == 2:
+            mom= np.maximum(0, moms[:, order]) # for matrix
+        kinetic_term *= (mom * kv)**s_2
+    
     return kinetic_term
-
-
-def secondary_nucleation(sup_sat, moms, temp, temp_ref, params, kv_cry,
-                         reformulate):
-
-    phi_1, phi_2, s_1, s_2 = params
-    absup = np.maximum(eps, sup_sat)
-
-    if moms.ndim == 1:
-        mom_3 = moms[3]
-    else:
-        mom_3 = moms[:, 3]
-
-    if reformulate:
-        pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
-    else:
-        pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
-
-    nucl_sec = pre_exp * sup_sat * absup**(s_1 - 1) * \
-        kv_cry**s_2 * np.maximum(0, mom_3)**s_2
-
-    return nucl_sec
-
 
 def disect_rxns(rxns, sep='-->'):
 
@@ -655,21 +649,38 @@ class CrystKinetics:
 
     def __init__(self, coeff_solub=None, solub_fn=None,
                  nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
-                 solubility_type='polynomial', rel_super=True,
+                 solubility_type='polynomial', sup_sat_type='relative', 
                  reformulate_kin=False, alpha_fn=None,
-                 temp_ref=298.15, secondary_fn=None):
+                 temp_ref=298.15, custom_mechanisms=None,
+                 mu_sec_nucl='volume'):
         """
         Parameters
         ----------
         solub_fn : callable, optional
             function with the signature solub_fn(temp, conc)
-
+        sup_sat_type : string, optional
+            Default : 'relative'
+            if 'relative', supersaturation is calculated as:
+                S = (c - c_sat)/ c_sat.
+            if, 'ratio':
+                S = c/ c_sat
+            if, 'absolute':
+                S = c- c_sat.
+            where c is instantaneous concentration and c_sat is saturated concentration [kg/m3]
+        custom_mechanisms: dict of callables
+            TODO
+        mu_sec_nucl : string
+            if 'area', mu_2 will be used on the size-dependent term of Bs, else
+            if 'volume', mu_3 will be used, for secondary nucleation written as:
+                
+                Bs = k_s * S^(s_1) * (mu_sec_nucl * k_v)^(s_2)
+        
         """
 
         self.target_idx = None
 
         self.temp_ref = temp_ref
-        self.rel_super = rel_super
+        self.sup_sat_type = sup_sat_type
         self.reformulate_kin = reformulate_kin
 
         if solub_fn is None:
@@ -677,14 +688,16 @@ class CrystKinetics:
         else:
             self.get_solubility = solub_fn
 
-        self.custom_sec = False
+        mu_sec = {'area': 2, 'volume': 3}
+        self.mu_sec_nucl = mu_sec[mu_sec_nucl]
 
-        if secondary_fn is None:
-            self.secondary_fn = secondary_nucleation
-        else:
-            self.secondary_fn = secondary_fn
-            self.custom_sec = True
-
+        if custom_mechanisms is None:
+            custom_mechanisms = {}
+        elif not isinstance(custom_mechanisms, dict):
+            raise PharmaPyTypeError('Provide a dictionary of callables for kinetics.')
+            
+        self.custom_mechanisms = custom_mechanisms
+            
         # ---------- Parameters
         self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
                                  'dissolution')
@@ -822,12 +835,15 @@ class CrystKinetics:
         conc_sat = self.get_solubility(temp, conc)
         sup_sat = (conc_target - conc_sat)
 
-        if self.rel_super:
+        if self.sup_sat_type == 'relative':
             sup_sat = sup_sat / conc_sat
-
+            
+        if self.sup_sat_type == 'ratio':
+            sup_sat = sup_sat / conc_sat + 1
+            
         par_p, par_s, par_g, par_d = self.params.values()
 
-        if self.custom_sec:
+        if 'nucl_sec' in self.custom_mechanisms:
             args_sec = ()
             par_sec = self.params_sec
         else:
@@ -835,32 +851,37 @@ class CrystKinetics:
             par_sec = par_s
 
         if isinstance(sup_sat, float):
-
+            # print(sup_sat)
+            args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
-                nucl_prim = cryst_mechanism(sup_sat, temp, self.temp_ref,
-                                            par_p, self.reformulate_kin)
-
-                growth = cryst_mechanism(sup_sat, temp, self.temp_ref, par_g,
-                                         self.reformulate_kin)
-
-                nucl_sec = self.secondary_fn(sup_sat, moments, temp,
-                                             self.temp_ref, par_sec,
-                                             *args_sec)
-
-                dissol = 0
+                
+                subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
             else:
-                growth = 0
-                nucl_prim = 0
-                nucl_sec = 0
+                
+                subset_mech = ('dissolution', )
 
-                dissol = cryst_mechanism(sup_sat, temp, self.temp_ref, par_d,
-                                         self.reformulate_kin)
+            mechs = {}
+            
+            for name in subset_mech:
+                if name in self.custom_mechanisms:
+                    args_concat = args + [self.params[name]]
+                    mechs[name] = self.custom_mechanisms[name](*args_concat)
+                else:
+                    mechs[name] = cryst_mechanism(sup_sat, moments, temp,
+                                                  self.temp_ref,
+                                                  self.params[name],
+                                                  self.reformulate_kin,
+                                                  kv_cry, self.mu_sec_nucl)
+                    
+            for ky in self.names_mechanisms:
+                if ky not in mechs:
+                    mechs[ky] = 0
 
             # Returns
-            self.prim_nucl = nucl_prim
-            self.sec_nucl = nucl_sec
-            self.growth = growth  # um/s
-            self.dissol = dissol  # um/s
+            self.prim_nucl = mechs['nucl_prim']
+            self.sec_nucl = mechs['nucl_sec']
+            self.growth = mechs['growth']  # um/s
+            self.dissol = mechs['dissolution']  # um/s
 
         else:
             # Divide positive and negative supersaturation periods
@@ -871,37 +892,59 @@ class CrystKinetics:
 
             temp_positive = temp[positive_map]
             temp_negative = temp[~positive_map]
-
-            # Primary nucleation
-            nucl_prim = np.zeros_like(sup_sat)
-            nucl_prim[positive_map] = cryst_mechanism(
-                sup_positive, temp_positive, self.temp_ref, par_p,
-                self.reformulate_kin)
-
-            # Growth
-            growth = np.zeros_like(sup_sat)
-            growth[positive_map] = cryst_mechanism(
-                sup_positive, temp_positive, self.temp_ref, par_g,
-                self.reformulate_kin)
-
-            # Secondary nucleation
-            nucl_sec = np.zeros_like(sup_sat)
-            moms_positive = moments[positive_map]
-            nucl_sec[positive_map] = self.secondary_fn(
-                sup_positive, moms_positive, temp_positive, self.temp_ref,
-                par_sec, *args_sec)
-
-            # Dissolution
-            dissol = np.zeros_like(sup_sat)
-            dissol[~positive_map] = cryst_mechanism(
-                sup_negative, temp_negative, self.temp_ref, par_d,
-                self.reformulate_kin)
-
+            
+            conc_sat_positive = conc_sat[positive_map]
+            conc_sat_negative = conc_sat[~positive_map]
+            
+            moments_positive = moments[positive_map]
+            moments_negative = moments[~positive_map]
+            
+            subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
+            
+            mechs = {}
+            
+            for name in self.names_mechanisms:
+                mechs[name] = np.zeros_like(sup_sat)
+                
+            args = [sup_positive, conc_sat_positive, moments_positive, 
+                    temp_positive, self.temp_ref]        
+            
+            for name in subset_mech:
+                if name in self.custom_mechanisms:
+                    args_concat = args + [self.params[name]]
+                    mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
+                else:
+                    mechs[name][positive_map] = cryst_mechanism(sup_positive, 
+                                                                moments_positive,
+                                                                temp_positive,
+                                                                self.temp_ref,
+                                                                self.params[name],
+                                                                self.reformulate_kin,
+                                                                kv_cry, self.mu_sec_nucl)
+                    
+            subset_mech = ('dissolution', )
+            
+            args = [sup_negative, conc_sat_negative, moments_negative, 
+                    temp_negative, self.temp_ref]        
+            
+            for name in subset_mech:
+                if name in self.custom_mechanisms:
+                    args_concat = args + [self.params[name]]
+                    mechs[name][~positive_map] = self.custom_mechanisms[name](*args_concat)
+                else:
+                    mechs[name][~positive_map] = cryst_mechanism(sup_negative, 
+                                                                 moments_negative,
+                                                                temp_negative,
+                                                                self.temp_ref,
+                                                                self.params[name],
+                                                                self.reformulate_kin,
+                                                                kv_cry, self.mu_sec_nucl)
+                    
         if nucl_sec_out:
-            return nucl_prim, nucl_sec, growth, dissol
+            return mechs['nucl_prim'], mechs['nucl_sec'], mechs['growth'], mechs['dissolution']
         else:
-            nucl = nucl_prim + nucl_sec
-            return nucl, growth, dissol
+            nucl = mechs['nucl_prim'] + mechs['nucl_sec']
+            return nucl, mechs['growth'], mechs['dissolution']
 
     def deriv_cryst(self, conc_tg, conc, temp):
         conc_sat = self.get_solubility(temp, conc)

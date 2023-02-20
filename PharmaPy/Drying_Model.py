@@ -589,11 +589,11 @@ class Drying:
         if time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
             self.elapsed_time = time_grid[0]
-
-        time, states = sim.simulate(final_time,  ncp_list=time_grid)
         
         if not verbose:
           sim.verbosity = 50
+          
+        time, states = sim.simulate(final_time,  ncp_list=time_grid)
         
         self.retrieve_results(time, states)
 

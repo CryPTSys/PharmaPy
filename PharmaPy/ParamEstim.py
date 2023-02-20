@@ -639,7 +639,7 @@ class ParameterEstimation:
 
         return opt_par, covar_params, info
 
-    def get_covariance(self):
+    def get_covariance(self, include_mse=True):
         jac = self.info_opt['jac']
         resid = self.info_opt['fun']
 
@@ -647,9 +647,12 @@ class ParameterEstimation:
 
         dof = self.num_data_total - self.num_params
         mse = 1 / dof * np.dot(resid.T, resid)
-
-        covar = mse * np.linalg.inv(hessian_approx)
-
+        
+        if include_mse:
+            covar = mse * np.linalg.inv(hessian_approx)
+            
+        else:
+            covar = np.linalg.inv(hessian_approx)
         # Correlation matrix
         sigma = np.sqrt(covar.diagonal())
         d_matrix = np.diag(1/sigma)
