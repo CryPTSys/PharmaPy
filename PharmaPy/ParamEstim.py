@@ -1063,9 +1063,9 @@ class MultipleCurveResolution(ParameterEstimation):
 
             self.sigma_inv = np.eye(size_sigma)
 
-        self.resolution_results = None
+        self.projection_kwargs = {}
 
-    def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
+    def get_sens_projection(self, c_target, c_plus, sens_states):
         eye = np.eye(c_target.shape[0])
         proj_orthogonal = eye - np.dot(c_target, c_plus)
 
@@ -1076,7 +1076,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         first_term = proj_orthogonal @ sens_pick @ c_plus
         second_term = first_term.transpose((0, 2, 1))
-        sens_an = (first_term + second_term) @ spectra_pred
+        sens_an = (first_term + second_term) @ self.spectra_tot
 
         return sens_an
 
@@ -1088,7 +1088,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         return absorbance.T.ravel()
 
-    def get_gradient(self, params, residual_vec=False):
+    def get_gradient(self, params, jac_matrix=False):
         raw_sens = []
         if self.sens_second is None:
             pass
@@ -1100,7 +1100,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         # Variable projection derivative: n_par x n_times x n_lambda
         sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
-                                                **self.resolution_results)
+                                                **self.projection_kwargs)
 
         n_par, n_times, n_lambda = sens_spectra.shape
         if self.has_non:
@@ -1124,7 +1124,10 @@ class MultipleCurveResolution(ParameterEstimation):
             weighted_sens = sens @ self.sigma_inv
             weighted_sens = flatten_spectral_sens(weighted_sens)
 
-        return weighted_sens.T
+        if jac_matrix:
+            return -weighted_sens.T
+        else:
+            pass
 
     def get_global_analysis(self, params,):
         c_runs = []
@@ -1175,37 +1178,12 @@ class MultipleCurveResolution(ParameterEstimation):
 
         spectra_pred = np.dot(conc_tot, absorptivity_pure)
 
-        # c_target, c_plus, sens_states, spectra_pred
-        self.resolution_results = {'c_target': conc_tot, 'c_plus': conc_plus,
-                                   'spectra_pred': spectra_pred}
+        self.projection_kwargs = {'c_target': conc_tot, 'c_plus': conc_plus}
 
         if len(sens_states) > 0:
             self.sens_second = sens_states
 
-        # if len(sens_states) == 0:  # TODO: it won't work like this
-        #     args_merged = [self.x_data[ind],
-        #                    self.args_fun[ind], self.spectra[ind]]
-
-        #     sens = numerical_jac_data(self.func_aux, params, args_merged,
-        #                               dx=self.dx_fd)[:, self.map_variable]
-        # else:
-        #     sens_tot = np.concatenate(sens_states, axis=1)  # (n_par x n_times x n_states)
-        #     sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
-
-        #     sens_spectra = self.get_sens_projection(conc_tot, conc_plus,
-        #                                             sens_mcr, spectra_pred)
-
-        #     if self.has_non:
-        #         sens_regular = sens_tot[:, :,
-        #                                 self.measured_ind['non_spectra']]
-
-        #         sens_regular = flatten_spectral_sens(sens_regular)
-
-        #         sens = np.vstack([sens_spectra, sens_regular])
-        #     else:
-        #         sens = sens_spectra
-
-        residuals = spectra_pred - self.spectra_tot
+        residuals = self.spectra_tot - spectra_pred
         if self.has_non:
             residuals = np.hstack((residuals, resid_non))
 
@@ -1228,7 +1206,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         weighted_resid = weighted_resid.T.ravel()
 
-        return y_runs, weighted_resid
+        return y_runs, weighted_resid, absorptivity_pure
 
     def get_local_analysis(self, params):
         y_runs = []
@@ -1285,7 +1263,7 @@ class MultipleCurveResolution(ParameterEstimation):
         weighted_resid = [elem.T.ravel() for elem in weighted_resid]
         weighted_resid = np.concatenate(weighted_resid)
 
-        return y_runs, weighted_resid  # TODO: I didn't work on this method
+        return y_runs, weighted_resid, absorptivity_pure  # TODO: I didn't work on this method
 
     def get_objective(self, params, residual_vec=False):
 
@@ -1296,10 +1274,10 @@ class MultipleCurveResolution(ParameterEstimation):
         params = self.reconstruct_params(params)
 
         if self.global_analysis:
-            y_runs, weighted_resid = self.get_global_analysis(params)
+            y_runs, weighted_resid, molar_abs = self.get_global_analysis(params)
 
         else:
-            y_runs, weighted_resid = self.get_local_analysis(params)
+            y_runs, weighted_resid, molar_abs = self.get_local_analysis(params)
 
         if type(self.objfun_iter) is list:
             # objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
@@ -1313,7 +1291,8 @@ class MultipleCurveResolution(ParameterEstimation):
         if residual_vec:
             return weighted_resid
         else:
-            residual = 1/2 * np.dot(weighted_resid, weighted_resid)
+            residual = 1/2 * np.dot(weighted_resid, weighted_resid) \
+                + (np.maximum(molar_abs, 0)**2).sum()
             return residual
 
 
