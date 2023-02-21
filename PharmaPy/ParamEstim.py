@@ -1091,7 +1091,10 @@ class MultipleCurveResolution(ParameterEstimation):
     def get_gradient(self, params, jac_matrix=False):
         raw_sens = []
         if self.sens_second is None:
-            pass
+            pick_p = np.where(self.map_variable)[0]
+            raw_sens = numerical_jac_data(self.get_objective, params, (True, ),
+                                          dx=self.dx_fd, pick_x=pick_p)
+
         else:
             raw_sens = self.sens_second
 
@@ -1129,7 +1132,7 @@ class MultipleCurveResolution(ParameterEstimation):
         else:
             pass
 
-    def get_global_analysis(self, params,):
+    def get_global_analysis(self, params):
         c_runs = []
         states_non = []
         sens_states = []
@@ -1190,23 +1193,13 @@ class MultipleCurveResolution(ParameterEstimation):
         weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
-        trim_sens = np.cumsum(self.size_spectra)[:-1]
 
         y_runs = np.split(spectra_pred, trim_y, axis=0)
-        # y_runs = [array.T.ravel() for array in y_runs]
-
-        # sens_runs = np.split(sens, trim_sens, axis=0)
         resid_runs = np.split(residuals, trim_y, axis=0)
-
-        self.resid_runs = resid_runs
-        self.y_runs = y_runs
-        # self.sens_runs = sens_runs
-
-        self.epsilon_mcr = absorptivity_pure
 
         weighted_resid = weighted_resid.T.ravel()
 
-        return y_runs, weighted_resid, absorptivity_pure
+        return y_runs, resid_runs, weighted_resid, absorptivity_pure
 
     def get_local_analysis(self, params):
         y_runs = []
@@ -1265,7 +1258,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         return y_runs, weighted_resid, absorptivity_pure  # TODO: I didn't work on this method
 
-    def get_objective(self, params, residual_vec=False):
+    def get_objective(self, params, residual_vec=False, update_self=True):
 
         if type(self.params_iter) is list:
             self.params_iter.append(params)
@@ -1274,18 +1267,22 @@ class MultipleCurveResolution(ParameterEstimation):
         params = self.reconstruct_params(params)
 
         if self.global_analysis:
-            y_runs, weighted_resid, molar_abs = self.get_global_analysis(params)
+            out = self.get_global_analysis(params)
 
         else:
-            y_runs, weighted_resid, molar_abs = self.get_local_analysis(params)
+            out = self.get_local_analysis(params)
 
-        if type(self.objfun_iter) is list:
-            # objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
-            objfun_val = np.linalg.norm(weighted_resid)**2
-            self.objfun_iter.append(objfun_val)
+        y_runs, resid, weighted_resid, molar_abs = out
 
-        # residuals = np.concatenate(resid_runs)
-        self.residuals = weighted_resid
+        if update_self:
+            if type(self.objfun_iter) is list:
+                objfun_val = np.linalg.norm(weighted_resid)**2
+                self.objfun_iter.append(objfun_val)
+
+            self.residuals = weighted_resid
+            self.y_runs = y_runs
+            self.epsilon_mcr = molar_abs
+            self.resid_runs = resid
 
         # Return objective
         if residual_vec:
