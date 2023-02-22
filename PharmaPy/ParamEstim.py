@@ -1092,45 +1092,55 @@ class MultipleCurveResolution(ParameterEstimation):
         raw_sens = []
         if self.sens_second is None:
             pick_p = np.where(self.map_variable)[0]
-            raw_sens = numerical_jac_data(self.get_objective, params, (True, ),
+            raw_sens = numerical_jac_data(self.get_objective, params,
+                                          args=(True, False),
                                           dx=self.dx_fd, pick_x=pick_p)
+
+            num_times_total, num_lambda = self.spectra_tot.shape
+            num_non_spectral = len(self.measured_ind.get('non_spectra', []))
+            num_cols = num_lambda + num_non_spectral
+
+            sens = raw_sens.reshape(-1, num_cols, num_times_total)
+            sens = np.transpose(sens, (0, 2, 1))
+
+            weighted_sens = sens @ self.sigma_inv
 
         else:
             raw_sens = self.sens_second
+            sens_tot = np.concatenate(raw_sens, axis=1)  # (n_par x n_times x n_states)
 
-        sens_tot = np.concatenate(raw_sens, axis=1)  # (n_par x n_times x n_states)
-        sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
+            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
 
-        # Variable projection derivative: n_par x n_times x n_lambda
-        sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
-                                                **self.projection_kwargs)
+            # Variable projection derivative: n_par x n_times x n_lambda
+            sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
+                                                    **self.projection_kwargs)
 
-        n_par, n_times, n_lambda = sens_spectra.shape
-        if self.has_non:
-            sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
+            n_par, n_times, n_lambda = sens_spectra.shape
+            if self.has_non:
+                sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
 
-            all_sens = np.concatenate((sens_spectra, sens_regular), axis=2)
+                all_sens = np.concatenate((sens_spectra, sens_regular), axis=2)
 
-            weighted_all = all_sens @ self.sigma_inv
+                weighted_all = all_sens @ self.sigma_inv
 
-            weighted_sp = flatten_spectral_sens(weighted_all[:, :, :n_lambda])
-            weighted_reg = flatten_spectral_sens(weighted_all[:, :, n_lambda:])
+                weighted_sp = flatten_spectral_sens(weighted_all[:, :, :n_lambda])
+                weighted_reg = flatten_spectral_sens(weighted_all[:, :, n_lambda:])
 
-            weighted_sens = np.vstack((weighted_sp, weighted_reg))
+                weighted_sens = np.vstack((weighted_sp, weighted_reg))
 
-            # sens_regular = flatten_spectral_sens(sens_regular)
+                # sens_regular = flatten_spectral_sens(sens_regular)
 
-            # sens = np.vstack([sens_spectra, sens_regular])
-        else:
-            sens = sens_spectra
+                # sens = np.vstack([sens_spectra, sens_regular])
+            else:
+                sens = sens_spectra
 
-            weighted_sens = sens @ self.sigma_inv
-            weighted_sens = flatten_spectral_sens(weighted_sens)
+                weighted_sens = sens @ self.sigma_inv
+                weighted_sens = flatten_spectral_sens(weighted_sens)
 
         if jac_matrix:
             return -weighted_sens.T
         else:
-            pass
+            return sum(weighted_sens)
 
     def get_global_analysis(self, params):
         c_runs = []
@@ -1288,9 +1298,10 @@ class MultipleCurveResolution(ParameterEstimation):
         if residual_vec:
             return weighted_resid
         else:
-            residual = 1/2 * np.dot(weighted_resid, weighted_resid) \
-                + (np.maximum(molar_abs, 0)**2).sum()
-            return residual
+            residual = 1/2 * np.dot(weighted_resid, weighted_resid)
+
+            penalty = (np.maximum(-molar_abs, 0)**2).sum()
+            return residual + penalty
 
 
 if __name__ == '__main__':
