@@ -30,26 +30,34 @@ def dx_jac_p(p, abstol, reltol, eps):
     return dx
 
 
-def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None):
+def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None,
+                  pick_x=None):
 
     if dx is None:
         dx = np.ones_like(x) * eps
     elif callable(dx):
-        dx = dx(x, abs_tol, rel_tol, eps)
+        # dx = dx(x, abs_tol, rel_tol, eps)
+        dx = dx(x)
     else:
         dx = np.ones_like(x) * dx
 
-    f_eval = func(x, *args)
+    if pick_x is None:
+        pick_x = np.arange(len(x))
+    else:
+        pick_x = np.atleast_1d(pick_x)
 
-    num_x = len(x)
+    f_eval = func(x, *args)
+    f_eval = np.atleast_1d(f_eval)
+
+    num_x = len(pick_x)
     num_f = len(f_eval)
 
     jac = np.zeros((num_f, num_x))
     delx = np.zeros_like(x)
 
-    for i in range(num_x):
+    for idx, i in enumerate(pick_x):
         delx[i] = dx[i]
-        jac[:, i] = (func(x + delx, *args) - f_eval)/dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
         delx[i] = 0
 
     return jac

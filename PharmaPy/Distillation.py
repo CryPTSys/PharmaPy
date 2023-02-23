@@ -229,7 +229,7 @@ class _BaseDistillation:
             reflux = 1.5 * min_reflux  # Heuristic
         elif self.reflux < 0:
             reflux = -self.reflux * min_reflux
-        elif self.reflux > 0 and self.reflux < self.min_reflux:
+        elif self.reflux > 0 and self.reflux < min_reflux:
             print(
                 'Specified reflux less than min_reflux, calculation proceeds '
                 'with 1.5 * min_reflux')

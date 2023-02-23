@@ -16,7 +16,7 @@ from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pandas as pd
-from PharmaPy.jac_module import numerical_jac_data, dx_jac_p
+from PharmaPy.jac_module import numerical_jac_data, dx_jac_p, numerical_jac
 from PharmaPy import Gaussians as gs
 
 from PharmaPy.LevMarq import levenberg_marquardt
@@ -427,6 +427,8 @@ class ParameterEstimation:
         self.sens_runs = None
         self.y_model = []
 
+        self.method = None
+
     def select_sens(self, sens_ordered, num_states, times=None):
 
         parts = np.split(sens_ordered, num_states, axis=0)
@@ -451,7 +453,7 @@ class ParameterEstimation:
 
         return states.T.ravel()
 
-    def get_objective(self, params, residual_vec=False, set_self=True):
+    def get_objective(self, params, out_array=False, set_self=True):
         # Store parameter values
         if type(self.params_iter) is list:
             self.params_iter.append(params)
@@ -519,14 +521,14 @@ class ParameterEstimation:
         # Return objective
         residual_out = np.concatenate([ar.T.ravel()
                                        for ar in weighted_residuals])
-        if residual_vec:
+        if out_array:
             return residual_out
         else:
             residual_out = 1/2 * np.dot(residual_out, residual_out)
 
         return residual_out
 
-    def get_gradient(self, params, jac_matrix=False, set_self=True):
+    def get_gradient(self, params, out_array=False, set_self=True):
 
         if self.sens_second is None:
             raw_sens = []
@@ -575,7 +577,7 @@ class ParameterEstimation:
         # if set_self:
         #     self.sens_runs = sens_runs
 
-        if jac_matrix:
+        if out_array:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
             res = np.concatenate([a.T.ravel() for a in self.residuals])
@@ -594,10 +596,11 @@ class ParameterEstimation:
                     store_iter=True, method='LM', bounds=None):
 
         self.optimize_flag = not simulate
+        self.opt_method = method
+
         params_var = self.param_seed[self.map_variable]
 
         if method == 'LM':
-            self.opt_method = 'LM'
             if optim_options is None:
                 optim_options = {'full_output': True, 'verbose': verbose}
             else:
@@ -612,22 +615,27 @@ class ParameterEstimation:
                 **optim_options)
 
         elif method == 'IPOPT':
-            self.opt_method = 'IPOPT'
             if optim_options is None:
                 optim_options = {'print_level': int(verbose) * 5}
             else:
                 optim_options['print_level'] = int(verbose) * 5
 
+            kwargs_fun = {'out_array': False}
             result = minimize_ipopt(self.get_objective, params_var,
                                     jac=self.get_gradient,
-                                    bounds=bounds, options=optim_options)
+                                    bounds=bounds, options=optim_options,
+                                    kwargs=kwargs_fun)
 
             opt_par = result['x']
 
             # final_sens = np.vstack(self.sens_runs)[:, self.map_variable].T
-            final_sens = np.vstack(self.sens_runs)
-            final_fun = np.concatenate(self.resid_runs)
-            info = {'jac': final_sens, 'fun': final_fun}
+            # final_sens = np.vstack(self.sens_runs)
+            # final_fun = np.concatenate(self.resid_runs)
+
+            resid_multidim = self.get_objective(opt_par, out_array=True,
+                                                update_self=False)
+            jac_multidim = self.get_gradient(opt_par, out_array=True)
+            info = {'jac': jac_multidim, 'fun': resid_multidim}
 
         self.optim_options = optim_options
 
@@ -1006,7 +1014,7 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, y_spectra,
+    def __init__(self, func, param_seed, time_data, y_spectra, mult_penalty=1,
                  global_analysis=True,
                  args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
@@ -1064,6 +1072,7 @@ class MultipleCurveResolution(ParameterEstimation):
             self.sigma_inv = np.eye(size_sigma)
 
         self.projection_kwargs = {}
+        self.mult_penalty = mult_penalty
 
     def get_sens_projection(self, c_target, c_plus, sens_states):
         eye = np.eye(c_target.shape[0])
@@ -1088,22 +1097,33 @@ class MultipleCurveResolution(ParameterEstimation):
 
         return absorbance.T.ravel()
 
-    def get_gradient(self, params, jac_matrix=False):
+    def get_gradient(self, params, out_array=False):
         raw_sens = []
         if self.sens_second is None:
             pick_p = np.where(self.map_variable)[0]
-            raw_sens = numerical_jac_data(self.get_objective, params,
-                                          args=(True, False),
-                                          dx=self.dx_fd, pick_x=pick_p)
 
-            num_times_total, num_lambda = self.spectra_tot.shape
-            num_non_spectral = len(self.measured_ind.get('non_spectra', []))
-            num_cols = num_lambda + num_non_spectral
+            if out_array:
+                args = (True, False)  # out_array, update_self
+                jac_fun = numerical_jac_data
+            else:
+                args = (False, False)
+                jac_fun = numerical_jac
 
-            sens = raw_sens.reshape(-1, num_cols, num_times_total)
-            sens = np.transpose(sens, (0, 2, 1))
+            weighted_sens = jac_fun(self.get_objective, params, args=args,
+                                    dx=self.dx_fd, pick_x=pick_p)
 
-            weighted_sens = sens @ self.sigma_inv
+            # if self.opt_method == 'LM':
+
+            #     num_times_total, num_lambda = self.spectra_tot.shape
+            #     num_non_spectral = len(self.measured_ind.get('non_spectra', []))
+            #     num_cols = num_lambda + num_non_spectral
+
+            #     sens = raw_sens.reshape(-1, num_cols, num_times_total)
+            #     sens = np.transpose(sens, (0, 2, 1))
+
+            #     weighted_sens = sens @ self.sigma_inv  # TODOÑ I think this is not necessary
+            # else:
+            #     weighted_sens = raw_sens
 
         else:
             raw_sens = self.sens_second
@@ -1137,10 +1157,10 @@ class MultipleCurveResolution(ParameterEstimation):
                 weighted_sens = sens @ self.sigma_inv
                 weighted_sens = flatten_spectral_sens(weighted_sens)
 
-        if jac_matrix:
+        if out_array:
             return -weighted_sens.T
         else:
-            return sum(weighted_sens)
+            return weighted_sens[0]
 
     def get_global_analysis(self, params):
         c_runs = []
@@ -1268,10 +1288,10 @@ class MultipleCurveResolution(ParameterEstimation):
 
         return y_runs, weighted_resid, absorptivity_pure  # TODO: I didn't work on this method
 
-    def get_objective(self, params, residual_vec=False, update_self=True):
+    def get_objective(self, params, out_array=False, update_self=True):
 
-        if type(self.params_iter) is list:
-            self.params_iter.append(params)
+        # if type(self.params_iter) is list:
+        #     self.params_iter.append(params)
 
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
@@ -1289,18 +1309,20 @@ class MultipleCurveResolution(ParameterEstimation):
                 objfun_val = np.linalg.norm(weighted_resid)**2
                 self.objfun_iter.append(objfun_val)
 
+            if type(self.params_iter) is list:
+                self.params_iter.append(params)
+
             self.residuals = weighted_resid
             self.y_runs = y_runs
             self.epsilon_mcr = molar_abs
             self.resid_runs = resid
 
         # Return objective
-        if residual_vec:
+        if out_array:
             return weighted_resid
         else:
             residual = 1/2 * np.dot(weighted_resid, weighted_resid)
-
-            penalty = (np.maximum(-molar_abs, 0)**2).sum()
+            penalty = self.mult_penalty*(np.maximum(-molar_abs, 0)**2).sum()
             return residual + penalty
 
 
