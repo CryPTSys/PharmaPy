@@ -113,7 +113,9 @@ class _BaseDistillation:
         heavier_idx = volatility_order[hk_loc + 1:]
 
         if hk_loc != lk_loc + 1:
-            print('High key and low key indices are not adjacent')
+            print('High key and low key indices are not adjacent', end='\n\n')
+            print('Volatility order at %.0f Pa (low to high): ' % self.pres +
+                  '-'.join(self.sorted_by_volatility))
 
         # ---------- Calculate Distillate and Bottom flow rates
         bot_flow = feed_flow * (z_feed[HK_index] * ((1 - self.frac_HK)) +
@@ -565,6 +567,7 @@ class DynamicDistillation(_BaseDistillation):
 
         self.oper_mode = 'Continuous'
         self.outputs = None
+        self.is_continuous = True
 
     def flatten_states(self):
         pass
