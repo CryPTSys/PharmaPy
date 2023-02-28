@@ -1916,7 +1916,7 @@ class MSMPR(_BaseCryst):
             self.Slurry.distrib = None
             self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
         else:
-            vol_liq = dp['vol_liq'][-1]
+            vol_liq = dp['vol'][-1]
             distrib_tilde = dp['total_distrib'][-1]
 
             rho_solid = self.Solid_1.getDensity()
