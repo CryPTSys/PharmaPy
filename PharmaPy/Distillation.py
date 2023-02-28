@@ -3,7 +3,7 @@ from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import unpack_discretized
+from PharmaPy.Commons import unpack_discretized, retrieve_pde_result
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_distrib
@@ -767,7 +767,15 @@ class DynamicDistillation(_BaseDistillation):
         self.result = DynamicResult(di_states=self.states_di,
                                     di_fstates=self.fstates_di, **dp)
 
-        self.outputs = dp
+        outputs = retrieve_pde_result(self.result, x_name='plate',
+                                      x=self.num_plates)
+
+        outputs['x_liq'] = np.column_stack(list(outputs['x_liq'].values()))
+        outputs['mole_frac'] = outputs.pop('x_liq')
+
+        outputs['mole_flow'] = np.ones_like(outputs['temp']) * self.bot_flowrate
+
+        self.outputs = outputs
         # [component_index, time, plate]
         x_comp = np.array(list(dp['x_liq'].values()))
 
