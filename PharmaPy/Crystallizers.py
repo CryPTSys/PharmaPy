@@ -1907,18 +1907,29 @@ class MSMPR(_BaseCryst):
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
-        vol_slurry = self.Slurry.vol
-        self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
+        if type(self) == MSMPR:
+            vol_slurry = self.Slurry.vol
+            distrib_tilde = dp['distrib'][-1] * vol_slurry
 
+            vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
+
+            self.Slurry.distrib = None
+            self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
+        else:
+            vol_liq = dp['vol_liq'][-1]
+            distrib_tilde = dp['total_distrib'][-1]
+
+            rho_solid = self.Solid_1.getDensity()
+            vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv * rho_solid
+
+            vol_slurry = vol_solid + vol_liq
+
+        self.Solid_1.updatePhase(distrib=distrib_tilde)
         self.Solid_1.temp = dp['temp'][-1]
 
         self.Liquid_1.temp = dp['temp'][-1]
-
-        vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
-        self.Slurry.distrib = None
-        self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
         self.elapsed_time = time[-1]
 
         # ---------- Create output stream
@@ -1956,7 +1967,7 @@ class MSMPR(_BaseCryst):
             liquid_out = copy.deepcopy(self.Liquid_1)
             solid_out = copy.deepcopy(self.Solid_1)
 
-            self.Outlet = Slurry(vol=self.vol_mult)
+            self.Outlet = Slurry(vol=vol_slurry)
 
         # self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
