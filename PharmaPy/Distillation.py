@@ -574,6 +574,7 @@ class DynamicDistillation(_BaseDistillation):
         self.oper_mode = 'Continuous'
         self.outputs = None
         self.is_continuous = True
+        self.elapsed_time = 0
 
     def flatten_states(self):
         pass
@@ -702,8 +703,19 @@ class DynamicDistillation(_BaseDistillation):
         pass
         return
 
-    def solve_unit(self, runtime=None, t0=0, sundials_opts=None, verbose=True):
-        self.column_startup()
+    def solve_unit(self, runtime=None, time_grid=None,
+                   sundials_opts=None, verbose=True):
+
+        if runtime is not None and time_grid is not None:
+            raise RuntimeError("Both 'runtime' and 'time_grid' were provided. "
+                               "Please provide only one of them")
+        elif runtime is not None:
+            final_time = runtime + self.elapsed_time
+
+        elif time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
+
+        self.column_startup(final_time)
 
         self.len_states = len(self.name_species) + 1
 
@@ -719,7 +731,8 @@ class DynamicDistillation(_BaseDistillation):
                                                  temp=init_states[:, 0])
 
         problem = Implicit_Problem(
-            self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
+            self.unit_model, init_states.ravel(), init_derivative.ravel(),
+            t0=self.elapsed_time)
 
         solver = IDA(problem)
         alg_map = np.zeros_like(init_states)
@@ -737,13 +750,15 @@ class DynamicDistillation(_BaseDistillation):
                 if name == 'time_limit':
                     solver.report_continuously = True
 
-        time, states, d_states = solver.simulate(runtime)
+        time, states, d_states = solver.simulate(final_time,
+                                                 ncp_list=time_grid)
+
         self.retrieve_results(time, states)
         return time, states, d_states
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
-        self.timeProf = time
+        self.elapsed_time = time[-1]
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
