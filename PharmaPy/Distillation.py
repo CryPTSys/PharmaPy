@@ -103,8 +103,11 @@ class _BaseDistillation:
         feed_flow = self.feed_flowrate
 
         # ---------- Determine Light Key and Heavy Key component numbers
-        bubble_pure = self.Inlet.AntoineEquation(pres=self.pres)
-        volatility_order = np.argsort(bubble_pure)
+        temp_bubble_feed = self.Inlet.getBubblePoint(pres=self.pres,
+                                                     mole_frac=z_feed)
+
+        k_feed = self.Inlet.getKeqVLE(temp=temp_bubble_feed, pres=self.pres)
+        volatility_order = np.argsort(k_feed)[::-1]
         self.sorted_by_volatility = [self.name_species[ind]
                                      for ind in volatility_order]
 
@@ -116,7 +119,7 @@ class _BaseDistillation:
 
         if hk_loc != lk_loc + 1:
             print('High key and low key indices are not adjacent', end='\n\n')
-            print('Volatility order at %.0f Pa (low to high): ' % self.pres +
+            print('Volatility order at %.0f Pa (high to low): ' % self.pres +
                   '-'.join(self.sorted_by_volatility))
 
         # ---------- Calculate Distillate and Bottom flow rates
@@ -171,9 +174,12 @@ class _BaseDistillation:
 
         return num_stages
 
-    def kirkbride_correlation(self, inputs, material_bce, num_plates):
-        z_lk = inputs['mole_frac'][self.LK_index]
-        z_hk = inputs['mole_frac'][self.HK_index]
+    def kirkbride_correlation(self, material_bce, num_plates, z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
+        z_lk = z_feed[self.LK_index]
+        z_hk = z_feed[self.HK_index]
 
         x_dist = material_bce['x_dist']
         x_bot = material_bce['x_bottom']
@@ -227,12 +233,14 @@ class _BaseDistillation:
 
         else:
             inputs = self.get_inputs(time)
-            z_feed = inputs['mole_frac']
+            z_feed = inputs['Inlet']['mole_frac']
 
-        x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce()
+        x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce(
+            z_feed)
 
         min_reflux = self.calc_min_reflux(x_dist, x_bot,
-                                          dist_flowrate, bot_flowrate)
+                                          dist_flowrate, bot_flowrate,
+                                          z_feed)
 
         num_min = self.calc_num_min(x_dist, x_bot)
 
@@ -272,9 +280,8 @@ class _BaseDistillation:
 
         # Feed stage
         if self.num_feed is None:
-            inputs = self.get_inputs(time=0)['Inlet']  # TODO: check this
-            num_rect, num_strip = self.kirkbride_correlation(inputs, mat_bce,
-                                                             num_plates)
+            num_rect, num_strip = self.kirkbride_correlation(
+                mat_bce, num_plates, z_feed)
 
             if num_rect > num_strip:
                 num_feed = num_rect
@@ -715,6 +722,8 @@ class DynamicDistillation(_BaseDistillation):
         elif time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
 
+        # Use inputs coming from the upstream UO in the future for heuristics,
+        # i.e. as close to steady-state as possible
         self.column_startup(final_time)
 
         self.len_states = len(self.name_species) + 1
