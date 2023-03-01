@@ -93,11 +93,13 @@ class _BaseDistillation:
 
         return alpha
 
-    def global_material_bce(self):
+    def global_material_bce(self, z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
         HK_index = self.HK_index
         LK_index = self.LK_index
 
-        z_feed = self.z_feed
         feed_flow = self.feed_flowrate
 
         # ---------- Determine Light Key and Heavy Key component numbers
@@ -188,14 +190,18 @@ class _BaseDistillation:
 
         return np.round(num_rect), np.round(num_strip)
 
-    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate):
+    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
+                        z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
         LK_index = self.LK_index
         HK_index = self.HK_index
 
-        alpha = self.get_alpha(self.pres, self.z_feed)
+        alpha = self.get_alpha(self.pres, z_feed)
 
         def f(phi):
-            fun = (sum(alpha * self.z_feed /
+            fun = (sum(alpha * z_feed /
                        (alpha - phi + np.finfo(float).eps)))**2
 
             return fun
@@ -214,7 +220,15 @@ class _BaseDistillation:
 
         return min_reflux
 
-    def calculate_heuristics(self):
+    def calculate_heuristics(self, time=None):
+
+        if time is None:
+            z_feed = self.z_feed
+
+        else:
+            inputs = self.get_inputs(time)
+            z_feed = inputs['mole_frac']
+
         x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce()
 
         min_reflux = self.calc_min_reflux(x_dist, x_bot,
@@ -333,14 +347,6 @@ class DistillationColumn(_BaseDistillation):
 
         super().__init__(pres, q_feed, LK, HK, perc_LK, perc_HK, reflux,
                          num_plates, gamma_model, num_feed)
-
-    def get_k_vals(self, x_oneplate=None, temp=None):
-        if x_oneplate is None:
-            x_oneplate = self.z_feed
-
-        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp,
-                                       x_liq=x_oneplate)
-        return k_vals
 
     def VLE(self, y_oneplate=None, temp=None, need_x_vap=True):
         # VLE uses vapor stream, need vapor stream object temporarily.
@@ -609,8 +615,8 @@ class DynamicDistillation(_BaseDistillation):
 
         self.nomenclature()
 
-    def column_startup(self):
-        result = self.calculate_heuristics()
+    def column_startup(self, time_heuristics):
+        result = self.calculate_heuristics(time_heuristics)
 
         global_mbce = result['material_balances']
 
