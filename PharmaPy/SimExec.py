@@ -51,6 +51,9 @@ class SimulationExec:
         if kwargs_run is None:
             kwargs_run = {}
 
+        if steady_state_di is None:
+            steady_state_di = {}
+
         if pick_units is None:
             pick_units = self.execution_names
 
@@ -62,6 +65,8 @@ class SimulationExec:
         # Run loop
         connections = {}
         count = 1
+
+        ss_time = 0
         for ind, name in enumerate(self.execution_names):
             instance = getattr(self, name)
 
@@ -77,45 +82,33 @@ class SimulationExec:
 
                 kwargs_uo = kwargs_run.get(name, {})
 
-                if steady_state_di is not None:
-                    ss_time = 0
-                    for name, di in steady_state_di.items():
-                        tau = 0
-                        if hasattr(instance, '_get_tau'):
-                            tau = instance._get_tau()
+                if name in steady_state_di:
+                    kw_ss = steady_state_di[name]
 
-                        ss_time += tau
+                    tau = 0
+                    if hasattr(instance, '_get_tau'):
+                        tau = instance._get_tau()
 
-                        kw_ss = di
-                        if instance.__class__.__name__ == 'Mixer':
-                            pass
-                        else:
-                            defaults = {'time_stop': ss_time,
-                                        'threshold': 1e-6,
-                                        'tau': tau}
+                    ss_time += tau
 
-                            for key, val in defaults:
-                                kw_ss.setdefault(key, val)
+                    if instance.__class__.__name__ == 'Mixer':
+                        pass
+                    else:
+                        defaults = {'time_stop': ss_time,
+                                    'threshold': 1e-6,
+                                    'tau': tau}
 
-                            # if kw_ss is None:
-                            #     kw_ss = {'tau': tau, 'time_stop': ss_time,
-                            #              'threshold': tolerances}
+                        for key, val in defaults.items():
+                            kw_ss.setdefault(key, val)
 
-                            # else:
-                            #     # TODO: should we keep this?
-                            #     kw_ss['threshold'] = tolerances
+                        ss_event = {'callable': check_steady_state,
+                                    'num_conditions': 1,
+                                    'event_name': 'steady_state',
+                                    'kwargs': kw_ss
+                                    }
 
-                            #     if 'tau' not in kw_ss.keys():
-                            #         kw_ss['tau'] = tau
-
-                            ss_event = {'callable': check_steady_state,
-                                        'num_conditions': 1,
-                                        'event_name': 'steady_state',
-                                        'kwargs': kw_ss
-                                        }
-
-                            instance.state_event_list = [ss_event]
-                            kwargs_uo['any_event'] = False
+                        instance.state_event_list = [ss_event]
+                        kwargs_uo['any_event'] = False
 
                 instance.solve_unit(**kwargs_uo)
 
