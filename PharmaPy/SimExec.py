@@ -46,14 +46,10 @@ class SimulationExec:
                 "Provided flowsheet contains recycle stream(s)")
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       uos_steady_state=None, tolerances_ss=None, ss_time=0,
-                       kwargs_ss=None):
+                       steady_state_di=None, tolerances_ss=None):
 
         if kwargs_run is None:
             kwargs_run = {}
-
-        if kwargs_ss is None:
-            kwargs_ss = {}
 
         if pick_units is None:
             pick_units = self.execution_names
@@ -81,35 +77,40 @@ class SimulationExec:
 
                 kwargs_uo = kwargs_run.get(name, {})
 
-                tau = 0
-                if hasattr(instance, '_get_tau'):
-                    tau = instance._get_tau()
+                if steady_state_di is not None:
+                    ss_time = 0
+                    for name, di in steady_state_di.items():
+                        tau = 0
+                        if hasattr(instance, '_get_tau'):
+                            tau = instance._get_tau()
 
-                ss_time += tau
+                        ss_time += tau
 
-                if uos_steady_state is not None:
-                    if name in uos_steady_state:
+                        kw_ss = di
                         if instance.__class__.__name__ == 'Mixer':
                             pass
                         else:
-                            tolerances = tolerances_ss.get(name, 1e-6)
+                            defaults = {'time_stop': ss_time,
+                                        'threshold': 1e-6,
+                                        'tau': tau}
 
-                            kw_ss = kwargs_ss.get(name, None)
+                            for key, val in defaults:
+                                kw_ss.setdefault(key, val)
 
-                            if kw_ss is None:
-                                kw_ss = {'tau': tau, 'time_stop': ss_time,
-                                         'threshold': tolerances}
+                            # if kw_ss is None:
+                            #     kw_ss = {'tau': tau, 'time_stop': ss_time,
+                            #              'threshold': tolerances}
 
-                            else:
-                                # TODO: should we keep this?
-                                kw_ss['threshold'] = tolerances
+                            # else:
+                            #     # TODO: should we keep this?
+                            #     kw_ss['threshold'] = tolerances
 
-                                if 'tau' not in kw_ss.keys():
-                                    kw_ss['tau'] = tau
+                            #     if 'tau' not in kw_ss.keys():
+                            #         kw_ss['tau'] = tau
 
                             ss_event = {'callable': check_steady_state,
                                         'num_conditions': 1,
-                                        'event_name': 'steady state',
+                                        'event_name': 'steady_state',
                                         'kwargs': kw_ss
                                         }
 

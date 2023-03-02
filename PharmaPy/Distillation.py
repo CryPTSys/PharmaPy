@@ -119,7 +119,7 @@ class _BaseDistillation:
 
         if hk_loc != lk_loc + 1:
             print('High key and low key indices are not adjacent', end='\n\n')
-            print('Volatility order at %.0f Pa (high to low): ' % self.pres +
+            print('Volatility order at T_bubble = %.1f K (%.0f Pa, high to low): ' % (temp_bubble_feed, self.pres) +
                   '-'.join(self.sorted_by_volatility))
 
         # ---------- Calculate Distillate and Bottom flow rates
