@@ -95,7 +95,7 @@ class SimulationExec:
                         pass
                     else:
                         defaults = {'time_stop': ss_time,
-                                    'threshold': 1e-6,
+                                    # 'threshold': 1e-6,
                                     'tau': tau}
 
                         for key, val in defaults.items():
