@@ -107,7 +107,8 @@ class SimulationExec:
                                     'kwargs': kw_ss
                                     }
 
-                        instance.state_event_list = [ss_event]
+                        # instance.state_event_list = [ss_event]
+                        instance.state_event_list.append(ss_event)
                         kwargs_uo['any_event'] = False
 
                 instance.solve_unit(**kwargs_uo)

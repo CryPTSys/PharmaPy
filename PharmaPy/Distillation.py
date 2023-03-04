@@ -3,7 +3,8 @@ from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import unpack_discretized, retrieve_pde_result
+from PharmaPy.Commons import (unpack_discretized, retrieve_pde_result,
+                              eval_state_events, handle_events)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_distrib
@@ -538,7 +539,7 @@ class DistillationColumn(_BaseDistillation):
 class DynamicDistillation(_BaseDistillation):
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', num_feed=None):
+                 gamma_model='ideal', num_feed=None, state_events=None):
         """ Create an object to solve a dynamic distillation column
 
         Parameters
@@ -582,6 +583,11 @@ class DynamicDistillation(_BaseDistillation):
         self.outputs = None
         self.is_continuous = True
         self.elapsed_time = 0
+
+        if state_events is None:
+            state_events = []
+
+        self.state_event_list = state_events
 
     def flatten_states(self):
         pass
@@ -643,7 +649,15 @@ class DynamicDistillation(_BaseDistillation):
 
         self.heuristics = result
 
-    def unit_model(self, time, states, d_states):
+    def _eval_state_events(self, time, states, sw):
+        is_PFR = self.__class__.__name__ == 'PlugFlowReactor'
+
+        events = eval_state_events(
+            time, states, sw, self.dim_states,
+            self.states_uo, self.state_event_list, sdot=self.derivatives,
+            discretized_model=is_PFR)
+
+    def unit_model(self, time, states, d_states, sw=None, params=None):
         di_states = unpack_discretized(states, self.len_out, self.name_states)
 
         material = self.material_balances(time, **di_states)
@@ -711,7 +725,7 @@ class DynamicDistillation(_BaseDistillation):
         return
 
     def solve_unit(self, runtime=None, time_grid=None,
-                   sundials_opts=None, verbose=True):
+                   sundials_opts=None, verbose=True, any_event=True):
 
         if runtime is not None and time_grid is not None:
             raise RuntimeError("Both 'runtime' and 'time_grid' were provided. "
@@ -739,9 +753,23 @@ class DynamicDistillation(_BaseDistillation):
                                                  x_liq=init_states[:, 1:],
                                                  temp=init_states[:, 0])
 
-        problem = Implicit_Problem(
-            self.unit_model, init_states.ravel(), init_derivative.ravel(),
-            t0=self.elapsed_time)
+        if len(self.state_event_list) > 0:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            switches = [True] * len(self.state_event_list)
+            problem = Implicit_Problem(
+                self.unit_model, init_states.ravel(), init_derivative.ravel(),
+                t0=self.elapsed_time, sw0=switches)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+
+        else:
+            problem = Implicit_Problem(
+                self.unit_model, init_states.ravel(), init_derivative.ravel(),
+                t0=self.elapsed_time)
 
         solver = IDA(problem)
         alg_map = np.zeros_like(init_states)

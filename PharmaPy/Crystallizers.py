@@ -203,6 +203,9 @@ class _BaseCryst:
         self.params_iter = None
         self.vol_mult = 1
 
+        if state_events is None:
+            state_events = []
+
         self.state_event_list = state_events
 
         self.param_wrapper = param_wrapper
@@ -896,7 +899,7 @@ class _BaseCryst:
         self.derivatives = problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
 
-        if self.state_event_list is not None:
+        if len(self.state_event_list) > 0:
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
