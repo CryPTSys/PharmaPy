@@ -539,7 +539,8 @@ class Evaporator:
         self.__original_phase__ = copy.deepcopy(phase)
 
         liquid = phase
-        vapor = VaporStream(path_comp, pres=self.pres)
+        vapor = VaporStream(path_comp, pres=self.pres,
+                            mole_frac=np.zeros_like(liquid.mole_frac))
 
         self._Phases = [liquid, vapor]
         classify_phases(self)

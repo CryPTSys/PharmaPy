@@ -762,6 +762,8 @@ class BatchReactor(_BaseReactor):
             sensitivity information of the simulation.
         """
 
+        check_modeling_objects(self)
+
         self.set_names()
 
         # check_stoichiometry(self.Kinetics.stoich_matrix,
@@ -1086,6 +1088,8 @@ class CSTR(_BaseReactor):
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
 
+        check_modeling_objects(self)
+
         self.params_control = params_control
         self.set_names()
 
@@ -1294,6 +1298,8 @@ class SemibatchReactor(CSTR):
         :param sundials_opts:
         :return:
         """
+
+        check_modeling_objects(self)
 
         self.params_control = params_control
         self.set_names()
@@ -1758,7 +1764,7 @@ class PlugFlowReactor(_BaseReactor):
         return tau
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True,
-                   any_event=True, sundials_opts=None, name_instance=None):
+                   any_event=True, sundials_opts=None):
         """
         ToDo: Fill out this method's docstring comments
         :param runtime:
@@ -1769,7 +1775,7 @@ class PlugFlowReactor(_BaseReactor):
         :return:
         """
 
-        # check_modeling_objects(self, name_instance)
+        check_modeling_objects(self)
 
         if runtime is not None:
             final_time = runtime + self.elapsed_time

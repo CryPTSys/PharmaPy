@@ -8,6 +8,7 @@ from PharmaPy.Commons import (unpack_discretized, retrieve_pde_result,
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_distrib
+from PharmaPy.CheckModule import check_modeling_objects
 
 from assimulo.solvers import IDA
 
@@ -734,6 +735,8 @@ class DynamicDistillation(_BaseDistillation):
     def solve_unit(self, runtime=None, time_grid=None,
                    sundials_opts=None, verbose=True, any_event=True):
 
+        check_modeling_objects(self)
+
         if runtime is not None and time_grid is not None:
             raise RuntimeError("Both 'runtime' and 'time_grid' were provided. "
                                "Please provide only one of them")
@@ -779,7 +782,7 @@ class DynamicDistillation(_BaseDistillation):
                 t0=self.elapsed_time)
 
         solver = IDA(problem)
-        # solver.make_consistent('IDA_YA_YDP_INIT')
+        solver.make_consistent('IDA_YA_YDP_INIT')
         # solver.suppress_alg = True
 
         alg_map = np.zeros_like(init_states)

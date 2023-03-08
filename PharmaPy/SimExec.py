@@ -73,7 +73,7 @@ class SimulationExec:
 
             if name in pick_units:
                 self.uos_instances[name] = instance
-                # check_modeling_objects(instance, name)
+                check_modeling_objects(instance, name)
 
                 if verbose:
                     print()

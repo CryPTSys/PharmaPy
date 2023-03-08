@@ -547,9 +547,13 @@ class Mixer:
             # ---------- Create output phase
             path = self.Inlets[0].path_data
             if self.is_continuous:
-                self.Liquid_1 = LiquidStream(path_thermo=path)
+                self.Liquid_1 = LiquidStream(path_thermo=path,
+                                             mass_frac=u_input['mass_frac'][0][0],
+                                             mass_flow=eps)
             else:
-                self.Liquid_1 = LiquidPhase(path_thermo=path)
+                self.Liquid_1 = LiquidPhase(path_thermo=path,
+                                            mass_frac=u_input['mass_frac'][0],
+                                            mass=eps)
 
             # ---------- Run balances
             if self.is_continuous:
