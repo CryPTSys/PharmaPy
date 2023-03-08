@@ -16,6 +16,7 @@ from PharmaPy.Errors import PharmaPyNonImplementedError
 from PharmaPy.Results import SimulationResult, flatten_dict_fields, get_name_object
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
+from PharmaPy.CheckModule import check_modeling_objects
 
 import time
 
@@ -46,7 +47,7 @@ class SimulationExec:
                 "Provided flowsheet contains recycle stream(s)")
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       steady_state_di=None, tolerances_ss=None):
+                       steady_state_di=None, tolerances_ss=None, ss_time=0):
 
         if kwargs_run is None:
             kwargs_run = {}
@@ -66,12 +67,13 @@ class SimulationExec:
         connections = {}
         count = 1
 
-        ss_time = 0
+        # ss_time = 0
         for ind, name in enumerate(self.execution_names):
             instance = getattr(self, name)
 
             if name in pick_units:
                 self.uos_instances[name] = instance
+                # check_modeling_objects(instance, name)
 
                 if verbose:
                     print()
@@ -111,6 +113,7 @@ class SimulationExec:
                         instance.state_event_list.append(ss_event)
                         kwargs_uo['any_event'] = False
 
+                # check_modeling_objects(instance, name)
                 instance.solve_unit(**kwargs_uo)
 
                 uo_type = instance.__module__

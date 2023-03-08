@@ -73,6 +73,9 @@ class _BaseDistillation:
                       'index': self.name_species}
             }
 
+        self.states_uo = list(self.states_di.keys())
+        self.dim_states = [di['dim'] for di in self.states_di.values()]
+
         self.fstates_di = {
             'y_vap': {'dim': len(self.name_species),
                       'index': self.name_species}
@@ -649,13 +652,15 @@ class DynamicDistillation(_BaseDistillation):
 
         self.heuristics = result
 
-    def _eval_state_events(self, time, states, sw):
-        is_PFR = self.__class__.__name__ == 'PlugFlowReactor'
-
+    def _eval_state_events(self, time, states, sdot, sw):
         events = eval_state_events(
             time, states, sw, self.dim_states,
-            self.states_uo, self.state_event_list, sdot=self.derivatives,
-            discretized_model=is_PFR)
+            self.states_uo, self.state_event_list, sdot=sdot,
+            discretized_model=True)
+
+        print(events)
+
+        return events
 
     def unit_model(self, time, states, d_states, sw=None, params=None):
         di_states = unpack_discretized(states, self.len_out, self.name_states)
@@ -667,6 +672,8 @@ class DynamicDistillation(_BaseDistillation):
         # N_plates(N_components), only for compositions
         material[:, 1:] = material[:, 1:] - di_d_states['x_liq']
         balances = material.ravel()
+
+        # print(balances)
         return balances
 
     def material_balances(self, time, temp, x_liq):
@@ -749,7 +756,7 @@ class DynamicDistillation(_BaseDistillation):
         init_states = np.tile(np.hstack((temp_init, x_init)),
                               (self.num_plates + 1, 1))
 
-        init_derivative = self.material_balances(time=0,
+        init_derivative = self.material_balances(time=self.elapsed_time,
                                                  x_liq=init_states[:, 1:],
                                                  temp=init_states[:, 0])
 
@@ -772,6 +779,9 @@ class DynamicDistillation(_BaseDistillation):
                 t0=self.elapsed_time)
 
         solver = IDA(problem)
+        # solver.make_consistent('IDA_YA_YDP_INIT')
+        # solver.suppress_alg = True
+
         alg_map = np.zeros_like(init_states)
         alg_map[:, 0] = 1
 

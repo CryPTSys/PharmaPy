@@ -20,6 +20,7 @@ from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
+from PharmaPy.CheckModule import check_modeling_objects
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -1757,7 +1758,7 @@ class PlugFlowReactor(_BaseReactor):
         return tau
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True,
-                   any_event=True, sundials_opts=None):
+                   any_event=True, sundials_opts=None, name_instance=None):
         """
         ToDo: Fill out this method's docstring comments
         :param runtime:
@@ -1767,6 +1768,8 @@ class PlugFlowReactor(_BaseReactor):
         :param sundials_opts:
         :return:
         """
+
+        # check_modeling_objects(self, name_instance)
 
         if runtime is not None:
             final_time = runtime + self.elapsed_time

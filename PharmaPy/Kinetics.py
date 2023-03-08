@@ -28,7 +28,7 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
     else:
         phi_1, phi_2, exp, s_2 = params
         sec = True
-        
+
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
 
@@ -39,15 +39,15 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
         pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
-    
+
     if sec:
         if moms.ndim == 1:
             mom = np.maximum(0, moms[order]) # For vector moms
-        
+
         elif moms.ndim == 2:
             mom= np.maximum(0, moms[:, order]) # for matrix
         kinetic_term *= (mom * kv)**s_2
-    
+
     return kinetic_term
 
 def disect_rxns(rxns, sep='-->'):
@@ -649,7 +649,7 @@ class CrystKinetics:
 
     def __init__(self, coeff_solub=None, solub_fn=None,
                  nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
-                 solubility_type='polynomial', sup_sat_type='relative', 
+                 solubility_type='polynomial', sup_sat_type='relative',
                  reformulate_kin=False, alpha_fn=None,
                  temp_ref=298.15, custom_mechanisms=None,
                  mu_sec_nucl='volume'):
@@ -672,9 +672,9 @@ class CrystKinetics:
         mu_sec_nucl : string
             if 'area', mu_2 will be used on the size-dependent term of Bs, else
             if 'volume', mu_3 will be used, for secondary nucleation written as:
-                
+
                 Bs = k_s * S^(s_1) * (mu_sec_nucl * k_v)^(s_2)
-        
+
         """
 
         self.target_idx = None
@@ -695,9 +695,9 @@ class CrystKinetics:
             custom_mechanisms = {}
         elif not isinstance(custom_mechanisms, dict):
             raise PharmaPyTypeError('Provide a dictionary of callables for kinetics.')
-            
+
         self.custom_mechanisms = custom_mechanisms
-            
+
         # ---------- Parameters
         self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
                                  'dissolution')
@@ -837,10 +837,10 @@ class CrystKinetics:
 
         if self.sup_sat_type == 'relative':
             sup_sat = sup_sat / conc_sat
-            
+
         if self.sup_sat_type == 'ratio':
             sup_sat = sup_sat / conc_sat + 1
-            
+
         par_p, par_s, par_g, par_d = self.params.values()
 
         if 'nucl_sec' in self.custom_mechanisms:
@@ -854,14 +854,14 @@ class CrystKinetics:
             # print(sup_sat)
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
-                
+
                 subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
             else:
-                
+
                 subset_mech = ('dissolution', )
 
             mechs = {}
-            
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
@@ -872,7 +872,7 @@ class CrystKinetics:
                                                   self.params[name],
                                                   self.reformulate_kin,
                                                   kv_cry, self.mu_sec_nucl)
-                    
+
             for ky in self.names_mechanisms:
                 if ky not in mechs:
                     mechs[ky] = 0
@@ -892,54 +892,54 @@ class CrystKinetics:
 
             temp_positive = temp[positive_map]
             temp_negative = temp[~positive_map]
-            
+
             conc_sat_positive = conc_sat[positive_map]
             conc_sat_negative = conc_sat[~positive_map]
-            
+
             moments_positive = moments[positive_map]
             moments_negative = moments[~positive_map]
-            
+
             subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
-            
+
             mechs = {}
-            
+
             for name in self.names_mechanisms:
                 mechs[name] = np.zeros_like(sup_sat)
-                
-            args = [sup_positive, conc_sat_positive, moments_positive, 
-                    temp_positive, self.temp_ref]        
-            
+
+            args = [sup_positive, conc_sat_positive, moments_positive,
+                    temp_positive, self.temp_ref]
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
-                    mechs[name][positive_map] = cryst_mechanism(sup_positive, 
+                    mechs[name][positive_map] = cryst_mechanism(sup_positive,
                                                                 moments_positive,
                                                                 temp_positive,
                                                                 self.temp_ref,
                                                                 self.params[name],
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
-                    
+
             subset_mech = ('dissolution', )
-            
-            args = [sup_negative, conc_sat_negative, moments_negative, 
-                    temp_negative, self.temp_ref]        
-            
+
+            args = [sup_negative, conc_sat_negative, moments_negative,
+                    temp_negative, self.temp_ref]
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][~positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
-                    mechs[name][~positive_map] = cryst_mechanism(sup_negative, 
+                    mechs[name][~positive_map] = cryst_mechanism(sup_negative,
                                                                  moments_negative,
                                                                 temp_negative,
                                                                 self.temp_ref,
                                                                 self.params[name],
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
-                    
+
         if nucl_sec_out:
             return mechs['nucl_prim'], mechs['nucl_sec'], mechs['growth'], mechs['dissolution']
         else:
