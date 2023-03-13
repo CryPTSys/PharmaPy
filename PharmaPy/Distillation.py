@@ -590,6 +590,8 @@ class DynamicDistillation(_BaseDistillation):
 
         if state_events is None:
             state_events = []
+        elif isinstance(state_events, dict):
+            state_events = [state_events]
 
         self.state_event_list = state_events
 
@@ -659,11 +661,9 @@ class DynamicDistillation(_BaseDistillation):
             self.states_uo, self.state_event_list, sdot=sdot,
             discretized_model=True)
 
-        print(events)
-
         return events
 
-    def unit_model(self, time, states, d_states, sw=None, params=None):
+    def unit_model(self, time, states, d_states, sw=None):
         di_states = unpack_discretized(states, self.len_out, self.name_states)
 
         material = self.material_balances(time, **di_states)

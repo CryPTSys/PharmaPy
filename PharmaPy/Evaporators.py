@@ -540,7 +540,8 @@ class Evaporator:
 
         liquid = phase
         vapor = VaporStream(path_comp, pres=self.pres,
-                            mole_frac=np.zeros_like(liquid.mole_frac))
+                            mole_frac=liquid.mole_frac,
+                            mole_flow=eps)
 
         self._Phases = [liquid, vapor]
         classify_phases(self)

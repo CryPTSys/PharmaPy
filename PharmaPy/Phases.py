@@ -124,12 +124,14 @@ class LiquidPhase(ThermoPhysicalManager):
         self.vol = vol
         self.moles = moles
 
-        unspec_num = (mass_frac is None) + (mass_conc is None) + (mole_conc is None) + (mole_frac is None)
+        unspec_num = (mass_frac is None) + (mass_conc is None) + \
+            (mole_conc is None) + (mole_frac is None)
 
         if unspec_num == 4:
             raise ValueError("No measure of composition was provided")
         elif unspec_num < 3:
-            raise RuntimeWarning("More than one measure of composition was provided")
+            raise RuntimeWarning("More than one measure of composition was "
+                                 "provided")
 
         if mass_frac is not None:
             self.mass_frac = np.array(mass_frac)

@@ -1045,6 +1045,27 @@ class _BaseCryst:
 
         """
 
+        def get_mu_labels(mu_idx, msmpr=False):
+            out = []
+            for idx in mu_idx:
+                name = '$\mu_{%i}$' % idx
+
+                if idx == 0:
+                    unit = '#'
+                elif idx == 1:
+                    unit = 'm'
+                else:
+                    unit = '$\mathrm{m^{%i}}$' % idx
+
+                if msmpr:
+                    unit += ' $\mathrm{m^{-3}}$'
+
+                unit = r' (%s)' % unit
+
+                out.append(name + unit)
+
+            return out
+
         states = [('mu_n', (0, )), 'temp', ('mass_conc', (self.target_ind,)),
                   'supersat']
 
@@ -1060,12 +1081,19 @@ class _BaseCryst:
                                 nrows=3, ncols=2, ylabels=ylabels,
                                 **fig_kwargs)
 
+        ax[0, 0].legend().remove()
+
         time = self.result.time
         moms = self.result.mu_n
 
+        is_msmpr = isinstance(self, MSMPR)
+        labels_moms = get_mu_labels(range(moms.shape[1]), msmpr=is_msmpr)
+
         for ind, row in enumerate(moms[:, 1:].T):
             ax.flatten()[ind + 1].plot(time, row)
-            ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
+
+        for ind, lab in enumerate(labels_moms):
+            ax.flatten()[ind].set_ylabel(lab)
 
         # Solubility
         ax[2, 1].plot(time, self.result.solubility)
