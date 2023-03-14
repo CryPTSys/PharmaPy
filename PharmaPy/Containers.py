@@ -540,6 +540,12 @@ class Mixer:
                     time_prof = getattr(inlet, 'time_upstream', None)
 
                     if time_prof is not None:
+                        # t_diff = time_prof - self.elapsed_time
+                        # idx_elapsed = np.where(t_diff >= 0)[0][0]
+
+                        # time_prof = np.hstack((self.elapsed_time,
+                        #                        time_prof[idx_elapsed:]))
+
                         break
 
             u_input = self.get_inputs_new(time_prof)
