@@ -1086,7 +1086,7 @@ class _BaseCryst:
         time = self.result.time
         moms = self.result.mu_n
 
-        is_msmpr = isinstance(self, MSMPR)
+        is_msmpr = self.__class__.__name__ == 'MSMPR'
         labels_moms = get_mu_labels(range(moms.shape[1]), msmpr=is_msmpr)
 
         for ind, row in enumerate(moms[:, 1:].T):
@@ -1972,7 +1972,7 @@ class MSMPR(_BaseCryst):
         if type(self) == MSMPR:
             liquid_out = LiquidStream(path,
                                       mass_conc=dp['mass_conc'][-1],
-                                      temp=dp['temp'][-1])
+                                      temp=dp['temp'][-1], check_input=False)
 
             if self.method == '1D-FVM':
                 solid_out = SolidStream(path, mass_frac=solid_comp)

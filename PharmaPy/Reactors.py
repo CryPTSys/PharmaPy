@@ -1630,7 +1630,8 @@ class PlugFlowReactor(_BaseReactor):
 
         return volPosition, states_solver
 
-    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in, rate_j):
+    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in,
+                          rate_j):
         # Inputs
 
         # Finite differences

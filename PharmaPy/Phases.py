@@ -90,7 +90,7 @@ class LiquidPhase(ThermoPhysicalManager):
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None,
                  mass_conc=None, mole_conc=None,
-                 name_solv=None, verbose=True):
+                 name_solv=None, verbose=True, check_input=True):
 
         super().__init__(path_thermo)
 
@@ -202,11 +202,13 @@ class LiquidPhase(ThermoPhysicalManager):
             self.__calcComposition()
 
         if (mass + vol + moles) == 0:
-            warnings.simplefilter("always")
-            warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
-                          "Model may not perform as intended.", RuntimeWarning)
+            if check_input:
+                warnings.simplefilter("always")
+                warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
+                              "Model may not perform as intended.",
+                              RuntimeWarning)
 
-            warnings.simplefilter("ignore")
+                warnings.simplefilter("ignore")
 
         self.y_upstream = None
 
