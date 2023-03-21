@@ -86,6 +86,9 @@ def getBipartite(first, second):
                 graph[two] = one
                 types['distrib'] = (one, two)
                 break
+            elif 'distr' in one and 'solid_conc' in two:
+                graph[two] = one
+                types['distrib'] = (one, two)
             elif any(one == word for word in amount_names) and any(two == word for word in amount_names):
                 graph[two] = one
                 types['amount'] = (one, two)
@@ -190,61 +193,6 @@ class NameAnalyzer:
         return idx_composition, idx_flow, idx_amount, idx_distrib
 
     def convertUnits(self, matter_transf):
-        y_upstr = matter_transf.y_upstream
-
-        conversion_keys = self.conv_types.keys()
-        dict_states = get_dict_states(self.names_up, self.num_species,
-                                      self.num_distr, y_upstr)
-
-        y_inlet = y_upstr.copy()
-
-        comp_idx, flow_idx, amount_idx, distrib_idx = self.get_idx()
-
-        # Composition
-        comp = self.conv_types['composition']
-        if comp[0] != comp[1]:
-            state_comp = self.__convertComposition(*comp, dict_states[comp[0]],
-                                                   matter_transf)
-
-            dict_states[comp[1]] = state_comp
-
-            y_inlet[:, comp_idx] = state_comp
-
-        if 'flow' in conversion_keys:
-            flow = self.conv_types['flow']
-            if flow[0] != flow[1]:
-                state_flow = self.__convertFlow(*flow, dict_states[flow[0]],
-                                                matter_transf,
-                                                dict_states[comp[0]],
-                                                comp[0])
-
-                dict_states[flow[1]] = state_flow
-
-                y_inlet[:, flow_idx] = state_flow
-
-        elif 'amount' in conversion_keys:
-            amount = self.conv_types['amount']
-            if amount[0] != amount[1]:
-                state_amount = self.__convertFlow(*amount,
-                                                  dict_states[amount[0]],
-                                                  matter_transf)
-
-                dict_states[amount[1]] = state_amount
-
-                y_inlet[:, amount_idx] = state_amount
-
-        if 'distrib' in conversion_keys:
-            distr = self.conv_types['distrib']
-            if distr[0] != distr[1]:
-                distrib_conv = self.__convert_distrib(*distr,
-                                                      dict_states[distr[0]],
-                                                      matter_transf)
-
-        matter_transf.y_inlet = y_inlet
-
-        return dict_states
-
-    def convertUnitsNew(self, matter_transf):
         # if matter_transf.__module__ == 'PharmaPy.MixedPhases':  # TODO: not general
         #     matter_transf = matter_transf.Liquid_1
 
@@ -276,10 +224,6 @@ class NameAnalyzer:
 
                 else:
                     dict_out[target] = dict_in[source]
-
-        # y_inlet = np.column_stack(list(dict_out.values()))
-
-        # matter_transf.y_inlet = dict_out
 
         return dict_out
 
@@ -390,11 +334,14 @@ class NameAnalyzer:
         up, down = prefix_up, prefix_down
 
         if 'distrib' in up and 'total' in down:
-            distrib_out = distrib
+            out = distrib
         elif 'num' in up and 'vol' in down:
             pass
+        elif up == 'distrib' and down == 'solid_conc':
+            out = matter_object.getSolidsConcentr(distrib=distrib,
+                                                  basis='mass')
 
-        return distrib_out
+        return out
 
 
 if __name__ == '__main__':

@@ -323,7 +323,7 @@ class Connection:
                 )
 
             # Convert units and pass states to self.Matter
-            converted_states = name_analyzer.convertUnitsNew(self.Matter)
+            converted_states = name_analyzer.convertUnits(self.Matter)
             self.Matter.y_inlet = converted_states
 
         elif btf_flag:
@@ -345,7 +345,7 @@ class Connection:
                 )
 
             # Convert units and pass states to self.Matter
-            converted_states = name_analyzer.convertUnitsNew(self.Matter)
+            converted_states = name_analyzer.convertUnits(self.Matter)
             self.Matter.y_inlet = converted_states
 
     def PassPhases(self):

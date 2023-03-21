@@ -213,13 +213,22 @@ class Slurry:
 
         return density
 
-    def getSolidsConcentr(self):
-        mom_three = self.moments[3]  # m**3/m**3
+    def getSolidsConcentr(self, distrib=None, basis='vol'):
+        if distrib is None:
+            moments = self.moments
+        else:
+            moments = self.Solid_1.getMoments(distrib=distrib)
+
+        mom_three = moments[3]  # m**3/m**3
 
         vol_frac = mom_three * self.Solid_1.kv
         dens_solid = self.Solid_1.getDensity(basis='mass')
 
         concentr_solids = vol_frac * dens_solid  # kg_solids / m**3
+
+        if basis == 'mass':
+            dens_liq = self.Liquid_1.getDensity(basis='mass')
+            concentr_solids *= 1/(1 - vol_frac)/dens_liq
 
         return concentr_solids
 
@@ -469,19 +478,19 @@ class Cake:
         porosity = self.porosity
         rho_sol = self.Solid_1.getDensity()
         x_grid = self.Solid_1.x_distrib * 1e-6
-       
+
         kv = 0.524  # converting number based CSD to volume based:
-       
+
         del_x_dist = np.diff(x_grid)
         node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
         node_CSD = (csd[:-1] + csd[1:]) / 2
-        
+
         # Volume of crystals in each bin
         vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
         frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
-        
+
         csd = vol_cry
-        
+
         # numerator = trapezoidal_rule(x_grid, csd * alpha_x)
         # alpha = numerator / (self.Solid_1.moments[0] + eps)
 
