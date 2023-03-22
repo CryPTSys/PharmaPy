@@ -221,11 +221,10 @@ def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
     if not isinstance(threshold, (tuple, list)):
         threshold = [threshold] * len(sdot)
 
-    sdot = sdot.values()
     sdot_flags = []
 
     norms = []
-    for val in sdot:
+    for val in sdot.values():
         norms.append(np.linalg.norm(val, ord=norm_type))
 
     if time_stop is None:
@@ -240,7 +239,7 @@ def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
 
     flag = not all(flags)
 
-    return int(flag)
+    return float(flag)
 
 
 def eval_state_events(time, states, switches,

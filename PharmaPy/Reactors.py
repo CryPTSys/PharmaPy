@@ -20,6 +20,7 @@ from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
+from PharmaPy.CheckModule import check_modeling_objects
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -761,6 +762,8 @@ class BatchReactor(_BaseReactor):
             sensitivity information of the simulation.
         """
 
+        check_modeling_objects(self)
+
         self.set_names()
 
         # check_stoichiometry(self.Kinetics.stoich_matrix,
@@ -1085,6 +1088,8 @@ class CSTR(_BaseReactor):
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
 
+        check_modeling_objects(self)
+
         self.params_control = params_control
         self.set_names()
 
@@ -1293,6 +1298,8 @@ class SemibatchReactor(CSTR):
         :param sundials_opts:
         :return:
         """
+
+        check_modeling_objects(self)
 
         self.params_control = params_control
         self.set_names()
@@ -1623,7 +1630,8 @@ class PlugFlowReactor(_BaseReactor):
 
         return volPosition, states_solver
 
-    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in, rate_j):
+    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in,
+                          rate_j):
         # Inputs
 
         # Finite differences
@@ -1768,6 +1776,8 @@ class PlugFlowReactor(_BaseReactor):
         :return:
         """
 
+        check_modeling_objects(self)
+
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -1852,12 +1862,11 @@ class PlugFlowReactor(_BaseReactor):
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
-        self.timeProf = time
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        inputs = self.get_inputs(self.timeProf)['Inlet']
+        inputs = self.get_inputs(time)['Inlet']
 
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
@@ -1868,6 +1877,8 @@ class PlugFlowReactor(_BaseReactor):
 
         dp['time'] = time
         dp['vol'] = self.vol_discr
+
+        self.profiles_runs.append(dp)
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
@@ -1906,9 +1917,9 @@ class PlugFlowReactor(_BaseReactor):
         self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
         self.duty_type = [0, 0]
 
-    def flatten_states(self):
-        if type(self.timeProf) is list:
-            self.concProf = np.vstack(self.concProf)
+    # def flatten_states(self):
+    #     if type(self.timeProf) is list:
+    #         self.concProf = np.vstack(self.concProf)
 
     def plot_steady(self, fig_size=None, title=None):
         fig, axes = plt.subplots(1, 2, figsize=fig_size)
