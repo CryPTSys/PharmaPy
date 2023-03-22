@@ -407,6 +407,7 @@ class SlurryStream(Slurry):
 
         self.num_species = self.Liquid_1.num_species
         self.temp = energy_balance(self, 'mass_flow')
+        self.solid_conc = self.getSolidsConcentr(basis='mass')
 
     def InterpolateInputs(self, time):
         if isinstance(time, (float, int)):
