@@ -3,10 +3,12 @@ from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import VaporStream
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import unpack_discretized
+from PharmaPy.Commons import (unpack_discretized, retrieve_pde_result,
+                              eval_state_events, handle_events)
 from PharmaPy.Streams import LiquidStream
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_distrib
+from PharmaPy.CheckModule import check_modeling_objects
 
 from assimulo.solvers import IDA
 
@@ -72,6 +74,9 @@ class _BaseDistillation:
                       'index': self.name_species}
             }
 
+        self.states_uo = list(self.states_di.keys())
+        self.dim_states = [di['dim'] for di in self.states_di.values()]
+
         self.fstates_di = {
             'y_vap': {'dim': len(self.name_species),
                       'index': self.name_species}
@@ -93,16 +98,21 @@ class _BaseDistillation:
 
         return alpha
 
-    def global_material_bce(self):
+    def global_material_bce(self, z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
         HK_index = self.HK_index
         LK_index = self.LK_index
 
-        z_feed = self.z_feed
         feed_flow = self.feed_flowrate
 
         # ---------- Determine Light Key and Heavy Key component numbers
-        bubble_pure = self.Inlet.AntoineEquation(pres=self.pres)
-        volatility_order = np.argsort(bubble_pure)
+        temp_bubble_feed = self.Inlet.getBubblePoint(pres=self.pres,
+                                                     mole_frac=z_feed)
+
+        k_feed = self.Inlet.getKeqVLE(temp=temp_bubble_feed, pres=self.pres)
+        volatility_order = np.argsort(k_feed)[::-1]
         self.sorted_by_volatility = [self.name_species[ind]
                                      for ind in volatility_order]
 
@@ -113,7 +123,9 @@ class _BaseDistillation:
         heavier_idx = volatility_order[hk_loc + 1:]
 
         if hk_loc != lk_loc + 1:
-            print('High key and low key indices are not adjacent')
+            print('High key and low key indices are not adjacent', end='\n\n')
+            print('Volatility order at T_bubble = %.1f K (%.0f Pa, high to low): ' % (temp_bubble_feed, self.pres) +
+                  '-'.join(self.sorted_by_volatility))
 
         # ---------- Calculate Distillate and Bottom flow rates
         bot_flow = feed_flow * (z_feed[HK_index] * ((1 - self.frac_HK)) +
@@ -167,9 +179,12 @@ class _BaseDistillation:
 
         return num_stages
 
-    def kirkbride_correlation(self, inputs, material_bce, num_plates):
-        z_lk = inputs['mole_frac'][self.LK_index]
-        z_hk = inputs['mole_frac'][self.HK_index]
+    def kirkbride_correlation(self, material_bce, num_plates, z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
+        z_lk = z_feed[self.LK_index]
+        z_hk = z_feed[self.HK_index]
 
         x_dist = material_bce['x_dist']
         x_bot = material_bce['x_bottom']
@@ -186,14 +201,18 @@ class _BaseDistillation:
 
         return np.round(num_rect), np.round(num_strip)
 
-    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate):
+    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
+                        z_feed=None):
+        if z_feed is None:
+            z_feed = self.z_feed
+
         LK_index = self.LK_index
         HK_index = self.HK_index
 
-        alpha = self.get_alpha(self.pres, self.z_feed)
+        alpha = self.get_alpha(self.pres, z_feed)
 
         def f(phi):
-            fun = (sum(alpha * self.z_feed /
+            fun = (sum(alpha * z_feed /
                        (alpha - phi + np.finfo(float).eps)))**2
 
             return fun
@@ -212,11 +231,21 @@ class _BaseDistillation:
 
         return min_reflux
 
-    def calculate_heuristics(self):
-        x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce()
+    def calculate_heuristics(self, time=None):
+
+        if time is None:
+            z_feed = self.z_feed
+
+        else:
+            inputs = self.get_inputs(time)
+            z_feed = inputs['Inlet']['mole_frac']
+
+        x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce(
+            z_feed)
 
         min_reflux = self.calc_min_reflux(x_dist, x_bot,
-                                          dist_flowrate, bot_flowrate)
+                                          dist_flowrate, bot_flowrate,
+                                          z_feed)
 
         num_min = self.calc_num_min(x_dist, x_bot)
 
@@ -229,7 +258,7 @@ class _BaseDistillation:
             reflux = 1.5 * min_reflux  # Heuristic
         elif self.reflux < 0:
             reflux = -self.reflux * min_reflux
-        elif self.reflux > 0 and self.reflux < self.min_reflux:
+        elif self.reflux > 0 and self.reflux < min_reflux:
             print(
                 'Specified reflux less than min_reflux, calculation proceeds '
                 'with 1.5 * min_reflux')
@@ -256,9 +285,8 @@ class _BaseDistillation:
 
         # Feed stage
         if self.num_feed is None:
-            inputs = self.get_inputs(time=0)['Inlet']  # TODO: check this
-            num_rect, num_strip = self.kirkbride_correlation(inputs, mat_bce,
-                                                             num_plates)
+            num_rect, num_strip = self.kirkbride_correlation(
+                mat_bce, num_plates, z_feed)
 
             if num_rect > num_strip:
                 num_feed = num_rect
@@ -331,14 +359,6 @@ class DistillationColumn(_BaseDistillation):
 
         super().__init__(pres, q_feed, LK, HK, perc_LK, perc_HK, reflux,
                          num_plates, gamma_model, num_feed)
-
-    def get_k_vals(self, x_oneplate=None, temp=None):
-        if x_oneplate is None:
-            x_oneplate = self.z_feed
-
-        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp,
-                                       x_liq=x_oneplate)
-        return k_vals
 
     def VLE(self, y_oneplate=None, temp=None, need_x_vap=True):
         # VLE uses vapor stream, need vapor stream object temporarily.
@@ -523,7 +543,7 @@ class DistillationColumn(_BaseDistillation):
 class DynamicDistillation(_BaseDistillation):
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', num_feed=None):
+                 gamma_model='ideal', num_feed=None, state_events=None):
         """ Create an object to solve a dynamic distillation column
 
         Parameters
@@ -565,6 +585,15 @@ class DynamicDistillation(_BaseDistillation):
 
         self.oper_mode = 'Continuous'
         self.outputs = None
+        self.is_continuous = True
+        self.elapsed_time = 0
+
+        if state_events is None:
+            state_events = []
+        elif isinstance(state_events, dict):
+            state_events = [state_events]
+
+        self.state_event_list = state_events
 
     def flatten_states(self):
         pass
@@ -606,8 +635,8 @@ class DynamicDistillation(_BaseDistillation):
 
         self.nomenclature()
 
-    def column_startup(self):
-        result = self.calculate_heuristics()
+    def column_startup(self, time_heuristics):
+        result = self.calculate_heuristics(time_heuristics)
 
         global_mbce = result['material_balances']
 
@@ -626,7 +655,15 @@ class DynamicDistillation(_BaseDistillation):
 
         self.heuristics = result
 
-    def unit_model(self, time, states, d_states):
+    def _eval_state_events(self, time, states, sdot, sw):
+        events = eval_state_events(
+            time, states, sw, self.dim_states,
+            self.states_uo, self.state_event_list, sdot=sdot,
+            discretized_model=True)
+
+        return events
+
+    def unit_model(self, time, states, d_states, sw=None):
         di_states = unpack_discretized(states, self.len_out, self.name_states)
 
         material = self.material_balances(time, **di_states)
@@ -636,6 +673,8 @@ class DynamicDistillation(_BaseDistillation):
         # N_plates(N_components), only for compositions
         material[:, 1:] = material[:, 1:] - di_d_states['x_liq']
         balances = material.ravel()
+
+        # print(balances)
         return balances
 
     def material_balances(self, time, temp, x_liq):
@@ -693,8 +732,23 @@ class DynamicDistillation(_BaseDistillation):
         pass
         return
 
-    def solve_unit(self, runtime=None, t0=0, sundials_opts=None, verbose=True):
-        self.column_startup()
+    def solve_unit(self, runtime=None, time_grid=None,
+                   sundials_opts=None, verbose=True, any_event=True):
+
+        check_modeling_objects(self)
+
+        if runtime is not None and time_grid is not None:
+            raise RuntimeError("Both 'runtime' and 'time_grid' were provided. "
+                               "Please provide only one of them")
+        elif runtime is not None:
+            final_time = runtime + self.elapsed_time
+
+        elif time_grid is not None:
+            final_time = time_grid[-1] + self.elapsed_time
+
+        # Use inputs coming from the upstream UO in the future for heuristics,
+        # i.e. as close to steady-state as possible
+        self.column_startup(final_time)
 
         self.len_states = len(self.name_species) + 1
 
@@ -705,14 +759,32 @@ class DynamicDistillation(_BaseDistillation):
         init_states = np.tile(np.hstack((temp_init, x_init)),
                               (self.num_plates + 1, 1))
 
-        init_derivative = self.material_balances(time=0,
+        init_derivative = self.material_balances(time=self.elapsed_time,
                                                  x_liq=init_states[:, 1:],
                                                  temp=init_states[:, 0])
 
-        problem = Implicit_Problem(
-            self.unit_model, init_states.ravel(), init_derivative.ravel(), t0)
+        if len(self.state_event_list) > 0:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            switches = [True] * len(self.state_event_list)
+            problem = Implicit_Problem(
+                self.unit_model, init_states.ravel(), init_derivative.ravel(),
+                t0=self.elapsed_time, sw0=switches)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+
+        else:
+            problem = Implicit_Problem(
+                self.unit_model, init_states.ravel(), init_derivative.ravel(),
+                t0=self.elapsed_time)
 
         solver = IDA(problem)
+        solver.make_consistent('IDA_YA_YDP_INIT')
+        # solver.suppress_alg = True
+
         alg_map = np.zeros_like(init_states)
         alg_map[:, 0] = 1
 
@@ -728,13 +800,15 @@ class DynamicDistillation(_BaseDistillation):
                 if name == 'time_limit':
                     solver.report_continuously = True
 
-        time, states, d_states = solver.simulate(runtime)
+        time, states, d_states = solver.simulate(final_time,
+                                                 ncp_list=time_grid)
+
         self.retrieve_results(time, states)
         return time, states, d_states
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
-        self.timeProf = time
+        self.elapsed_time = time[-1]
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
@@ -764,7 +838,15 @@ class DynamicDistillation(_BaseDistillation):
         self.result = DynamicResult(di_states=self.states_di,
                                     di_fstates=self.fstates_di, **dp)
 
-        self.outputs = dp
+        outputs = retrieve_pde_result(self.result, x_name='plate',
+                                      x=self.num_plates)
+
+        outputs['x_liq'] = np.column_stack(list(outputs['x_liq'].values()))
+        outputs['mole_frac'] = outputs.pop('x_liq')
+
+        outputs['mole_flow'] = np.ones_like(outputs['temp']) * self.bot_flowrate
+
+        self.outputs = outputs
         # [component_index, time, plate]
         x_comp = np.array(list(dp['x_liq'].values()))
 

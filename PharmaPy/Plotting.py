@@ -290,6 +290,9 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
 
+    elif not isinstance(x_vals, (tuple, list)):
+        x_vals = (x_vals, )
+
     if cm_names is None:
         cm_names = ['Blues', 'Oranges', 'Greens',  'Reds', 'Purples', ]
     elif isinstance(cm_names, str):
@@ -304,7 +307,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         ax = ax.flatten()
 
     states_and_fstates = {**uo.states_di, **uo.fstates_di}
-    
+
     if times is not None:
         if len(times) == 1:
             colors = [[None]] * len(cm)

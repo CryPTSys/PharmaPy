@@ -16,6 +16,7 @@ from PharmaPy.Errors import PharmaPyNonImplementedError
 from PharmaPy.Results import SimulationResult, flatten_dict_fields, get_name_object
 
 from PharmaPy.Commons import trapezoidal_rule, check_steady_state
+from PharmaPy.CheckModule import check_modeling_objects
 
 import time
 
@@ -46,14 +47,13 @@ class SimulationExec:
                 "Provided flowsheet contains recycle stream(s)")
 
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       uos_steady_state=None, tolerances_ss=None, ss_time=0,
-                       kwargs_ss=None):
+                       steady_state_di=None, tolerances_ss=None, ss_time=0):
 
         if kwargs_run is None:
             kwargs_run = {}
 
-        if kwargs_ss is None:
-            kwargs_ss = {}
+        if steady_state_di is None:
+            steady_state_di = {}
 
         if pick_units is None:
             pick_units = self.execution_names
@@ -66,11 +66,14 @@ class SimulationExec:
         # Run loop
         connections = {}
         count = 1
+
+        # ss_time = 0
         for ind, name in enumerate(self.execution_names):
             instance = getattr(self, name)
 
             if name in pick_units:
                 self.uos_instances[name] = instance
+                check_modeling_objects(instance, name)
 
                 if verbose:
                     print()
@@ -81,41 +84,36 @@ class SimulationExec:
 
                 kwargs_uo = kwargs_run.get(name, {})
 
-                tau = 0
-                if hasattr(instance, '_get_tau'):
-                    tau = instance._get_tau()
+                if name in steady_state_di:
+                    kw_ss = steady_state_di[name]
 
-                ss_time += tau
+                    tau = 0
+                    if hasattr(instance, '_get_tau'):
+                        tau = instance._get_tau()
 
-                if uos_steady_state is not None:
-                    if name in uos_steady_state:
-                        if instance.__class__.__name__ == 'Mixer':
-                            pass
-                        else:
-                            tolerances = tolerances_ss.get(name, 1e-6)
+                    ss_time += tau
 
-                            kw_ss = kwargs_ss.get(name, None)
+                    if instance.__class__.__name__ == 'Mixer':
+                        pass
+                    else:
+                        defaults = {'time_stop': ss_time,
+                                    # 'threshold': 1e-6,
+                                    'tau': tau}
 
-                            if kw_ss is None:
-                                kw_ss = {'tau': tau, 'time_stop': ss_time,
-                                         'threshold': tolerances}
+                        for key, val in defaults.items():
+                            kw_ss.setdefault(key, val)
 
-                            else:
-                                # TODO: should we keep this?
-                                kw_ss['threshold'] = tolerances
+                        ss_event = {'callable': check_steady_state,
+                                    'num_conditions': 1,
+                                    'event_name': 'steady_state',
+                                    'kwargs': kw_ss
+                                    }
 
-                                if 'tau' not in kw_ss.keys():
-                                    kw_ss['tau'] = tau
+                        # instance.state_event_list = [ss_event]
+                        instance.state_event_list.append(ss_event)
+                        kwargs_uo['any_event'] = False
 
-                            ss_event = {'callable': check_steady_state,
-                                        'num_conditions': 1,
-                                        'event_name': 'steady state',
-                                        'kwargs': kw_ss
-                                        }
-
-                            instance.state_event_list = [ss_event]
-                            kwargs_uo['any_event'] = False
-
+                # check_modeling_objects(instance, name)
                 instance.solve_unit(**kwargs_uo)
 
                 uo_type = instance.__module__
