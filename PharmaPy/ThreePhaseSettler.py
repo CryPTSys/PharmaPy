@@ -37,6 +37,8 @@ class ThreePhaseSettler:
         #self.holdup_bot = np.pi*d_vessel**2/4*height_botlayer
         #self.other_phys_props = other_phys_props
         #self.nomenclature()
+        #abcdefghijk
+        self.abc = "abc"
         return
     
     def nomenclature(self):
