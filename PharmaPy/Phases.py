@@ -510,13 +510,15 @@ class LiquidPhase(ThermoPhysicalManager):
 class VaporPhase(ThermoPhysicalManager):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
-                 mass_frac=None, mole_frac=None, mole_conc=None):
+                 mass_frac=None, mole_frac=None, mole_conc=None,
+                 check_input=True, verbose=True):
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
         props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, mole_conc)
+                            vol, moles, mass_frac, mole_frac, mole_conc,
+                            check_input=check_input, verbose=verbose)
 
         self.mass = props.mass
         self.moles = props.moles
