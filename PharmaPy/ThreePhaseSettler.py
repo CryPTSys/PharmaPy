@@ -9,7 +9,7 @@ import numpy as np
 from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Streams import LiquidStream
+from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_distrib
@@ -28,15 +28,8 @@ class ThreePhaseSettler:
 
         self.d_impeller = d_impeller
         self.d_vessel = d_vessel
-        #self.height_toplayer = height_toplayer
-        #self.height_botlayer = height_botlayer
         self.target_compound = target_compound
         self.agit_rate = agit_rate
-
-        #self.holdup_top = np.pi*d_vessel**2/4*height_toplayer
-        #self.holdup_bot = np.pi*d_vessel**2/4*height_botlayer
-        #self.other_phys_props = other_phys_props
-        #self.nomenclature()
         return
 
     def nomenclature(self):
@@ -103,13 +96,22 @@ class ThreePhaseSettler:
         return material
 
     def design_space_check(self,):
-        d_particle = np.dot(self.Inlet_feed.Solid_1.distrib/sum(self.Inlet_feed.Solid_1.distrib),
-                            self.Inlet_feed.Solid_1.x_distrib)
+        
+        #calculate mean diameter
+        distrib = self.Inlet_feed.Solid_1.distrib
+        x_distrib = self.Inlet_feed.Solid_1.x_distrib
+        perc_vol_basis = np.percentile(distrib*x_distrib**3*1e-9, 50, method='closest_observation') #distrib**3 to get volume basis, 1e-9 to convert to m3 and reduce number magnitude
+        D50_index = np.where(distrib*x_distrib**3*1e-9==perc_vol_basis)[0][0]
+        D50 = x_distrib[D50_index]
+        
+        d_particle = D50*1e-6
+        
+        # d_particle = np.dot(self.Inlet_feed.Solid_1.distrib/sum(self.Inlet_feed.Solid_1.distrib),
+        #                     self.Inlet_feed.Solid_1.x_distrib/1e6)
         viscosity_top = self.TopPhase.Liquid_1.getViscosity()
         density_top = self.TopPhase.Liquid_1.getDensity()
         density_particle = self.TopPhase.Solid_1.getDensity()
-        flowrate_feed = (self.Inlet_feed.Liquid_1.vol_flow
-                         + self.Inlet_feed.Solid_1.mass_flow/self.Inlet_feed.Solid_1.getDensity())
+        flowrate_feed = self.Inlet_feed.Liquid_1.vol_flow
         gamma_top = self.TopPhase.Liquid_1.getSurfTension()
         g = 9.81 #m/s2
 
@@ -132,7 +134,7 @@ class ThreePhaseSettler:
         # 2nd criterion
         Bo = (density_particle-density_bot)*g*d_particle**2/gamma_int
         Ea = np.pi*d_particle**2/4*gamma_int
-        Ek = 0.5*(density_particle*np.pi*d_particle**3/6)*(d_impeller/2*agit_rate)
+        Ek = 0.5*(density_particle*np.pi*d_particle**3/6)*(d_impeller/2*(agit_rate/2*np.pi))
         crit2 = Bo>1 or Ek>Ea
 
         def N_cr_cal(N):
@@ -153,21 +155,19 @@ class ThreePhaseSettler:
 
         # Test
         if crit1 and crit2 and crit3:
-            print('Operating point is in design space')
+            print('TPS: operating point is in design space')
         else:
-            print('Operating point outside design space')
+            print('TPS: operating point is not in design space')
 
         return
 
     def material_balances(self, time, solid_conc):
         density_top = self.TopPhase.Liquid_1.getDensity()
-        flowrate_feed = (self.Inlet_feed.Liquid_1.vol_flow
-                         + self.Inlet_feed.Solid_1.mass_flow/self.Inlet_feed.Solid_1.getDensity())
+        flowrate_feed = self.Inlet_feed.Liquid_1.vol_flow
         density_bot = self.BotPhase.Liquid_1.getDensity()
         flowrate_bot = self.Inlet_bot_phase.vol_flow
 
         input_feed = self.get_input_feed(time)['Inlet']
-        # input_bot_phase = self.get_input_bot_phase(time)['Inlet']
         solid_conc_feed = input_feed['solid_conc']
 
         d_solid_conc_dt = ((1/(self.holdup_bot * density_bot))
@@ -206,11 +206,14 @@ class ThreePhaseSettler:
         self.outputs = dp
 
         # Outlet stream
-        # path = self.Inlet_bot_phase.path_data
-        # solid_conc = self.Inlet_bot_phase.mass_frac
-        # mass_frac[-1] = dp['mass_frac'][-1][-1]
-        # mass_frac[-2] = mass_frac[-2] - dp['mass_frac'][-1][-1]
-        # temp=self.Inlet_bot_phase.temp
-        # self.OutletBottom = LiquidStream(
-        #     path, mass_frac=mass_frac,  vol_flow=self.Inlet_bot_phase.vol_flow)
-        # self.Outlet = self.OutletBottom
+        path = self.Inlet_bot_phase.path_data
+        solid_conc = self.result.solid_conc[-1][-1]
+        solid_mass_flow = solid_conc*self.Inlet_bot_phase.vol_flow*self.Inlet_bot_phase.getDensity()
+        
+        OutletLiq = LiquidStream(
+             path, mass_frac=self.Inlet_bot_phase.mass_frac,  vol_flow=self.Inlet_bot_phase.vol_flow)
+        OutletSolid = SolidStream(
+             path, mass_flow=solid_mass_flow,  mass_frac=self.Inlet_feed.Solid_1.mass_frac, 
+             temp=self.Inlet_feed.Solid_1.temp, distrib=self.Inlet_feed.Solid_1.distrib, x_distrib=self.Inlet_feed.Solid_1.x_distrib)
+        self.Outlet = SlurryStream(path)
+        self.Outlet.Phases = [OutletLiq, OutletSolid]
