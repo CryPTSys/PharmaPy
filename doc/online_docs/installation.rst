@@ -22,13 +22,18 @@ This will download and install PharmaPy to the current python environment. To ed
 Developer Installation
 ======================
 
-For developer installation, we recommend the use of conda environments to control packages dependencies and PharmaPy. For developer installation, you must use the source code, which is available `here`_. Once the source code is downloaded to the desired location, navigate to the directory which contains the setup.py file. Once there, make sure your conda environment is appropriately installed and activated, then input the following commands for PharmaPy installation:
+For developer installation, we recommend the use of conda environments to control packages dependencies and PharmaPy. For developer installation, you must use the source code, which is available `here`_. Once the source code is downloaded to the desired location, navigate to the directory which contains the setup.py file. Then, follow the instructions on the :code:`installation_guide.txt`.
+
+..
+        make sure your conda environment is appropriately installed and activated, then input the following commands for PharmaPy installation:
+        1. conda install --file requirements.txt -c conda-forge
+        2. python setup.py develop
 
 .. _here: https://github.com/CryPTSys/PharmaPy/
 
-1. conda install --file requirements.txt -c conda-forge
-2. python setup.py develop
 
-Once the software is installed, install and/or use your preferred IDE or text editor to construct PharmaPy flowsheets.
+Once the software is installed, install and/or use your preferred IDE or text editor to construct PharmaPy flowsheets. For instance, on an active conda environment, install the `Spyder IDE`_ by doing :code:`conda -c conda-forge install spyder`, which provides a nice development environment very well suited for scientific computing. 
+
+.. _Spyder IDE: https://github.com/spyder-ide/spyder
 
 Tutorials in the format of Jupyter notebooks are available for users and developers getting started with PharmaPy. Also, on this site, documentation for all unit operations is available.
