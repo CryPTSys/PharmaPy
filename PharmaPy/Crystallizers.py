@@ -488,7 +488,7 @@ class _BaseCryst:
                                                           kv_cry, moms)
 
         nucl = nucl * self.scale * vol
-
+        
         impurity_factor = self.Kinetics.alpha_fn(conc)
         growth = growth * impurity_factor  # um/s
 
@@ -551,7 +551,7 @@ class _BaseCryst:
             di_states['distrib'] = di_states['mu_n']
             moms = di_states['mu_n'] * \
                 (1e-6)**np.arange(self.states_di['mu_n']['dim'])
-
+                
         else:
             moms = self.Solid_1.getMoments(
                 distrib=di_states['distrib']/self.scale)  # m**n
@@ -571,7 +571,7 @@ class _BaseCryst:
                 inlet_distr = u_input['Inlet']['distrib']
 
                 mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
-                                                       mom_num=3)
+                                                        mom_num=3)
 
                 phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
                 phis_in = np.concatenate([phi_in, 1 - phi_in])
@@ -1779,6 +1779,7 @@ class MSMPR(_BaseCryst):
 
         input_flow = u_inputs['Inlet']['vol_flow']
         input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+            
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
@@ -1800,7 +1801,7 @@ class MSMPR(_BaseCryst):
 
         # Liquid phase
         phi = 1 - self.Solid_1.kv * mu_n[3]
-
+        
         c_tank = mass_conc
 
         flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi)
@@ -1881,7 +1882,11 @@ class MSMPR(_BaseCryst):
         dp['time'] = time
         dp['vol_flow'] = volflow
         dp['x_cryst'] = self.x_grid
-
+        
+        if 'temp' in self.controls:
+            control = self.controls['temp']
+            dp['temp'] = control['fun'](time, *control['args'], **control['kwargs'])
+            
         sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
 
         supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
@@ -1910,7 +1915,7 @@ class MSMPR(_BaseCryst):
         
         vol_slurry = self.Slurry.vol
         self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
-
+            
         self.Solid_1.temp = dp['temp'][-1]
 
         self.Liquid_1.temp = dp['temp'][-1]

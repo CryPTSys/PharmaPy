@@ -507,7 +507,6 @@ class ParameterEstimation:
 
             sens_by_y = reorder_sens(sens_run)
             weighted_sens = np.dot(sens_by_y, self.sigma_inv)
-
             weighted_sens = reorder_sens(weighted_sens,
                                          num_rows=len(self.x_model[ind]))
 

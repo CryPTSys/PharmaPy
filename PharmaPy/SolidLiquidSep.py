@@ -371,11 +371,14 @@ class DeliquoringStep:
             self.visc_liq/self.cake_height**2/epsilon/(1 - s_inf)
 
         t_final = runtime * self.theta_conv
-
-        theta, states = sim.simulate(t_final)
-
+        
         if not verbose:
           sim.verbosity = 50
+        
+        if t_final < eps:
+            t_final = 1
+            
+        theta, states = sim.simulate(t_final)
 
         self.rho_s = rho_s
         self.retrieve_results(theta, states)
@@ -1215,9 +1218,6 @@ class DisplacementWashing:
 
         c_effl = (epsilon/wash_ratio * (sat_zero * c_zero - c_cake) + c_inlet) / \
             (1 + epsilon/wash_ratio * (sat_zero - 1))
-
-        # if not verbose:
-        #   solver.verbosity = 50
 
         self.retrieve_results(z_vals, time_vals, conc_all)
         self.cake_height = cake_height
