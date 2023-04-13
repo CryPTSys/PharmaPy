@@ -19,11 +19,11 @@ sys.path.insert(0, os.path.abspath('.'))
 # -- Project information -----------------------------------------------------
 
 project = 'PharmaPy'
-copyright = '2022, Daniel Casas-Orozco, Dan Laky, Inyoung Hur'
+copyright = '2023, Purdue University, Daniel Casas-Orozco, Dan Laky, Inyoung Hur'
 author = 'Daniel Casas-Orozco, Dan Laky, Inyoung Hur'
 
 # The full version, including alpha/beta/rc tags
-release = '2022'
+release = '2023'
 
 
 # -- General configuration ---------------------------------------------------
@@ -31,7 +31,7 @@ release = '2022'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.doctest'
+extensions = ['sphinx.ext.doctest', 'sphinx.ext.autodoc'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
