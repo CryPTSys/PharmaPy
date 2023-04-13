@@ -218,8 +218,11 @@ class Slurry:
             moments = self.moments
         else:
             moments = self.Solid_1.getMoments(distrib=distrib)
-
-        mom_three = moments[3]  # m**3/m**3
+        
+        if moments.ndim == 1:
+            mom_three = moments[3]  # m**3/m**3
+        else:
+            mom_three = moments[:, 3]  # m**3/m**3
 
         vol_frac = mom_three * self.Solid_1.kv
         dens_solid = self.Solid_1.getDensity(basis='mass')
