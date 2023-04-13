@@ -72,13 +72,13 @@ class ThreePhaseSettler:
         self.nomenclature()
 
     @property
-    def Inlet_feed(self):
-        return self._Inlet_feed
+    def Inlet(self):
+        return self._Inlet
 
-    @Inlet_feed.setter
-    def Inlet_feed(self, inlet_feed):
-        self._Inlet_feed = inlet_feed
-        self.name_species = self.Inlet_feed.Liquid_1.name_species
+    @Inlet.setter
+    def Inlet(self, Inlet):
+        self._Inlet = Inlet
+        self.name_species = self.Inlet.Liquid_1.name_species
         self.index = self.name_species.index(self.target_compound)
 
     @property
@@ -88,9 +88,12 @@ class ThreePhaseSettler:
     @Inlet_bot_phase.setter
     def Inlet_bot_phase(self, inlet_bot_phase):
         self._Inlet_bot_phase = inlet_bot_phase
+        
+    def flatten_states(self):
+        pass
 
     def get_input_feed(self, time):
-        inputs = get_inputs_new(time, self.Inlet_feed, self.states_dict)
+        inputs = get_inputs_new(time, self.Inlet, self.states_dict)
         return inputs
 
     def get_input_bot_phase(self, time):
@@ -105,8 +108,8 @@ class ThreePhaseSettler:
     def design_space_check(self,):
 
         # Calculate mean diameter
-        distrib = self.Inlet_feed.Solid_1.distrib
-        x_distrib = self.Inlet_feed.Solid_1.x_distrib
+        distrib = self.Inlet.Solid_1.distrib
+        x_distrib = self.Inlet.Solid_1.x_distrib
         perc_vol_basis = np.percentile(distrib*x_distrib**3*1e-9, 50,
                                        method='closest_observation') #distrib**3 to get volume basis, 1e-9 to convert to m3 and reduce number magnitude
         D50_index = np.where(distrib*x_distrib**3*1e-9==perc_vol_basis)[0][0]
@@ -114,12 +117,12 @@ class ThreePhaseSettler:
 
         d_particle = D50*1e-6
 
-        # d_particle = np.dot(self.Inlet_feed.Solid_1.distrib/sum(self.Inlet_feed.Solid_1.distrib),
-        #                     self.Inlet_feed.Solid_1.x_distrib/1e6)
+        # d_particle = np.dot(self.Inlet.Solid_1.distrib/sum(self.Inlet.Solid_1.distrib),
+        #                     self.Inlet.Solid_1.x_distrib/1e6)
         viscosity_top = self.TopPhase.Liquid_1.getViscosity()
         density_top = self.TopPhase.Liquid_1.getDensity()
         density_particle = self.TopPhase.Solid_1.getDensity()
-        flowrate_feed = self.Inlet_feed.Liquid_1.vol_flow
+        flowrate_feed = self.Inlet.Liquid_1.vol_flow
         gamma_top = self.TopPhase.Liquid_1.getSurfTension()
         g = 9.81  # m/s2
 
@@ -171,12 +174,14 @@ class ThreePhaseSettler:
 
     def material_balances(self, time, solid_conc):
         density_top = self.TopPhase.Liquid_1.getDensity()
-        flowrate_feed = self.Inlet_feed.Liquid_1.vol_flow
+        flowrate_feed = self.Inlet.Liquid_1.vol_flow
         density_bot = self.BotPhase.Liquid_1.getDensity()
         flowrate_bot = self.Inlet_bot_phase.vol_flow
 
         input_feed = self.get_input_feed(time)['Inlet']
         solid_conc_feed = input_feed['solid_conc']
+        if isinstance(solid_conc_feed, (list, np.ndarray)):
+            solid_conc_feed = solid_conc_feed[solid_conc_feed!=0][0]
 
         d_solid_conc_dt = ((1/(self.holdup_bot * density_bot))
                           *(solid_conc_feed*flowrate_feed*density_top
@@ -192,8 +197,8 @@ class ThreePhaseSettler:
         # Check if operating point is in design space
         self.design_space_check()
 
-        init_states = self.BotPhase.Solid_1.mass / \
-            (self.BotPhase.Liquid_1.mass + self.BotPhase.Solid_1.mass)
+        init_states = (self.BotPhase.Solid_1.mass 
+                       / (self.BotPhase.Liquid_1.mass + self.BotPhase.Solid_1.mass))
         init_derivative = self.material_balances(time=0,
                                                  solid_conc=init_states)
 
@@ -206,7 +211,6 @@ class ThreePhaseSettler:
 
         time, states, d_states = solver.simulate(runtime)
         self.retrieve_results(time, states)
-
         return time, states, d_states
 
     def retrieve_results(self, time, states):
@@ -228,7 +232,7 @@ class ThreePhaseSettler:
         OutletLiq = LiquidStream(
              path, mass_frac=self.Inlet_bot_phase.mass_frac,  vol_flow=self.Inlet_bot_phase.vol_flow)
         OutletSolid = SolidStream(
-             path, mass_flow=solid_mass_flow,  mass_frac=self.Inlet_feed.Solid_1.mass_frac,
-             temp=self.Inlet_feed.Solid_1.temp, distrib=self.Inlet_feed.Solid_1.distrib, x_distrib=self.Inlet_feed.Solid_1.x_distrib)
+             path, mass_flow=solid_mass_flow,  mass_frac=self.Inlet.Solid_1.mass_frac,
+             temp=self.Inlet.Solid_1.temp, distrib=self.Inlet.Solid_1.distrib, x_distrib=self.Inlet.Solid_1.x_distrib)
         self.Outlet = SlurryStream(path)
         self.Outlet.Phases = [OutletLiq, OutletSolid]
