@@ -107,6 +107,7 @@ class _BaseReactor:
                  h_conv, ht_mode, return_sens, state_events):
         """
         Base constructor for the reactor class.
+
         Parameters
         ----------
         partic_species : list of str

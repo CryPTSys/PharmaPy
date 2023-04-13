@@ -21,7 +21,7 @@ Some of its features are:
 * In-house implementation of the Levenberg-Marquardt algorithm for Parameter Estimation
 * Simulate flowsheets, estimate kinetic parameters, optimize process conditions with external tools
 
-How to cite us
+How to cite us:
 
 * Casas-Orozco D, Laky D, Wang V, et al. PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets. Comput Chem Eng. 2021;153:107408:
 
@@ -48,11 +48,9 @@ How to cite us
 
    installation
 
-   :caption Class-level documentation:
+   unit_operations
 
-   unit_operations.rst
-
-   :caption Advanced use:
+   kinetics
 
    state_events
 
