@@ -101,45 +101,46 @@ def get_sundials_callable(events, eval_sens, param_vals, unit_model, get_jac):
 
 
 class _BaseReactor:
+    """
+    Base constructor for the reactor class.
+
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    mask_params : list of bool (optional)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : TODO: [deprecated? or unused?]
+    temp_ref : float (optional) TODO: [only active on CSTRs?]
+        Reference temperature for enthalpy calculations.
+    isothermal : bool
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
+    """
     def __init__(self, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
                  h_conv, ht_mode, return_sens, state_events):
-        """
-        Base constructor for the reactor class.
 
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        mask_params : list of bool (optional)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : TODO: [deprecated? or unused?]
-        temp_ref : float (optional) TODO: [only active on CSTRs?]
-            Reference temperature for enthalpy calculations.
-        isothermal : bool
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        state_events : lsit of dict(s)
-            list of dictionaries, each one containing the specification of a
-            state event
-        """
         self.distributed_uo = False
         self.is_continuous = False
 
@@ -575,48 +576,49 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
+    """
+    Inherited constructor for the Batch reactor class.
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : str (optional, default = 'concentration')
+        Basis used for material units in the reactor.
+    temp_ref : float (optional, default = 298.15)
+        Reference temperature for enthalpy calculations.
+    isothermal : bool (optional, default = True)
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional, default = None)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    h_conv : float (optional, default = 1000)
+        Heat transfer coefficient TODO: [<-- ??]
+    ht_mode : str (optional, default = 'jacket')
+        What method is used for heat transfer. Options: ['jacket',
+        'coil', 'bath']
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    """
+
     def __init__(self, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
                  state_events=None):
-        """
-        Inherited constructor for the Batch reactor class.
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : str (optional, default = 'concentration')
-            Basis used for material units in the reactor.
-        temp_ref : float (optional, default = 298.15)
-            Reference temperature for enthalpy calculations.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional, default = None)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        h_conv : float (optional, default = 1000)
-            Heat transfer coefficient TODO: [<-- ??]
-        ht_mode : str (optional, default = 'jacket')
-            What method is used for heat transfer. Options: ['jacket',
-            'coil', 'bath']
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        """
 
         super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
