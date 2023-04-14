@@ -74,7 +74,11 @@ def getBipartite(first, second):
     num_first = len(first)
     for two in second:
         for count, one in enumerate(first):
-            if any(word in one for word in comp_names) and any(word in two for word in comp_names):
+            if 'distr' in one and 'solid_conc' in two:
+                graph[two] = one
+                types['distrib'] = (one, two)
+                break
+            elif any(word in one for word in comp_names) and any(word in two for word in comp_names):
                 graph[two] = one
                 types['composition'] = (one, two)
                 break
@@ -86,9 +90,6 @@ def getBipartite(first, second):
                 graph[two] = one
                 types['distrib'] = (one, two)
                 break
-            elif 'distr' in one and 'solid_conc' in two:
-                graph[two] = one
-                types['distrib'] = (one, two)
             elif any(one == word for word in amount_names) and any(two == word for word in amount_names):
                 graph[two] = one
                 types['amount'] = (one, two)
@@ -199,26 +200,27 @@ class NameAnalyzer:
         dict_in = matter_transf.y_upstream
 
         dict_out = {}
-        comp = self.conv_types['composition']
 
         for target, source in self.bipartite.items():
             if source is not None:
 
                 if target != source:
                     y_j = dict_in[source]
+                    
+                    if 'distrib' in target or 'solid_conc' in target:
+                        converted_state = self.__convert_distrib(
+                            source, target, y_j, matter_transf)
 
-                    if 'conc' in target or 'frac' in target:
+                    elif 'conc' in target or 'frac' in target:
                         converted_state = self.__convertComposition(
                             source, target, y_j, matter_transf)
 
                     elif 'flow' in target:
+                        comp = self.conv_types['composition']
+                        
                         converted_state = self.__convertFlow(
                             source, target, y_j, matter_transf,
                             dict_in[comp[0]], comp[0])
-
-                    elif 'distrib' in target:
-                        converted_state = self.__convert_distrib(
-                            source, target, y_j, matter_transf)
 
                     dict_out[target] = converted_state
 
