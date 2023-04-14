@@ -567,11 +567,17 @@ class _BaseCryst:
 
             if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
                 rhos_in = self.Inlet.getDensity(temp=di_states['temp'])
-
-                inlet_distr = u_input['Inlet']['distrib']
-
-                mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
-                                                        mom_num=3)
+                
+                if 'distrib' in u_input['Inlet']:
+                    
+                    inlet_distr = u_input['Inlet']['distrib']
+    
+                    mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
+                                                            mom_num=3)
+                elif 'mu_n' in u_input['Inlet']:
+                    
+                    mom_in = np.array([u_input['Inlet']['mu_n'][3]])
+                    
 
                 phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
                 phis_in = np.concatenate([phi_in, 1 - phi_in])
@@ -818,7 +824,7 @@ class _BaseCryst:
         else:
             if self.method == 'moments':
                 init_solid = self.Slurry.moments
-                exp = np.arange(0, self.Slurry.num_mom)
+                exp = np.arange(0, self.Solid_1.num_mom)
                 init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
@@ -1778,15 +1784,16 @@ class MSMPR(_BaseCryst):
         rho_sol = rhos[0][1]
 
         input_flow = u_inputs['Inlet']['vol_flow']
-        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
             
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
+            input_distrib = u_inputs['Inlet']['mu_n'] * self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
                                                        params, rho_sol)
 
         elif self.method == '1D-FVM':
+            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
             ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
                                                 params, rho_sol)
 
@@ -1877,7 +1884,6 @@ class MSMPR(_BaseCryst):
         volflow = inputs['Inlet']['vol_flow']
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['distrib'] *= 1 / self.scale
 
         dp['time'] = time
         dp['vol_flow'] = volflow
@@ -1893,14 +1899,19 @@ class MSMPR(_BaseCryst):
 
         dp['solubility'] = sat_conc
         dp['supersat'] = supersat
-
+        
+        vol_slurry = self.Slurry.vol
+        
         if self.method == '1D-FVM':
+            dp['distrib'] *= 1 / self.scale
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
             dp['vol_distrib'] = self.Solid_1.convert_distribution(
                 num_distr=dp['distrib'])
-
+            
+            self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
+            
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']
 
@@ -1913,9 +1924,6 @@ class MSMPR(_BaseCryst):
 
         # ---------- Update phases
         
-        vol_slurry = self.Slurry.vol
-        self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
-            
         self.Solid_1.temp = dp['temp'][-1]
 
         self.Liquid_1.temp = dp['temp'][-1]
@@ -1938,24 +1946,26 @@ class MSMPR(_BaseCryst):
                                       mass_conc=dp['mass_conc'][-1],
                                       temp=dp['temp'][-1])
 
-            if self.method == '1D-FVM':
-                solid_out = SolidStream(path, mass_frac=solid_comp)
-            else:
-                solid_out = SolidStream(path, x_distrib=self.x_grid,
-                                        moments=dp['mu_n'][-1],
-                                        mass_frac=solid_comp,
-                                        mass_flow=massflow_sol)  # TODO
-
+            solid_out = SolidStream(path, mass_frac=solid_comp)
+            
             if isinstance(inputs['Inlet']['vol_flow'], float):
                 vol_flow = inputs['Inlet']['vol_flow']
             else:
                 vol_flow = inputs['Inlet']['vol_flow'][-1]
-
-            self.Outlet = SlurryStream(
-                vol_flow=vol_flow,
-                x_distrib=self.x_grid,
-                distrib=dp['distrib'][-1])
-
+            
+            if self.method == '1D-FVM':
+                
+                self.Outlet = SlurryStream(
+                    vol_flow=vol_flow,
+                    x_distrib=self.x_grid,
+                    distrib=dp['distrib'][-1])
+                
+            elif self.method == 'moments':
+                
+                self.Outlet = SlurryStream(
+                    vol_flow=vol_flow,
+                    moments=dp['mu_n'][-1])
+                
             self.get_heat_duty(time, states)  # TODO: allow for semi-batch
 
         else:
