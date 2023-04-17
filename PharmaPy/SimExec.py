@@ -141,7 +141,7 @@ class SimulationExec:
                     count += 1
 
                 # Processing times
-                if hasattr(instance, 'time'):
+                if hasattr(instance.result, 'time'):
                     time_prof = instance.result.time
                     time_processing[name] = time_prof[-1] - time_prof[0]
 
