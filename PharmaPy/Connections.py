@@ -316,11 +316,23 @@ class Connection:
 
             else:
                 states_down = self.destination_uo.names_states_in
-
+            
+            # if hasattr(self.Matter, 'moments'):
+            #     num_distr = len(self.Matter.moments)
+            
+            # elif hasattr(self.Matter, 'distrib'):
+            #     num_distr = len(self.Matter.distrib)
+            
+            if 'mu_n' in states_up:
+                num_distr = len(self.Matter.moments)
+            elif 'distrib' in states_up:
+                num_distr = len(self.Matter.distrib)
+            else:
+                num_distr = 0
+                
             name_analyzer = NameAnalyzer(
                 states_up, states_down, self.num_species,
-                len(getattr(self.Matter, 'distrib', []))
-                )
+                num_distr)
 
             # Convert units and pass states to self.Matter
             converted_states = name_analyzer.convertUnitsNew(self.Matter)

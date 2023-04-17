@@ -140,7 +140,7 @@ def get_dict_states(names, num_species, num_distr, states):
             dict_states[name] = states.T[idx_composition].T
 
             count += num_species
-        elif 'distrib' in name:
+        elif 'distrib' in name or 'mu_n' in name:
             idx_distrib = range(count, count + num_distr)
             dict_states[name] = states.T[idx_distrib].T
 

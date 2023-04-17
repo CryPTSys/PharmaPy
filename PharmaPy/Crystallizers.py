@@ -341,7 +341,7 @@ class _BaseCryst:
             # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
 
             # for mom in mom_names[::-1]:
-            self.names_states_in.insert(0, 'moments')
+            self.names_states_in.insert(0, 'mu_n')
 
             # self.states_in_dict['solid']['moments']
 
@@ -811,10 +811,10 @@ class _BaseCryst:
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
-            if self.method == 'moments':  # mu_n are expected in m**n
+            if self.method == 'moments': 
                 init_solid = self.Solid_1.moments
-                exp = np.arange(0, self.Solid_1.num_mom)
-                init_solid = init_solid * (1e6)**exp
+                # exp = np.arange(0, self.Solid_1.num_mom) # TODO: problematic line for seeded crystallization. 
+                # init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
                 x_grid = self.Solid_1.x_distrib
@@ -823,8 +823,8 @@ class _BaseCryst:
         else:
             if self.method == 'moments':
                 init_solid = self.Slurry.moments
-                exp = np.arange(0, self.Solid_1.num_mom)
-                init_solid = init_solid * (1e6)**exp
+                # exp = np.arange(0, self.Solid_1.num_mom) # TODO 
+                # init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
                 x_grid = self.Slurry.x_distrib
@@ -1581,10 +1581,12 @@ class BatchCryst(_BaseCryst):
 
         self.profiles_runs.append(dp)
         dp = self.flatten_states()
-
+        
+        if self.method == 'moments':
+            dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
+            
         self.result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
-
         # ---------- Update phases
         vol_sol = dp['mu_n'][-1, 3] * self.Solid_1.kv
 
@@ -1599,7 +1601,7 @@ class BatchCryst(_BaseCryst):
         if self.method == '1D-FVM':
             self.Solid_1.updatePhase(distrib=dp['distrib'][-1],
                                      mass=mass_sol)
-
+            
         # Create outlets
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
@@ -1931,7 +1933,8 @@ class MSMPR(_BaseCryst):
         vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
-        self.Slurry.distrib = None
+        # self.Slurry.distrib = None
+        self.Slurry = Slurry()
         self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
         self.elapsed_time = time[-1]
 

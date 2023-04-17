@@ -92,7 +92,6 @@ class Slurry:
             if self.vol == 0:
                 raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
             
-            
         elif self.distrib is None:
             vol_sol = self.Solid_1.vol
             vol_liq = self.Liquid_1.vol
