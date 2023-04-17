@@ -461,7 +461,6 @@ class _BaseCryst:
         dmu_zero_dt = np.atleast_1d(nucl * vol)
         dmu_1on_dt = ind_mom * (growth + dissol) * mu[:-1] + \
             nucl * self.rad**ind_mom
-
         dmu_dt = np.concatenate((dmu_zero_dt, dmu_1on_dt))
 
         # Material balance in kg_API/s --> G in um, u_2 in um**2 (or m**2/m**3)
@@ -557,7 +556,7 @@ class _BaseCryst:
                 distrib=di_states['distrib']/self.scale)  # m**n
 
         di_states['mu_n'] = moms
-
+        
         if name_unit == 'BatchCryst':
             rhos = rhos_susp
             h_in = None
@@ -1791,7 +1790,6 @@ class MSMPR(_BaseCryst):
             input_distrib = u_inputs['Inlet']['mu_n'] * self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
                                                        params, rho_sol)
-
         elif self.method == '1D-FVM':
             input_distrib = u_inputs['Inlet']['distrib'] * self.scale
             ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
@@ -1805,7 +1803,6 @@ class MSMPR(_BaseCryst):
         flow_distrib = tau_inv * (input_distrib - distrib)
 
         ddistr_dt = ddistr_dt + flow_distrib
-
         # Liquid phase
         phi = 1 - self.Solid_1.kv * mu_n[3]
         
@@ -1911,6 +1908,9 @@ class MSMPR(_BaseCryst):
                 num_distr=dp['distrib'])
             
             self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
+            
+        if self.method == 'moments':
+            dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
             
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']
