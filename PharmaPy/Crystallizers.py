@@ -1789,7 +1789,7 @@ class MSMPR(_BaseCryst):
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
-            input_distrib = u_inputs['Inlet']['mu_n'] * self.scale
+            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
                                                        params, rho_sol)
         elif self.method == '1D-FVM':
