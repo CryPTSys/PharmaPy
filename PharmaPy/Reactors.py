@@ -106,15 +106,15 @@ class _BaseReactor:
 
     Parameters
     ----------
-    partic_species : list of str
+    :partic_species : list of str
         Names of the species participating in the reaction. Names
         correspond to species names in the physical properties
         .json file.
-    mask_params : list of bool (optional)
+    :mask_params : list of bool (optional)
         Binary list of which parameters to exclude from the kinetics
         computations.
-    base_units : TODO: [deprecated? or unused?]
-    temp_ref : float (optional) TODO: [only active on CSTRs?]
+    :base_units : TODO: [deprecated? or unused?]
+    :temp_ref : float (optional) TODO: [only active on CSTRs?]
         Reference temperature for enthalpy calculations.
     isothermal : bool
         Boolean value indicating whether the energy balance is
@@ -576,10 +576,10 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
-    """
-    Inherited constructor for the Batch reactor class.
+    """Inherited constructor for the Batch reactor class.
+    
     Parameters
-    ----------
+    ---------
     partic_species : list of str
         Names of the species participating in the reaction. Names
         correspond to species names in the physical properties

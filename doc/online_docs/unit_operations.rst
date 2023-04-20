@@ -11,6 +11,9 @@ Reactors
    :show-inheritance:
 
 Crystallizers
-===============
+==============
+
 .. automodule:: PharmaPy.Crystallizers
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

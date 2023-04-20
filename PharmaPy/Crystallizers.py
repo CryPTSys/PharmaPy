@@ -1259,7 +1259,9 @@ class _BaseCryst:
 
 
 class BatchCryst(_BaseCryst):
-    """ Construct a Batch Crystallizer object
+    """ 
+    --------
+    Construct a Batch Crystallizer object
     Parameters
     ----------
     target_comp : str, list of strings
