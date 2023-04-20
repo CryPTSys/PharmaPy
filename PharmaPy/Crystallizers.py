@@ -1958,7 +1958,7 @@ class MSMPR(_BaseCryst):
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
-
+        
         if type(self) == MSMPR:
             vol_slurry = self.Slurry.vol
             distrib_tilde = dp['distrib'][-1] * vol_slurry
