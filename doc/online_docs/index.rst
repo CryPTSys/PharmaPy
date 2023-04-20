@@ -7,6 +7,8 @@ Welcome to PharmaPy's documentation!
 ====================================
 
 .. image:: logo.jpeg
+    :scale: 70 %
+    :align: center
 
 PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. WE WILL NEED TO BETTER DESCRIBE THE PLATFORM 
 
@@ -23,10 +25,8 @@ Some of its features are:
 
 How to cite us:
 
-* Casas-Orozco D, Laky D, Wang V, et al. PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets. Comput Chem Eng. 2021;153:107408:
+* Casas-Orozco D, Laky D, Wang V, et al. PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets. Comput Chem Eng. 2021;153:107408::
 
-  .. testcode::
-        
         @article{Casas-Orozco2020,
           author = {Casas-Orozco, Daniel and Laky, Daniel and Wang, Vivian and Abdi, Mesfin and Feng, X. and Wood, E. and Laird, Carl and Reklaitis, Gintaras V. and Nagy, Zoltan K.},
           doi = {10.1016/j.compchemeng.2021.107408},
