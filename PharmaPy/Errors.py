@@ -13,8 +13,11 @@ class PharmaPyValueError(ValueError):
 class PharmaPyNonImplementedError(NotImplementedError):
     pass
 
+
 class PharmaPySpecificationError(AttributeError):
     pass
 
+
 class PharmaPyTypeError(TypeError):
     pass
+

@@ -20,6 +20,7 @@ from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
+from PharmaPy.CheckModule import check_modeling_objects
 
 import numpy as np
 from numpy.core.umath_tests import inner1d
@@ -100,44 +101,46 @@ def get_sundials_callable(events, eval_sens, param_vals, unit_model, get_jac):
 
 
 class _BaseReactor:
+    """
+    Base constructor for the reactor class.
+
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    mask_params : list of bool (optional)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : TODO: [deprecated? or unused?]
+    temp_ref : float (optional) TODO: [only active on CSTRs?]
+        Reference temperature for enthalpy calculations.
+    isothermal : bool
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
+    """
     def __init__(self, mask_params,
                  base_units, temp_ref, isothermal,
                  reset_states, controls,
                  h_conv, ht_mode, return_sens, state_events):
-        """
-        Base constructor for the reactor class.
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        mask_params : list of bool (optional)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : TODO: [deprecated? or unused?]
-        temp_ref : float (optional) TODO: [only active on CSTRs?]
-            Reference temperature for enthalpy calculations.
-        isothermal : bool
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        state_events : lsit of dict(s)
-            list of dictionaries, each one containing the specification of a
-            state event
-        """
+
         self.distributed_uo = False
         self.is_continuous = False
 
@@ -194,7 +197,7 @@ class _BaseReactor:
         if state_events is None:
             state_events = []
 
-        self.state_events = state_events
+        self.state_event_list = state_events
 
         # Outputs
         self.time_runs = []
@@ -287,7 +290,7 @@ class _BaseReactor:
 
         events = eval_state_events(
             time, states, sw, self.dim_states,
-            self.states_uo, self.state_events, sdot=self.derivatives,
+            self.states_uo, self.state_event_list, sdot=self.derivatives,
             discretized_model=is_PFR)
 
         return events
@@ -573,48 +576,49 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
+    """
+    Inherited constructor for the Batch reactor class.
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : str (optional, default = 'concentration')
+        Basis used for material units in the reactor.
+    temp_ref : float (optional, default = 298.15)
+        Reference temperature for enthalpy calculations.
+    isothermal : bool (optional, default = True)
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional, default = None)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    h_conv : float (optional, default = 1000)
+        Heat transfer coefficient TODO: [<-- ??]
+    ht_mode : str (optional, default = 'jacket')
+        What method is used for heat transfer. Options: ['jacket',
+        'coil', 'bath']
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    """
+
     def __init__(self, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
                  state_events=None):
-        """
-        Inherited constructor for the Batch reactor class.
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : str (optional, default = 'concentration')
-            Basis used for material units in the reactor.
-        temp_ref : float (optional, default = 298.15)
-            Reference temperature for enthalpy calculations.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional, default = None)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        h_conv : float (optional, default = 1000)
-            Heat transfer coefficient TODO: [<-- ??]
-        ht_mode : str (optional, default = 'jacket')
-            What method is used for heat transfer. Options: ['jacket',
-            'coil', 'bath']
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        """
 
         super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
@@ -761,6 +765,8 @@ class BatchReactor(_BaseReactor):
             sensitivity information of the simulation.
         """
 
+        check_modeling_objects(self)
+
         self.set_names()
 
         # check_stoichiometry(self.Kinetics.stoich_matrix,
@@ -794,7 +800,7 @@ class BatchReactor(_BaseReactor):
         merged_params = self.Kinetics.concat_params()
 
         call_fn, jac_fn, kw_problem = get_sundials_callable(
-            self.state_events, eval_sens, merged_params,
+            self.state_event_list, eval_sens, merged_params,
             self.unit_model, self.get_jacobians)
 
         problem = Explicit_Problem(call_fn, states_init, t0=self.elapsed_time,
@@ -812,9 +818,9 @@ class BatchReactor(_BaseReactor):
             if self.isothermal and self.Kinetics.df_dstates is not None:
                 problem.jac = jac_fn
 
-        if len(self.state_events) > 0:
+        if len(self.state_event_list) > 0:
             def new_handle(solver, info):
-                return handle_events(solver, info, self.state_events,
+                return handle_events(solver, info, self.state_event_list,
                                      any_event=True)
 
             problem.state_events = self._eval_state_events
@@ -1085,6 +1091,8 @@ class CSTR(_BaseReactor):
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
 
+        check_modeling_objects(self)
+
         self.params_control = params_control
         self.set_names()
 
@@ -1293,6 +1301,8 @@ class SemibatchReactor(CSTR):
         :param sundials_opts:
         :return:
         """
+
+        check_modeling_objects(self)
 
         self.params_control = params_control
         self.set_names()
@@ -1623,7 +1633,8 @@ class PlugFlowReactor(_BaseReactor):
 
         return volPosition, states_solver
 
-    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in, rate_j):
+    def material_balances(self, time, mole_conc, vol_diff, temp, flow_in,
+                          rate_j):
         # Inputs
 
         # Finite differences
@@ -1680,7 +1691,7 @@ class PlugFlowReactor(_BaseReactor):
 
             return dtemp_dt  # TODO: if adiabatic, T vs V shouldn't be constant
 
-    def unit_model(self, time, states, sw=None, enrgy_bce=False):
+    def unit_model(self, time, states, sw=None, params=None, enrgy_bce=False):
 
         di_states = unpack_discretized(states, self.len_states,
                                        self.name_states)
@@ -1768,6 +1779,8 @@ class PlugFlowReactor(_BaseReactor):
         :return:
         """
 
+        check_modeling_objects(self)
+
         if runtime is not None:
             final_time = runtime + self.elapsed_time
 
@@ -1806,29 +1819,30 @@ class PlugFlowReactor(_BaseReactor):
         model = self.unit_model
 
         model, jac_fn, kw_model = get_sundials_callable(
-            self.state_events, eval_sens=False, param_vals=[],
+            self.state_event_list, eval_sens=False, param_vals=[],
             unit_model=self.unit_model, get_jac=self.get_jacobians)
 
         problem = Explicit_Problem(model, states_init, t0=self.elapsed_time,
                                    **kw_model)
 
-        if len(self.state_events) > 0:
+        if len(self.state_event_list) > 0:
             # def model(t, y): return self.unit_model(t, y, None)
             # problem = Explicit_Problem(model, states_init,
             #                            t0=self.elapsed_time)
         # else:
-            # switches = [True] * len(self.state_events)
+            # switches = [True] * len(self.state_event_list)
             # problem = Explicit_Problem(self.unit_model, states_init,
             #                            t0=self.elapsed_time, sw0=switches)
 
             def new_handle(solver, info):
-                return handle_events(solver, info, self.state_events,
+                return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
 
             problem.state_events = self._eval_state_events
             problem.handle_event = new_handle
 
-        self.derivatives = model(self.elapsed_time, states_init)
+        self.derivatives = model(self.elapsed_time, states_init,
+                                 *list(kw_model.values()))
 
         solver = CVode(problem)
         solver.linear_solver = 'SPGMR'
@@ -1851,12 +1865,11 @@ class PlugFlowReactor(_BaseReactor):
 
     def retrieve_results(self, time, states):
         time = np.asarray(time)
-        self.timeProf = time
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
 
-        inputs = self.get_inputs(self.timeProf)['Inlet']
+        inputs = self.get_inputs(time)['Inlet']
 
         dp = unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes, inputs=inputs)
@@ -1867,6 +1880,8 @@ class PlugFlowReactor(_BaseReactor):
 
         dp['time'] = time
         dp['vol'] = self.vol_discr
+
+        self.profiles_runs.append(dp)
 
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
@@ -1905,9 +1920,9 @@ class PlugFlowReactor(_BaseReactor):
         self.heat_duty = np.array([trapezoidal_rule(time, ht_time), 0])
         self.duty_type = [0, 0]
 
-    def flatten_states(self):
-        if type(self.timeProf) is list:
-            self.concProf = np.vstack(self.concProf)
+    # def flatten_states(self):
+    #     if type(self.timeProf) is list:
+    #         self.concProf = np.vstack(self.concProf)
 
     def plot_steady(self, fig_size=None, title=None):
         fig, axes = plt.subplots(1, 2, figsize=fig_size)

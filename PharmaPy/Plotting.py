@@ -202,14 +202,17 @@ def set_legend(ax, states_fstates, names, state_names, legend):
             ax[ind].legend(index_y, loc='best')
 
 
-def plot_function(uo, state_names, fig_map=None, ylabels=None,
+def plot_function(uo, state_names, axes=None, fig_map=None, ylabels=None,
                   include_units=True, **fig_kwargs):
     time, data = get_states_result(uo.result, *state_names)
 
     if fig_map is None:
         fig_map = range(len(data))
 
-    fig, ax_orig = plt.subplots(**fig_kwargs)
+    if axes is None:
+        fig, ax_orig = plt.subplots(**fig_kwargs)
+    else:
+        ax_orig = axes
 
     if isinstance(ax_orig, np.ndarray):
         axes = ax_orig.flatten()
@@ -281,14 +284,20 @@ def plot_function(uo, state_names, fig_map=None, ylabels=None,
     #     if len(ax.lines) == 0:
     #         ax.remove()
 
-    return fig, ax_orig
+    if 'fig' in locals():
+        return fig, ax_orig
+    else:
+        return ax_orig
 
 
-def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
+def plot_distrib(uo, state_names, x_name, axes=None, times=None, x_vals=None,
                  cm_names=None, ylabels=None, legend=True, **fig_kwargs):
     if times is None and x_vals is None:
         raise ValueError("Both 'times' and 'x_vals' arguments are None. "
                          "Please specify one of them")
+
+    elif not isinstance(x_vals, (tuple, list)):
+        x_vals = (x_vals, )
 
     if cm_names is None:
         cm_names = ['Blues', 'Oranges', 'Greens',  'Reds', 'Purples', ]
@@ -297,14 +306,18 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
 
     cm = [getattr(plt.cm, cm_name) for cm_name in cm_names]
 
-    fig, ax = plt.subplots(**fig_kwargs)
+    if axes is None:
+        fig, ax = plt.subplots(**fig_kwargs)
+    else:
+        ax = axes
+
     if not isinstance(ax, np.ndarray):
         ax = [ax]
     else:
         ax = ax.flatten()
 
     states_and_fstates = {**uo.states_di, **uo.fstates_di}
-    
+
     if times is not None:
         if len(times) == 1:
             colors = [[None]] * len(cm)
@@ -367,4 +380,7 @@ def plot_distrib(uo, state_names, x_name, times=None, x_vals=None,
         name_yaxes(ax, states_and_fstates, names, ylabels, legend)
         set_legend(ax, states_and_fstates, names, state_names, legend)
 
-    return fig, ax
+    if 'fig' in locals():
+        return fig, ax
+    else:
+        return ax

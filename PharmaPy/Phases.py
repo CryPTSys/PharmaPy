@@ -12,6 +12,8 @@ from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.Commons import trapezoidal_rule
 from scipy.optimize import newton
 
+import warnings
+
 eps = np.finfo(float).eps
 
 
@@ -88,7 +90,7 @@ class LiquidPhase(ThermoPhysicalManager):
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None,
                  mass_conc=None, mole_conc=None,
-                 name_solv=None, verbose=True):
+                 name_solv=None, verbose=True, check_input=True):
 
         super().__init__(path_thermo)
 
@@ -122,15 +124,16 @@ class LiquidPhase(ThermoPhysicalManager):
         self.vol = vol
         self.moles = moles
 
-        if mass_frac is None and mass_conc is None and mole_conc is None and mole_frac is None:
-            self.mass_frac = np.ones(self.num_species) * eps
-            self.mass_conc = np.ones(self.num_species) * eps
+        unspec_num = (mass_frac is None) + (mass_conc is None) + \
+            (mole_conc is None) + (mole_frac is None)
 
-            self.mole_frac = np.ones(self.num_species) * eps
-            self.mole_conc = mole_conc
+        if unspec_num == 4:
+            raise ValueError("No measure of composition was provided")
+        elif unspec_num < 3:
+            raise RuntimeWarning("More than one measure of composition was "
+                                 "provided")
 
-            self.mw_av = 0
-        elif mass_frac is not None:
+        if mass_frac is not None:
             self.mass_frac = np.array(mass_frac)
             self.mass_conc = mass_conc
 
@@ -197,6 +200,15 @@ class LiquidPhase(ThermoPhysicalManager):
             self.mass_conc = mass_conc
 
             self.__calcComposition()
+
+        if (mass + vol + moles) == 0:
+            if check_input:
+                warnings.simplefilter("always")
+                warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
+                              "Model may not perform as intended.",
+                              RuntimeWarning)
+
+                warnings.simplefilter("ignore")
 
         self.y_upstream = None
 
@@ -498,13 +510,15 @@ class LiquidPhase(ThermoPhysicalManager):
 class VaporPhase(ThermoPhysicalManager):
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
-                 mass_frac=None, mole_frac=None, mole_conc=None):
+                 mass_frac=None, mole_frac=None, mole_conc=None,
+                 check_input=True, verbose=True):
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
         props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, mole_conc)
+                            vol, moles, mass_frac, mole_frac, mole_conc,
+                            check_input=check_input, verbose=verbose)
 
         self.mass = props.mass
         self.moles = props.moles

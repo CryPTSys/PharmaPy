@@ -28,7 +28,7 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
     else:
         phi_1, phi_2, exp, s_2 = params
         sec = True
-        
+
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
 
@@ -39,15 +39,15 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
         pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
 
     kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
-    
+
     if sec:
         if moms.ndim == 1:
             mom = np.maximum(0, moms[order]) # For vector moms
-        
+
         elif moms.ndim == 2:
             mom= np.maximum(0, moms[:, order]) # for matrix
         kinetic_term *= (mom * kv)**s_2
-    
+
     return kinetic_term
 
 def disect_rxns(rxns, sep='-->'):
@@ -127,110 +127,110 @@ def get_stoich(di_rxn, partic_species):
 
 
 class RxnKinetics:
+    """
+    Create a reaction kinetics object. Reaction rate (r_i) is assumed to
+    have the following functional form:
+        r_i = f_1(T) * f_2(C_1, ..., C_{n_comp})
 
+    with the temperature-dependent term f_1 given by:
+        f_1 = k_i * exp(-Ea_i/R/T)
+
+    Composition-dependent term f_2 can be passed as a user-defined
+    function. If not given, f_2 is assumed to be of the form:
+        f_2 = prod_{j in reactants for rxn i} C_j (alpha_{i,j})
+
+    where alpha_{i,j} values are determined automatically by PharmaPy from
+    the stoichiometric matrix of the reaction system. Custom reaction
+    orders can also be passed through the 'params_f' argument
+
+    Parameters
+    ----------
+    path : str
+        path to the pure-component json file database
+    k_params : list or tuple
+        pre-exponential factor value(s) for the temperature-dependent term
+        f_1.
+    ea_params : list or tuple
+        activation energy [J/mol] value(s) for the temperature-dependent
+        term f_1.
+    rxn_list: list of str, optional.
+        list containing reactions represented by strings, where the
+        pattern '+' separates reactants or products from one another, and
+        the pattern --> separates groups of reactants from groups of
+        products. Examples of reactions are
+
+            'A + B --> C'
+            '2A --> B'
+            '2H2O --> 2H2 + O2',
+            'H2O --> H2 + 1/2O2',
+            'H2O --> H2 + 0.5O2'
+
+        Note that integer, float and fractional stoichiometric coefficients
+        are supported.
+
+        The names used for the reactions have to match those on the
+        pure-component json file. If 'rxn_list' is None, then both
+        stoichiometric_matrix' and 'partic_species' have to be passed
+        (see below). The default is None.
+    stoiciometric_matrix : numpy array, optional
+        stoichiometric matrix for the set of reactions. It must have
+        n_rxn rows and n_comp columns, so the element (i, j) represents
+        the coefficient of species j in reaction i
+    partic_species : list (or tuple) of str, optional
+        names of participating species. It will be assumed that the
+        order of the names in 'partic_species' is that of the columns of
+        'stoichiometric_matrix'. The passed names must match those
+        in the pure-component json file
+    keq_params : TYPE, optional
+        DESCRIPTION. The default is None.
+    params_f : numpy array, optional
+        parameters for the concentration-dependent term f_2.
+        If no custom model is provided through the 'kinetic_model'
+        argument, then 'params_f' values are interpreted as the reaction
+        orders of the built-in elementary reaction kinetic model.
+        The params_f argument is optional only if no custom model is provided.
+        If not given, the reaction orders are set to the stoichiometric
+        coefficients for the involved reactants. The default is None.
+    temp_ref : float, optional
+        reference temperature [K]. If not passed, it will be set to np.inf.
+        The default is None.
+    reformulate_kin : bool, optional
+        if True, f_1(T) will be reformulated as:
+
+            f_1(T) = exp[phi_1 + exp(phi_2) * (1/T_ref - 1/T)]
+
+        where phi_1 = ln(k_i) - Ea/R/T_ref and phi_2 = ln(Ea/R)
+        We recommend to use this reparametrization when performing
+        parameter estimation with datasets at different temperatures.
+        The default is False.
+    delta_hrxn : float, optional
+        DESCRIPTION. The default is 0.
+    tref_hrxn : float, optional
+        DESCRIPTION. The default is 298.15.
+
+    kinetic_model : callable, optional  # TODO: make it f(T, C)
+        kinetic model to be used to compute f_2. It must have
+        the signature:
+
+            >>> kin_model(conc, params, *args). The default is None.
+
+    df_dstates : TYPE, optional
+        DESCRIPTION. The default is None.
+    df_dtheta : TYPE, optional
+        DESCRIPTION. The default is None.
+
+    Returns
+    -------
+    RxnKinetics object.
+
+    """
     def __init__(self, path, k_params, ea_params, rxn_list=None,
                  stoich_matrix=None, partic_species=None,
                  temp_ref=None, reformulate_kin=False,
                  keq_params=None, params_f=None, delta_hrxn=0,
                  tref_hrxn=298.15, kinetic_model=None, df_dstates=None,
                  df_dtheta=None):
-        """
-        Create a reaction kinetics object. Reaction rate (r_i) is assumed to
-        have the following functional form:
-            r_i = f_1(T) * f_2(C_1, ..., C_{n_comp})
 
-        with the temperature-dependent term f_1 given by:
-            f_1 = k_i * exp(-Ea_i/R/T)
-
-        Composition-dependent term f_2 can be passed as a user-defined
-        function. If not given, f_2 is assumed to be of the form:
-            f_2 = prod_{j in reactants for rxn i} C_j (alpha_{i,j})
-
-        where alpha_{i,j} values are determined automatically by PharmaPy from
-        the stoichiometric matrix of the reaction system. Custom reaction
-        orders can also be passed through the 'params_f' argument
-
-        Parameters
-        ----------
-        path : str
-            path to the pure-component json file database
-        k_params : list or tuple
-            pre-exponential factor value(s) for the temperature-dependent term
-            f_1.
-        ea_params : list or tuple
-            activation energy [J/mol] value(s) for the temperature-dependent
-            term f_1.
-        rxn_list: list of str, optional.
-            list containing reactions represented by strings, where the
-            pattern '+' separates reactants or products from one another, and
-            the pattern --> separates groups of reactants from groups of
-            products. Examples of reactions are
-
-                'A + B --> C'
-                '2A --> B'
-                '2H2O --> 2H2 + O2',
-                'H2O --> H2 + 1/2O2',
-                'H2O --> H2 + 0.5O2'
-
-            Note that integer, float and fractional stoichiometric coefficients
-            are supported.
-
-            The names used for the reactions have to match those on the
-            pure-component json file. If 'rxn_list' is None, then both
-            stoichiometric_matrix' and 'partic_species' have to be passed
-            (see below). The default is None.
-        stoiciometric_matrix : numpy array, optional
-            stoichiometric matrix for the set of reactions. It must have
-            n_rxn rows and n_comp columns, so the element (i, j) represents
-            the coefficient of species j in reaction i
-        partic_species : list (or tuple) of str, optional
-            names of participating species. It will be assumed that the
-            order of the names in 'partic_species' is that of the columns of
-            'stoichiometric_matrix'. The passed names must match those
-            in the pure-component json file
-        keq_params : TYPE, optional
-            DESCRIPTION. The default is None.
-        params_f : numpy array, optional
-            parameters for the concentration-dependent term f_2.
-            If no custom model is provided through the 'kinetic_model'
-            argument, then 'params_f' values are interpreted as the reaction
-            orders of the built-in elementary reaction kinetic model.
-            The params_f argument is optional only if no custom model is provided.
-            If not given, the reaction orders are set to the stoichiometric
-            coefficients for the involved reactants. The default is None.
-        temp_ref : float, optional
-            reference temperature [K]. If not passed, it will be set to np.inf.
-            The default is None.
-        reformulate_kin : bool, optional
-            if True, f_1(T) will be reformulated as:
-
-                f_1(T) = exp[phi_1 + exp(phi_2) * (1/T_ref - 1/T)]
-
-            where phi_1 = ln(k_i) - Ea/R/T_ref and phi_2 = ln(Ea/R)
-            We recommend to use this reparametrization when performing
-            parameter estimation with datasets at different temperatures.
-            The default is False.
-        delta_hrxn : float, optional
-            DESCRIPTION. The default is 0.
-        tref_hrxn : float, optional
-            DESCRIPTION. The default is 298.15.
-
-        kinetic_model : callable, optional  # TODO: make it f(T, C)
-            kinetic model to be used to compute f_2. It must have
-            the signature:
-
-                >>> kin_model(conc, params, *args). The default is None.
-
-        df_dstates : TYPE, optional
-            DESCRIPTION. The default is None.
-        df_dtheta : TYPE, optional
-            DESCRIPTION. The default is None.
-
-        Returns
-        -------
-        RxnKinetics object.
-
-        """
 
         with open(path) as f:
             db = json.load(f)
@@ -649,7 +649,7 @@ class CrystKinetics:
 
     def __init__(self, coeff_solub=None, solub_fn=None,
                  nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
-                 solubility_type='polynomial', sup_sat_type='relative', 
+                 solubility_type='polynomial', sup_sat_type='relative',
                  reformulate_kin=False, alpha_fn=None,
                  temp_ref=298.15, custom_mechanisms=None,
                  mu_sec_nucl='volume'):
@@ -672,9 +672,9 @@ class CrystKinetics:
         mu_sec_nucl : string
             if 'area', mu_2 will be used on the size-dependent term of Bs, else
             if 'volume', mu_3 will be used, for secondary nucleation written as:
-                
+
                 Bs = k_s * S^(s_1) * (mu_sec_nucl * k_v)^(s_2)
-        
+
         """
 
         self.target_idx = None
@@ -695,9 +695,9 @@ class CrystKinetics:
             custom_mechanisms = {}
         elif not isinstance(custom_mechanisms, dict):
             raise PharmaPyTypeError('Provide a dictionary of callables for kinetics.')
-            
+
         self.custom_mechanisms = custom_mechanisms
-            
+
         # ---------- Parameters
         self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
                                  'dissolution')
@@ -837,10 +837,10 @@ class CrystKinetics:
 
         if self.sup_sat_type == 'relative':
             sup_sat = sup_sat / conc_sat
-            
+
         if self.sup_sat_type == 'ratio':
             sup_sat = sup_sat / conc_sat + 1
-            
+
         par_p, par_s, par_g, par_d = self.params.values()
 
         if 'nucl_sec' in self.custom_mechanisms:
@@ -854,14 +854,14 @@ class CrystKinetics:
             # print(sup_sat)
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
-                
+
                 subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
             else:
-                
+
                 subset_mech = ('dissolution', )
 
             mechs = {}
-            
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
@@ -872,7 +872,7 @@ class CrystKinetics:
                                                   self.params[name],
                                                   self.reformulate_kin,
                                                   kv_cry, self.mu_sec_nucl)
-                    
+
             for ky in self.names_mechanisms:
                 if ky not in mechs:
                     mechs[ky] = 0
@@ -892,54 +892,54 @@ class CrystKinetics:
 
             temp_positive = temp[positive_map]
             temp_negative = temp[~positive_map]
-            
+
             conc_sat_positive = conc_sat[positive_map]
             conc_sat_negative = conc_sat[~positive_map]
-            
+
             moments_positive = moments[positive_map]
             moments_negative = moments[~positive_map]
-            
+
             subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
-            
+
             mechs = {}
-            
+
             for name in self.names_mechanisms:
                 mechs[name] = np.zeros_like(sup_sat)
-                
-            args = [sup_positive, conc_sat_positive, moments_positive, 
-                    temp_positive, self.temp_ref]        
-            
+
+            args = [sup_positive, conc_sat_positive, moments_positive,
+                    temp_positive, self.temp_ref]
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
-                    mechs[name][positive_map] = cryst_mechanism(sup_positive, 
+                    mechs[name][positive_map] = cryst_mechanism(sup_positive,
                                                                 moments_positive,
                                                                 temp_positive,
                                                                 self.temp_ref,
                                                                 self.params[name],
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
-                    
+
             subset_mech = ('dissolution', )
-            
-            args = [sup_negative, conc_sat_negative, moments_negative, 
-                    temp_negative, self.temp_ref]        
-            
+
+            args = [sup_negative, conc_sat_negative, moments_negative,
+                    temp_negative, self.temp_ref]
+
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][~positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
-                    mechs[name][~positive_map] = cryst_mechanism(sup_negative, 
+                    mechs[name][~positive_map] = cryst_mechanism(sup_negative,
                                                                  moments_negative,
                                                                 temp_negative,
                                                                 self.temp_ref,
                                                                 self.params[name],
                                                                 self.reformulate_kin,
                                                                 kv_cry, self.mu_sec_nucl)
-                    
+
         if nucl_sec_out:
             return mechs['nucl_prim'], mechs['nucl_sec'], mechs['growth'], mechs['dissolution']
         else:

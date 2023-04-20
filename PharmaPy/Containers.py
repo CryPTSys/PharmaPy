@@ -540,6 +540,12 @@ class Mixer:
                     time_prof = getattr(inlet, 'time_upstream', None)
 
                     if time_prof is not None:
+                        # t_diff = time_prof - self.elapsed_time
+                        # idx_elapsed = np.where(t_diff >= 0)[0][0]
+
+                        # time_prof = np.hstack((self.elapsed_time,
+                        #                        time_prof[idx_elapsed:]))
+
                         break
 
             u_input = self.get_inputs_new(time_prof)
@@ -547,9 +553,13 @@ class Mixer:
             # ---------- Create output phase
             path = self.Inlets[0].path_data
             if self.is_continuous:
-                self.Liquid_1 = LiquidStream(path_thermo=path)
+                self.Liquid_1 = LiquidStream(path_thermo=path,
+                                             mass_frac=u_input['mass_frac'][0][0],
+                                             mass_flow=eps)
             else:
-                self.Liquid_1 = LiquidPhase(path_thermo=path)
+                self.Liquid_1 = LiquidPhase(path_thermo=path,
+                                            mass_frac=u_input['mass_frac'][0],
+                                            mass=eps)
 
             # ---------- Run balances
             if self.is_continuous:

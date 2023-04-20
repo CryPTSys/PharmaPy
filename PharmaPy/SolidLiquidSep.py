@@ -74,19 +74,19 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
     csd = solid_phase.distrib
     rho_sol = solid_phase.getDensity()
     x_grid = solid_phase.x_distrib * 1e-6
-   
+
     kv = 0.524  # converting number based CSD to volume based:
-   
+
     del_x_dist = np.diff(x_grid)
     node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
     node_CSD = (csd[:-1] + csd[1:]) / 2
-    
+
     # Volume of crystals in each bin
     vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
     frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
-    
+
     csd = vol_cry
-    
+
     # Calculate irreducible saturation in weighted csd (volume based)
     vol_frac = vol_cry/ np.sum(vol_cry)
     x_grid = node_x_dist
@@ -100,11 +100,11 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
     surf_tens, rho_liq = props
 
     kv = 0.524  # converting number based CSD to volume based:
-   
+
     del_x_dist = np.diff(x_vec)
     node_x_dist = (x_vec[:-1] + x_vec[1:]) / 2
     node_CSD = (csd[:-1] + csd[1:]) / 2
-    
+
     x_vec = node_x_dist
     if isinstance(surf_tens, float) or isinstance(rho_liq, float):
         capillary_number = porosity**3 * x_vec**2 * \
@@ -117,15 +117,15 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
     # Volume of crystals in each bin
     vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
     frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
-    
+
     csd = vol_cry
-    
+
     s_inf = 0.155 * (1 + 0.031*capillary_number**(-0.49))
     s_inf = np.where(s_inf > 1, 1, s_inf)
-    
+
     # Calculate irreducible saturation in weighted csd (volume based)
     vol_frac = vol_cry/ np.sum(vol_cry)
-    
+
     s_inf = np.sum(vol_frac *s_inf)
 
     return s_inf
@@ -208,9 +208,9 @@ class DeliquoringStep:
         self.delta_z = np.diff(z_grid_red)
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
-        
+
         self.name_species = self.Liquid_1.name_species
-        
+
         self.states_di = {
             'saturation' :{# 'index': index_z,
                            'dim': 1,
@@ -395,14 +395,14 @@ class DeliquoringStep:
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
-        
+
         dp = {}
-        
+
         dp_reduced= unpack_discretized(states, self.dim_states, self.name_states,
                                 indexes=indexes)
-        
+
         s_red = dp_reduced['saturation']
-    
+
         # s_red = states[:, ::num_species + 1]
         satProf = s_red * (1 - self.sat_inf) + self.sat_inf
 
@@ -432,19 +432,19 @@ class DeliquoringStep:
         dp['time'] = time
         dp['z'] = self.z_centers
         dp['saturation'] = self.satProf
-        dp['mass_conc'] =  concPerSpecies       
-        
+        dp['mass_conc'] =  concPerSpecies
+
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
-        
+
         self.mean_sat = trapezoidal_rule(self.z_centers, s_red.T) * \
             (1 - self.sat_inf) + self.sat_inf
 
         # dp['mean_saturation_value'] = self.mean_sat
-        
-        
+
+
         concPerVolElement = {}
         concPerVolElement = dp_reduced['mass_conc']
-        
+
         for name in indexes['mass_conc']:
             concPerVolElement[name] = concPerSpecies[name] * conc_diff[:, ind] \
                 + self.conc_mean_init[:,ind]
@@ -459,7 +459,7 @@ class DeliquoringStep:
             last_state[name] = self.concPerSpecies[name][-1][-1]
 
         self.mass_conc= list(last_state.values())
-        
+
         self.Liquid_1.updatePhase(mass_conc=self.mass_conc)
 
 
@@ -1056,15 +1056,15 @@ class DisplacementWashing:
         classify_phases(self)  # Enumerate phases: Liquid_1,..., Solid_1, ...
 
         self.__original_phase__ = copy.deepcopy(self.Liquid_1.__dict__)
-        
+
         self.name_species = self.Liquid_1.name_species
-        
+
         self.states_di = {
             'mass_conc' : {'index': self.name_species,
                          'dim':len(self.name_species), 'units': 'kg/m**3', 'type':'algebraic'}} # Order of the states matters
 
         self.fstates_di = {
-            'mean_mass_conc' : {'index': self.name_species, 
+            'mean_mass_conc' : {'index': self.name_species,
                      'dim': len(self.name_species), 'units': 'kg/m**3', 'type': 'alg'},
             'washing_time' : {#'index': index_z,
                               'dim':1, 'units': 's', 'type': 'alg'}}
@@ -1205,7 +1205,7 @@ class DisplacementWashing:
 
         conc = conc_star * (c_zero - c_inlet) + c_inlet
         conc_all = np.zeros_like(conc_adim)
-        
+
         for i in range(self.num_t):
             conc_all[:,i] = conc_adim[:,i] * (c_zero - c_inlet) + c_inlet
         # conc_all = conc_adim * (c_zero - c_inlet) + c_inlet
@@ -1228,24 +1228,24 @@ class DisplacementWashing:
 
     def retrieve_results(self, z_coord, time_coord, conc):
         num_species = self.Liquid_1.num_species
-        
+
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
-        
+
         conc_T = np.transpose(conc, (1, 0, 2))
-        
+
         dp= unpack_discretized(conc_T, self.dim_states, self.name_states,
                                indexes=indexes)
-                
+
         self.zProf = z_coord
         self.timeProf = time_coord
         self.concProf = conc
-        
+
         dp['time'] = np.asarray(self.timeProf)
         dp['z'] = self.zProf
-        
+
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
-        
+
         if conc.ndim == 3:
             concPerVolElem = []
             for ind in range(self.num_z):

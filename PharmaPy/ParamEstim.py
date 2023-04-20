@@ -16,7 +16,7 @@ from matplotlib.ticker import AutoMinorLocator
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import pandas as pd
-from PharmaPy.jac_module import numerical_jac_data, dx_jac_p
+from PharmaPy.jac_module import numerical_jac_data, dx_jac_p, numerical_jac
 from PharmaPy import Gaussians as gs
 
 from PharmaPy.LevMarq import levenberg_marquardt
@@ -307,6 +307,9 @@ class ParameterEstimation:
         # --------------- Data
         self.experim_names = None
 
+        if isinstance(x_data, dict):
+            self.experim_names = list(x_data.keys())
+
         x_data = convert_types(x_data)
         y_data = convert_types(y_data, two_d=True)
 
@@ -327,6 +330,8 @@ class ParameterEstimation:
             measured_ind = list(range(y_data[0].shape[1]))
 
         self.measured_ind = measured_ind
+        self.num_model_states = None
+        self.sens_second = None  # sensitivities returned along with obj fun
 
         # ---------- Arguments
         if args_fun is None:
@@ -422,6 +427,8 @@ class ParameterEstimation:
         self.sens_runs = None
         self.y_model = []
 
+        self.method = None
+
     def select_sens(self, sens_ordered, num_states, times=None):
 
         parts = np.split(sens_ordered, num_states, axis=0)
@@ -446,7 +453,7 @@ class ParameterEstimation:
 
         return states.T.ravel()
 
-    def get_objective(self, params, residual_vec=False, set_self=True):
+    def get_objective(self, params, out_array=False, set_self=True):
         # Store parameter values
         if type(self.params_iter) is list:
             self.params_iter.append(params)
@@ -457,40 +464,28 @@ class ParameterEstimation:
         # --------------- Solve
         y_runs = []
         resid_runs = []
-        sens_runs = []
+        sens_second = []
 
         for ind in range(self.num_datasets):
-            # Solve
+            # Solve model
             result = self.function(params, self.x_model[ind],
                                    *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, (tuple, list)):  # func also returns the jacobian
                 y_prof, sens = result
 
+                sens_second.append(sens)
+
             else:  # call a separate function for jacobian
                 y_prof = result
 
-                if self.jac_fun is None:
-                    pass_to_fun = (self.x_model[ind], self.args_fun[ind],
-                                   self.kwargs_fun[ind])
-
-                    pick_p = np.where(self.map_variable)[0]
-                    sens = numerical_jac_data(self.func_aux, params,
-                                              pass_to_fun, dx=self.dx_fd,
-                                              pick_x=pick_p)
-                else:
-                    sens = self.jac_fun(params, self.x_model[ind],
-                                        *self.args_fun[ind],
-                                        **self.kwargs_fun[ind])
-
             if y_prof.ndim == 1:
                 y_run = y_prof.reshape(-1, 1)
-                sens_run = sens
+                self.num_model_states = 1
 
             else:
                 y_run = y_prof[:, self.measured_ind]
-                num_states = y_prof.shape[1]
-                sens_run = self.select_sens(sens, num_states)
+                self.num_model_states = y_prof.shape[1]
 
             # Replace missing data with model values so as residuals are zero
             # for those entries
@@ -505,15 +500,11 @@ class ParameterEstimation:
             y_runs.append(y_run)
             resid_runs.append(resid_run)
 
-            sens_by_y = reorder_sens(sens_run)
-            weighted_sens = np.dot(sens_by_y, self.sigma_inv)
-            weighted_sens = reorder_sens(weighted_sens,
-                                         num_rows=len(self.x_model[ind]))
-
-            sens_runs.append(weighted_sens)
-
         weighted_residuals = [np.dot(resid, self.sigma_inv)
                               for resid in resid_runs]
+
+        if len(sens_second) > 0:
+            self.sens_second = sens_second
 
         if type(self.objfun_iter) is list:
             objfun_val = np.linalg.norm(np.concatenate(resid_runs))**2
@@ -522,7 +513,6 @@ class ParameterEstimation:
         residuals = self.optimize_flag * np.concatenate(resid_runs)
 
         if set_self:
-            self.sens_runs = sens_runs
             self.y_runs = y_runs
             self.resid_runs = resid_runs
 
@@ -531,18 +521,51 @@ class ParameterEstimation:
         # Return objective
         residual_out = np.concatenate([ar.T.ravel()
                                        for ar in weighted_residuals])
-        if residual_vec:
+        if out_array:
             return residual_out
         else:
             residual_out = 1/2 * np.dot(residual_out, residual_out)
 
         return residual_out
 
-    def get_gradient(self, params, jac_matrix=False):
-        if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
-            self.get_objective(params)
+    def get_gradient(self, params, out_array=False, set_self=True):
 
-        concat_sens = np.vstack(self.sens_runs)
+        if self.sens_second is None:
+            raw_sens = []
+            for ind in range(self.num_datasets):
+                if self.jac_fun is None:
+                    pass_to_fun = (self.x_model[ind], self.args_fun[ind],
+                                   self.kwargs_fun[ind])
+
+                    pick_p = np.where(self.map_variable)[0]
+                    sens = numerical_jac_data(self.func_aux, params,
+                                              pass_to_fun, dx=self.dx_fd,
+                                              pick_x=pick_p)
+                else:
+                    sens = self.jac_fun(params, self.x_model[ind],
+                                        *self.args_fun[ind],
+                                        **self.kwargs_fun[ind])
+
+                raw_sens.append(sens)
+
+        else:
+            raw_sens = self.sens_second
+
+        weighted_sens = []
+        for sensit, x_model in zip(raw_sens, self.x_model):
+            sensit = self.select_sens(sensit, self.num_model_states)
+
+            sens_by_y = reorder_sens(sensit)
+
+            weighted = np.dot(sens_by_y, self.sigma_inv)
+            weighted = reorder_sens(weighted, num_rows=len(x_model))
+
+            weighted_sens.append(weighted)
+
+        # if self.sens_runs is None:  # TODO: this is a hack to allow IPOPT
+        #     self.get_objective(params)
+
+        concat_sens = np.vstack(weighted_sens)
         if not self.fit_spectra:
 
             if len(self.map_variable) == concat_sens.shape[1]:
@@ -551,7 +574,10 @@ class ParameterEstimation:
         self.sens = concat_sens
         jacobian = concat_sens
 
-        if jac_matrix:
+        # if set_self:
+        #     self.sens_runs = sens_runs
+
+        if out_array:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
             res = np.concatenate([a.T.ravel() for a in self.residuals])
@@ -570,10 +596,11 @@ class ParameterEstimation:
                     store_iter=True, method='LM', bounds=None):
 
         self.optimize_flag = not simulate
+        self.opt_method = method
+
         params_var = self.param_seed[self.map_variable]
 
         if method == 'LM':
-            self.opt_method = 'LM'
             if optim_options is None:
                 optim_options = {'full_output': True, 'verbose': verbose}
             else:
@@ -588,22 +615,27 @@ class ParameterEstimation:
                 **optim_options)
 
         elif method == 'IPOPT':
-            self.opt_method = 'IPOPT'
             if optim_options is None:
                 optim_options = {'print_level': int(verbose) * 5}
             else:
                 optim_options['print_level'] = int(verbose) * 5
 
+            kwargs_fun = {'out_array': False}
             result = minimize_ipopt(self.get_objective, params_var,
                                     jac=self.get_gradient,
-                                    bounds=bounds, options=optim_options)
+                                    bounds=bounds, options=optim_options,
+                                    kwargs=kwargs_fun)
 
             opt_par = result['x']
 
             # final_sens = np.vstack(self.sens_runs)[:, self.map_variable].T
-            final_sens = np.vstack(self.sens_runs)
-            final_fun = np.concatenate(self.resid_runs)
-            info = {'jac': final_sens, 'fun': final_fun}
+            # final_sens = np.vstack(self.sens_runs)
+            # final_fun = np.concatenate(self.resid_runs)
+
+            resid_multidim = self.get_objective(opt_par, out_array=True,
+                                                update_self=False)
+            jac_multidim = self.get_gradient(opt_par, out_array=True)
+            info = {'jac': jac_multidim, 'fun': resid_multidim}
 
         self.optim_options = optim_options
 
@@ -646,10 +678,10 @@ class ParameterEstimation:
 
         dof = self.num_data_total - self.num_params
         mse = 1 / dof * np.dot(resid.T, resid)
-        
+
         if include_mse:
             covar = mse * np.linalg.inv(hessian_approx)
-            
+
         else:
             covar = np.linalg.inv(hessian_approx)
         # Correlation matrix
@@ -982,7 +1014,7 @@ class Deconvolution:
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, y_spectra,
+    def __init__(self, func, param_seed, time_data, y_spectra, mult_penalty=1,
                  global_analysis=True,
                  args_fun=None, kwargs_fun=None,
                  optimize_flags=None,
@@ -1029,13 +1061,20 @@ class MultipleCurveResolution(ParameterEstimation):
         if isinstance(measured_ind, (tuple, list, range)):
             self.measured_ind = {'spectra': measured_ind}
 
+        self.has_non = False
+        if 'non_spectra' in self.measured_ind:
+            self.has_non = True
+
         if weight_matrix is None:
             size_sigma = y_spectral[0]['spectra'].shape[1]
             size_sigma += len(self.measured_ind.get('non_spectra', []))
 
             self.sigma_inv = np.eye(size_sigma)
 
-    def get_sens_projection(self, c_target, c_plus, sens_states, spectra_pred):
+        self.projection_kwargs = {}
+        self.mult_penalty = mult_penalty
+
+    def get_sens_projection(self, c_target, c_plus, sens_states):
         eye = np.eye(c_target.shape[0])
         proj_orthogonal = eye - np.dot(c_target, c_plus)
 
@@ -1046,11 +1085,9 @@ class MultipleCurveResolution(ParameterEstimation):
 
         first_term = proj_orthogonal @ sens_pick @ c_plus
         second_term = first_term.transpose((0, 2, 1))
-        sens_an = (first_term + second_term) @ spectra_pred
+        sens_an = (first_term + second_term) @ self.spectra_tot
 
-        sens_proj = flatten_spectral_sens(sens_an)
-
-        return sens_proj
+        return sens_an
 
     def func_aux(self, params, x_vals, spectra, *args):
         states = self.function(params, x_vals, *args)
@@ -1060,12 +1097,76 @@ class MultipleCurveResolution(ParameterEstimation):
 
         return absorbance.T.ravel()
 
-    def get_global_analysis(self, params,):
+    def get_gradient(self, params, out_array=False):
+        raw_sens = []
+        if self.sens_second is None:
+            pick_p = np.where(self.map_variable)[0]
+
+            if out_array:
+                args = (True, False)  # out_array, update_self
+                jac_fun = numerical_jac_data
+            else:
+                args = (False, False)
+                jac_fun = numerical_jac
+
+            weighted_sens = jac_fun(self.get_objective, params, args=args,
+                                    dx=self.dx_fd, pick_x=pick_p)
+
+            # if self.opt_method == 'LM':
+
+            #     num_times_total, num_lambda = self.spectra_tot.shape
+            #     num_non_spectral = len(self.measured_ind.get('non_spectra', []))
+            #     num_cols = num_lambda + num_non_spectral
+
+            #     sens = raw_sens.reshape(-1, num_cols, num_times_total)
+            #     sens = np.transpose(sens, (0, 2, 1))
+
+            #     weighted_sens = sens @ self.sigma_inv  # TODOÑ I think this is not necessary
+            # else:
+            #     weighted_sens = raw_sens
+
+        else:
+            raw_sens = self.sens_second
+            sens_tot = np.concatenate(raw_sens, axis=1)  # (n_par x n_times x n_states)
+
+            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
+
+            # Variable projection derivative: n_par x n_times x n_lambda
+            sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
+                                                    **self.projection_kwargs)
+
+            n_par, n_times, n_lambda = sens_spectra.shape
+            if self.has_non:
+                sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
+
+                all_sens = np.concatenate((sens_spectra, sens_regular), axis=2)
+
+                weighted_all = all_sens @ self.sigma_inv
+
+                weighted_sp = flatten_spectral_sens(weighted_all[:, :, :n_lambda])
+                weighted_reg = flatten_spectral_sens(weighted_all[:, :, n_lambda:])
+
+                weighted_sens = np.vstack((weighted_sp, weighted_reg))
+
+                # sens_regular = flatten_spectral_sens(sens_regular)
+
+                # sens = np.vstack([sens_spectra, sens_regular])
+            else:
+                sens = sens_spectra
+
+                weighted_sens = sens @ self.sigma_inv
+                weighted_sens = flatten_spectral_sens(weighted_sens)
+
+        if out_array:
+            return -weighted_sens.T
+        else:
+            return weighted_sens[0]
+
+    def get_global_analysis(self, params):
         c_runs = []
         states_non = []
-        sens_conc = []
+        sens_states = []
 
-        has_non = 'non_spectra' in self.measured_ind
         y_data_non = []
         for ind in range(self.num_datasets):
             result = self.function(params, self.x_model[ind],
@@ -1073,14 +1174,14 @@ class MultipleCurveResolution(ParameterEstimation):
                                    *self.args_fun[ind], **self.kwargs_fun[ind])
 
             if isinstance(result, tuple):
-                states, sens_states = result
-                sens_conc.append(sens_states)
+                states, sens_st = result
+                sens_states.append(sens_st)
             else:
                 states = result
 
             conc_target = states[:, self.measured_ind['spectra']]
 
-            if has_non:
+            if self.has_non:
                 non_spectra = states[:, self.measured_ind['non_spectra']]
 
                 y_non = self.y_data[ind]['non_spectra'].copy()
@@ -1091,12 +1192,11 @@ class MultipleCurveResolution(ParameterEstimation):
                 states_non.append(non_spectra)
                 y_data_non.append(y_non)
 
-            # MCR
             c_runs.append(conc_target)
 
         conc_tot = np.vstack(c_runs)
 
-        if has_non:
+        if self.has_non:
             states_non = np.vstack(states_non)
             y_data_non = np.vstack(y_data_non)
 
@@ -1111,53 +1211,25 @@ class MultipleCurveResolution(ParameterEstimation):
 
         spectra_pred = np.dot(conc_tot, absorptivity_pure)
 
-        if len(sens_conc) == 0:  # TODO: it won't work like this
-            args_merged = [self.x_data[ind],
-                           self.args_fun[ind], self.spectra[ind]]
+        self.projection_kwargs = {'c_target': conc_tot, 'c_plus': conc_plus}
 
-            sens = numerical_jac_data(self.func_aux, params, args_merged,
-                                      dx=self.dx_fd)[:, self.map_variable]
-        else:
-            sens_tot = np.concatenate(sens_conc, axis=1)  # (n_par x n_times x n_states)
-            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
+        if len(sens_states) > 0:
+            self.sens_second = sens_states
 
-            sens_spectra = self.get_sens_projection(conc_tot, conc_plus,
-                                                    sens_mcr, spectra_pred)
-
-            if has_non:
-                sens_regular = sens_tot[:, :,
-                                        self.measured_ind['non_spectra']]
-
-                sens_regular = flatten_spectral_sens(sens_regular)
-
-                sens = np.vstack([sens_spectra, sens_regular])
-            else:
-                sens = sens_spectra
-
-        residuals = spectra_pred - self.spectra_tot
-        if has_non:
+        residuals = self.spectra_tot - spectra_pred
+        if self.has_non:
             residuals = np.hstack((residuals, resid_non))
 
         weighted_resid = np.dot(residuals, self.sigma_inv)
 
         trim_y = np.cumsum(self.len_spectra)[:-1]
-        trim_sens = np.cumsum(self.size_spectra)[:-1]
 
         y_runs = np.split(spectra_pred, trim_y, axis=0)
-        # y_runs = [array.T.ravel() for array in y_runs]
-
-        sens_runs = np.split(sens, trim_sens, axis=0)
         resid_runs = np.split(residuals, trim_y, axis=0)
-
-        self.resid_runs = resid_runs
-        self.y_runs = y_runs
-        self.sens_runs = sens_runs
-
-        self.epsilon_mcr = absorptivity_pure
 
         weighted_resid = weighted_resid.T.ravel()
 
-        return y_runs, weighted_resid, sens_runs
+        return y_runs, resid_runs, weighted_resid, absorptivity_pure
 
     def get_local_analysis(self, params):
         y_runs = []
@@ -1214,36 +1286,44 @@ class MultipleCurveResolution(ParameterEstimation):
         weighted_resid = [elem.T.ravel() for elem in weighted_resid]
         weighted_resid = np.concatenate(weighted_resid)
 
-        return y_runs, weighted_resid, sens_runs
+        return y_runs, weighted_resid, absorptivity_pure  # TODO: I didn't work on this method
 
-    def get_objective(self, params, residual_vec=False):
+    def get_objective(self, params, out_array=False, update_self=True):
 
-        if type(self.params_iter) is list:
-            self.params_iter.append(params)
+        # if type(self.params_iter) is list:
+        #     self.params_iter.append(params)
 
         # Reconstruct parameter set with fixed and non-fixed indexes
         params = self.reconstruct_params(params)
 
         if self.global_analysis:
-            y_runs, weighted_resid, sens_runs = self.get_global_analysis(params)
+            out = self.get_global_analysis(params)
 
         else:
-            y_runs, weighted_resid, sens_runs = self.get_local_analysis(params)
+            out = self.get_local_analysis(params)
 
-        if type(self.objfun_iter) is list:
-            # objfun_val = np.linalg.norm(np.concatenate(self.resid_runs))**2
-            objfun_val = np.linalg.norm(weighted_resid)**2
-            self.objfun_iter.append(objfun_val)
+        y_runs, resid, weighted_resid, molar_abs = out
 
-        # residuals = np.concatenate(resid_runs)
-        self.residuals = weighted_resid
+        if update_self:
+            if type(self.objfun_iter) is list:
+                objfun_val = np.linalg.norm(weighted_resid)**2
+                self.objfun_iter.append(objfun_val)
+
+            if type(self.params_iter) is list:
+                self.params_iter.append(params)
+
+            self.residuals = weighted_resid
+            self.y_runs = y_runs
+            self.epsilon_mcr = molar_abs
+            self.resid_runs = resid
 
         # Return objective
-        if residual_vec:
+        if out_array:
             return weighted_resid
         else:
             residual = 1/2 * np.dot(weighted_resid, weighted_resid)
-            return residual
+            penalty = self.mult_penalty*(np.maximum(-molar_abs, 0)**2).sum()
+            return residual + penalty
 
 
 if __name__ == '__main__':

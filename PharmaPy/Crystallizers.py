@@ -203,6 +203,9 @@ class _BaseCryst:
         self.params_iter = None
         self.vol_mult = 1
 
+        if state_events is None:
+            state_events = []
+
         self.state_event_list = state_events
 
         self.param_wrapper = param_wrapper
@@ -878,12 +881,12 @@ class _BaseCryst:
         self.vol_tank *= 1 / self.vol_offset
 
         if 'temp_ht' in self.states_uo:
-            
+
             if len(self.profiles_runs) == 0:
                 temp_ht = self.Liquid_1.temp
             else:
                 temp_ht = self.profiles_runs[-1]['temp_ht'][-1]
-                
+
             states_init = np.concatenate(
                 (states_init, [self.Liquid_1.temp, temp_ht]))
 
@@ -901,7 +904,7 @@ class _BaseCryst:
         self.derivatives = problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
 
-        if self.state_event_list is not None:
+        if len(self.state_event_list) > 0:
             def new_handle(solver, info):
                 return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
@@ -1047,6 +1050,27 @@ class _BaseCryst:
 
         """
 
+        def get_mu_labels(mu_idx, msmpr=False):
+            out = []
+            for idx in mu_idx:
+                name = '$\mu_{%i}$' % idx
+
+                if idx == 0:
+                    unit = '#'
+                elif idx == 1:
+                    unit = 'm'
+                else:
+                    unit = '$\mathrm{m^{%i}}$' % idx
+
+                if msmpr:
+                    unit += ' $\mathrm{m^{-3}}$'
+
+                unit = r' (%s)' % unit
+
+                out.append(name + unit)
+
+            return out
+
         states = [('mu_n', (0, )), 'temp', ('mass_conc', (self.target_ind,)),
                   'supersat']
 
@@ -1062,12 +1086,19 @@ class _BaseCryst:
                                 nrows=3, ncols=2, ylabels=ylabels,
                                 **fig_kwargs)
 
+        ax[0, 0].legend().remove()
+
         time = self.result.time
         moms = self.result.mu_n
 
+        is_msmpr = self.__class__.__name__ == 'MSMPR'
+        labels_moms = get_mu_labels(range(moms.shape[1]), msmpr=is_msmpr)
+
         for ind, row in enumerate(moms[:, 1:].T):
             ax.flatten()[ind + 1].plot(time, row)
-            ax.flatten()[ind + 1].set_ylabel('$\mu_%i$' % (ind + 1))
+
+        for ind, lab in enumerate(labels_moms):
+            ax.flatten()[ind].set_ylabel(lab)
 
         # Solubility
         ax[2, 1].plot(time, self.result.solubility)
@@ -1228,53 +1259,55 @@ class _BaseCryst:
 
 
 class BatchCryst(_BaseCryst):
+    """ Construct a Batch Crystallizer object
+    Parameters
+    ----------
+    target_comp : str, list of strings
+        Name of the crystallizing compound(s) from .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computation
+    method : str
+        Choice of the numerical method. Options are: 'moments', '1D-FVM'
+    scale : float
+        Scaling factor by which crystal size distribution will be
+        multiplied.
+    vol_tank : TODO - Remove, it comes from Phases module.
+    controls : dict of dicts (funcs) (optional, default = None)
+        Dictionary with keys representing the state (e.g.'Temp')
+        which is controlled and the value indicating the function
+        to use while computing the varible. Functions are of the form
+        f(time) = state_value
+    cfun_solub: callable
+        User defined function for the solubility function :
+        func(conc)
+    adiabatic : bool (optional, default =True)
+        Boolean value indicating whether the heat transfer of
+        the crystallization is considered.
+    rad_zero : float (optional, default = TODO)
+        TODO size of the first bin of the CSD discretization [m]
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation
+    h_conv : float (optional, default = 1000)maybe remove?
+        TODO
+    vol_ht : float/bool? (optional, default = )
+        TODO
+    basis : str (optional, default = 'mass_conc')
+        Options : 'massfrac', 'massconc'
+    jac_type : str
+        TODO options:'AD'
+    state_events : dict of dicts
+        TODO
+    """
+
     def __init__(self, target_comp, mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
                  controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
                  jac_type=None, state_events=None, param_wrapper=None):
-        """ Construct a Batch Crystallizer object
-        Parameters
-        ----------
-        target_comp : str, list of strings
-            Name of the crystallizing compound(s) from .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computation
-        method : str
-            Choice of the numerical method. Options are: 'moments', '1D-FVM'
-        scale : float
-            Scaling factor by which crystal size distribution will be
-            multiplied.
-        vol_tank : TODO - Remove, it comes from Phases module.
-        controls : dict of dicts (funcs) (optional, default = None)
-            Dictionary with keys representing the state (e.g.'Temp')
-            which is controlled and the value indicating the function
-            to use while computing the varible. Functions are of the form
-            f(time) = state_value
-        cfun_solub: callable
-            User defined function for the solubility function :
-            func(conc)
-        adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of
-            the crystallization is considered.
-        rad_zero : float (optional, default = TODO)
-            TODO size of the first bin of the CSD discretization [m]
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation
-        h_conv : float (optional, default = 1000)maybe remove?
-            TODO
-        vol_ht : float/bool? (optional, default = )
-            TODO
-        basis : str (optional, default = 'mass_conc')
-            Options : 'massfrac', 'massconc'
-        jac_type : str
-            TODO options:'AD'
-        state_events : dict of dicts
-            TODO
-        """
+
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
                          controls, adiabatic,
@@ -1925,17 +1958,34 @@ class MSMPR(_BaseCryst):
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
-        
+
+        if type(self) == MSMPR:
+            vol_slurry = self.Slurry.vol
+            distrib_tilde = dp['distrib'][-1] * vol_slurry
+
+            vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
+
+            self.Slurry.distrib = None
+            self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
+        else:
+            vol_liq = dp['vol'][-1]
+            distrib_tilde = dp['total_distrib'][-1]
+
+            rho_solid = self.Solid_1.getDensity()
+            vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv * rho_solid
+
+            vol_slurry = vol_solid + vol_liq
+
+        self.Solid_1.updatePhase(distrib=distrib_tilde)
         self.Solid_1.temp = dp['temp'][-1]
 
         self.Liquid_1.temp = dp['temp'][-1]
-
-        vol_liq = (1 - self.Solid_1.kv * dp['mu_n'][-1, 3]) * vol_slurry
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
         # self.Slurry.distrib = None
         self.Slurry = Slurry()
         self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
+        
         self.elapsed_time = time[-1]
 
         # ---------- Create output stream
@@ -1947,7 +1997,7 @@ class MSMPR(_BaseCryst):
         if type(self) == MSMPR:
             liquid_out = LiquidStream(path,
                                       mass_conc=dp['mass_conc'][-1],
-                                      temp=dp['temp'][-1])
+                                      temp=dp['temp'][-1], check_input=False)
 
             solid_out = SolidStream(path, mass_frac=solid_comp)
             
@@ -1975,7 +2025,7 @@ class MSMPR(_BaseCryst):
             liquid_out = copy.deepcopy(self.Liquid_1)
             solid_out = copy.deepcopy(self.Solid_1)
 
-            self.Outlet = Slurry(vol=self.vol_mult)
+            self.Outlet = Slurry(vol=vol_slurry)
 
         # self.outputs = y_outputs
         self.Outlet.Phases = (liquid_out, solid_out)
