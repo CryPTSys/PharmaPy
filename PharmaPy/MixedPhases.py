@@ -51,7 +51,7 @@ def energy_balance(inst, mass_str):
 
 class Slurry:
 
-    def __init__(self, vol=0,
+    def __init__(self, vol=0, moments=None,
                  # mass_slurry=0,
                  x_distrib=None, distrib=None):
         self._Phases = None
@@ -59,9 +59,9 @@ class Slurry:
         self.vol = vol
         # self.mass_slurry = mass_slurry
         self.mass_slurry = None
-
+        
         self.y_upstream = None
-
+        self.moments = moments
         self.distrib = distrib
         self.x_distrib = x_distrib
 
@@ -88,7 +88,11 @@ class Slurry:
         classify_phases(self)
 
         # TODO: this is not general enough (Dan - Energetics)
-        if self.distrib is None:
+        if self.moments is not None:
+            if self.vol == 0:
+                raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
+            
+        elif self.distrib is None:
             vol_sol = self.Solid_1.vol
             vol_liq = self.Liquid_1.vol
 
@@ -314,14 +318,14 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    def __init__(self, vol_flow=0, x_distrib=None, distrib=None):
+    def __init__(self, vol_flow=0, moments=None, x_distrib=None, distrib=None):
 
-        super().__init__(vol_flow, x_distrib, distrib)
+        super().__init__(vol_flow, moments, x_distrib, distrib)
 
         self.mass_flow = self.mass_slurry  # TODO (this doesn't seem fine)
         # self.mole_flow = self.moles
         self.vol_flow = self.vol
-
+        
         self.DynamicInlet = None
         self.controllable = ['vol_flow', 'temp']
         self.input_states = ['vol_flow', 'temp', 'distrib']
@@ -342,8 +346,29 @@ class SlurryStream(Slurry):
         self._Phases = phases_list
 
         classify_phases(self)
+        
+        if self.moments is not None:
+            if self.vol == 0:
+                raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
+            
+            dens_liq = self.Liquid_1.getDensity()
+            dens_sol = self.Solid_1.getDensity()
+            dens_phases = np.array([dens_liq, dens_sol])
 
-        if self.distrib is None:
+            vol_share = self.getFractions()
+            vol_phases = vol_share * self.vol
+
+            mass_liq, mass_sol = vol_phases * dens_phases
+            self.mass_slurry = np.dot(vol_phases, dens_phases)
+            self.mass_flow = self.mass_slurry
+            
+            self.Liquid_1.updatePhase(mass_flow=mass_liq)
+
+            self.Solid_1.updatePhase(moments=self.moments)
+            self.Solid_1.mass_flow = mass_sol
+            self.Solid_1.vol_flow = vol_phases[1]
+            
+        elif self.distrib is None:
             vol_sol = self.Solid_1.vol
             vol_liq = self.Liquid_1.vol
 

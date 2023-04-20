@@ -344,7 +344,7 @@ class _BaseCryst:
             # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
 
             # for mom in mom_names[::-1]:
-            self.names_states_in.insert(0, 'moments')
+            self.names_states_in.insert(0, 'mu_n')
 
             # self.states_in_dict['solid']['moments']
 
@@ -464,7 +464,6 @@ class _BaseCryst:
         dmu_zero_dt = np.atleast_1d(nucl * vol)
         dmu_1on_dt = ind_mom * (growth + dissol) * mu[:-1] + \
             nucl * self.rad**ind_mom
-
         dmu_dt = np.concatenate((dmu_zero_dt, dmu_1on_dt))
 
         # Material balance in kg_API/s --> G in um, u_2 in um**2 (or m**2/m**3)
@@ -491,7 +490,7 @@ class _BaseCryst:
                                                           kv_cry, moms)
 
         nucl = nucl * self.scale * vol
-
+        
         impurity_factor = self.Kinetics.alpha_fn(conc)
         growth = growth * impurity_factor  # um/s
 
@@ -554,13 +553,13 @@ class _BaseCryst:
             di_states['distrib'] = di_states['mu_n']
             moms = di_states['mu_n'] * \
                 (1e-6)**np.arange(self.states_di['mu_n']['dim'])
-
+                
         else:
             moms = self.Solid_1.getMoments(
                 distrib=di_states['distrib']/self.scale)  # m**n
 
         di_states['mu_n'] = moms
-
+        
         if name_unit == 'BatchCryst':
             rhos = rhos_susp
             h_in = None
@@ -570,11 +569,17 @@ class _BaseCryst:
 
             if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
                 rhos_in = self.Inlet.getDensity(temp=di_states['temp'])
-
-                inlet_distr = u_input['Inlet']['distrib']
-
-                mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
-                                                       mom_num=3)
+                
+                if 'distrib' in u_input['Inlet']:
+                    
+                    inlet_distr = u_input['Inlet']['distrib']
+    
+                    mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
+                                                            mom_num=3)
+                elif 'mu_n' in u_input['Inlet']:
+                    
+                    mom_in = np.array([u_input['Inlet']['mu_n'][3]])
+                    
 
                 phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
                 phis_in = np.concatenate([phi_in, 1 - phi_in])
@@ -809,10 +814,10 @@ class _BaseCryst:
 
         # ---------- Solid phase states
         if 'vol' in self.states_uo:
-            if self.method == 'moments':  # mu_n are expected in m**n
+            if self.method == 'moments': 
                 init_solid = self.Solid_1.moments
-                exp = np.arange(0, self.Solid_1.num_mom)
-                init_solid = init_solid * (1e6)**exp
+                # exp = np.arange(0, self.Solid_1.num_mom) # TODO: problematic line for seeded crystallization. 
+                # init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
                 x_grid = self.Solid_1.x_distrib
@@ -821,8 +826,8 @@ class _BaseCryst:
         else:
             if self.method == 'moments':
                 init_solid = self.Slurry.moments
-                exp = np.arange(0, self.Slurry.num_mom)
-                init_solid = init_solid * (1e6)**exp
+                # exp = np.arange(0, self.Solid_1.num_mom) # TODO 
+                # init_solid = init_solid * (1e6)**exp
 
             elif self.method == '1D-FVM':
                 x_grid = self.Slurry.x_distrib
@@ -1609,10 +1614,12 @@ class BatchCryst(_BaseCryst):
 
         self.profiles_runs.append(dp)
         dp = self.flatten_states()
-
+        
+        if self.method == 'moments':
+            dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
+            
         self.result = DynamicResult(self.states_di, self.fstates_di,
                                             **dp)
-
         # ---------- Update phases
         vol_sol = dp['mu_n'][-1, 3] * self.Solid_1.kv
 
@@ -1627,7 +1634,7 @@ class BatchCryst(_BaseCryst):
         if self.method == '1D-FVM':
             self.Solid_1.updatePhase(distrib=dp['distrib'][-1],
                                      mass=mass_sol)
-
+            
         # Create outlets
         liquid_out = copy.deepcopy(self.Liquid_1)
         solid_out = copy.deepcopy(self.Solid_1)
@@ -1811,14 +1818,15 @@ class MSMPR(_BaseCryst):
         rho_sol = rhos[0][1]
 
         input_flow = u_inputs['Inlet']['vol_flow']
-        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+            
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
         if self.method == 'moments':
+            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
                                                        params, rho_sol)
-
         elif self.method == '1D-FVM':
+            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
             ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
                                                 params, rho_sol)
 
@@ -1830,10 +1838,9 @@ class MSMPR(_BaseCryst):
         flow_distrib = tau_inv * (input_distrib - distrib)
 
         ddistr_dt = ddistr_dt + flow_distrib
-
         # Liquid phase
         phi = 1 - self.Solid_1.kv * mu_n[3]
-
+        
         c_tank = mass_conc
 
         flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi)
@@ -1909,26 +1916,37 @@ class MSMPR(_BaseCryst):
         volflow = inputs['Inlet']['vol_flow']
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-        dp['distrib'] *= 1 / self.scale
 
         dp['time'] = time
         dp['vol_flow'] = volflow
         dp['x_cryst'] = self.x_grid
-
+        
+        if 'temp' in self.controls:
+            control = self.controls['temp']
+            dp['temp'] = control['fun'](time, *control['args'], **control['kwargs'])
+            
         sat_conc = self.Kinetics.get_solubility(dp['temp'], dp['mass_conc'])
 
         supersat = dp['mass_conc'][:, self.target_ind] - sat_conc
 
         dp['solubility'] = sat_conc
         dp['supersat'] = supersat
-
+        
+        vol_slurry = self.Slurry.vol
+        
         if self.method == '1D-FVM':
+            dp['distrib'] *= 1 / self.scale
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
             dp['mu_n'] = moms
 
             dp['vol_distrib'] = self.Solid_1.convert_distribution(
                 num_distr=dp['distrib'])
-
+            
+            self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
+            
+        if self.method == 'moments':
+            dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
+            
         if self.__class__.__name__ == 'SemibatchCryst':
             dp['total_distrib'] = dp['distrib']
 
@@ -1940,6 +1958,7 @@ class MSMPR(_BaseCryst):
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         # ---------- Update phases
+
         if type(self) == MSMPR:
             vol_slurry = self.Slurry.vol
             distrib_tilde = dp['distrib'][-1] * vol_slurry
@@ -1963,6 +1982,10 @@ class MSMPR(_BaseCryst):
         self.Liquid_1.temp = dp['temp'][-1]
         self.Liquid_1.updatePhase(vol=vol_liq, mass_conc=dp['mass_conc'][-1])
 
+        # self.Slurry.distrib = None
+        self.Slurry = Slurry()
+        self.Slurry.Phases = (self.Solid_1, self.Liquid_1)
+        
         self.elapsed_time = time[-1]
 
         # ---------- Create output stream
@@ -1976,24 +1999,26 @@ class MSMPR(_BaseCryst):
                                       mass_conc=dp['mass_conc'][-1],
                                       temp=dp['temp'][-1], check_input=False)
 
-            if self.method == '1D-FVM':
-                solid_out = SolidStream(path, mass_frac=solid_comp)
-            else:
-                solid_out = SolidStream(path, x_distrib=self.x_grid,
-                                        moments=dp['mu_n'][-1],
-                                        mass_frac=solid_comp,
-                                        mass_flow=massflow_sol)  # TODO
-
+            solid_out = SolidStream(path, mass_frac=solid_comp)
+            
             if isinstance(inputs['Inlet']['vol_flow'], float):
                 vol_flow = inputs['Inlet']['vol_flow']
             else:
                 vol_flow = inputs['Inlet']['vol_flow'][-1]
-
-            self.Outlet = SlurryStream(
-                vol_flow=vol_flow,
-                x_distrib=self.x_grid,
-                distrib=dp['distrib'][-1])
-
+            
+            if self.method == '1D-FVM':
+                
+                self.Outlet = SlurryStream(
+                    vol_flow=vol_flow,
+                    x_distrib=self.x_grid,
+                    distrib=dp['distrib'][-1])
+                
+            elif self.method == 'moments':
+                
+                self.Outlet = SlurryStream(
+                    vol_flow=vol_flow,
+                    moments=dp['mu_n'][-1])
+                
             self.get_heat_duty(time, states)  # TODO: allow for semi-batch
 
         else:

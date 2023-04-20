@@ -816,7 +816,7 @@ class CrystKinetics:
             else:
                 temp = temp[..., np.newaxis]
                 c_satur = (temp**int_coeff * self.coeff_solub).sum(axis=1)
-
+                
         elif self.solub_type == 'apelblat':
             a1, a2, a3 = self.coeff_solub
             c_satur = np.exp(a1 + a2/temp + a3*np.log(temp))

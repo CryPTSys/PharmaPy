@@ -817,7 +817,55 @@ class SolidPhase(ThermoPhysicalManager):
                  distrib=None, x_distrib=None, distrib_type='vol_perc',
                  moisture=0, porosity=0,
                  mole_conc=None, kv=1):
+        """
+        
 
+        Parameters
+        ----------
+        path_thermo : TYPE
+            DESCRIPTION.
+        temp : TYPE, optional
+            DESCRIPTION. The default is 298.15.
+        temp_ref : TYPE, optional
+            DESCRIPTION. The default is 298.15.
+        pres : TYPE, optional
+            DESCRIPTION. The default is 101325.
+        mass : TYPE, optional
+            DESCRIPTION. The default is 0.
+        mass_frac : TYPE, optional
+            DESCRIPTION. The default is None.
+        moments : array, optional
+            Array of size N, containing the distribution moments in um**n, 
+            for n = 0,...,N - 1. The default is None.
+        num_mom : TYPE, optional
+            DESCRIPTION. The default is 4.
+        distrib : TYPE, optional
+            DESCRIPTION. The default is None.
+        x_distrib : TYPE, optional
+            DESCRIPTION. The default is None.
+        distrib_type : TYPE, optional
+            DESCRIPTION. The default is 'vol_perc'.
+        moisture : TYPE, optional
+            DESCRIPTION. The default is 0.
+        porosity : TYPE, optional
+            DESCRIPTION. The default is 0.
+        mole_conc : TYPE, optional
+            DESCRIPTION. The default is None.
+        kv : TYPE, optional
+            DESCRIPTION. The default is 1.
+
+        Raises
+        ------
+        RuntimeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        
         super().__init__(path_thermo)
         self.kv = kv
         self.distrib_type = distrib_type
