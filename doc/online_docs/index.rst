@@ -54,6 +54,8 @@ How to cite us:
 
    state_events
 
+   examples/PFR_Batch_solved
+
 ..   general_features.rst
 ..   unit_operations.rst
 ..   simulation_executive.rst
