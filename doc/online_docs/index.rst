@@ -52,6 +52,8 @@ How to cite us:
 
    kinetics
 
+   phases
+
    state_events
 
    examples/PFR_Batch_solved
@@ -60,6 +62,8 @@ How to cite us:
 ..   unit_operations.rst
 ..   simulation_executive.rst
 ..   advanced_features.rst
+..   phases.rst
+..   kinetics.rst
 
 
 
