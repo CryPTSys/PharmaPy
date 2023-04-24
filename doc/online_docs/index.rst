@@ -46,12 +46,14 @@ How to cite us:
    :maxdepth: 2
    :caption: Contents:
 
+   installation
    docstrings/index
    examples/index
    state_events
 
 ..   examples/PFR_Batch_solved
 
+..   installations.rst
 ..   general_features.rst
 ..   unit_operations.rst
 ..   simulation_executive.rst

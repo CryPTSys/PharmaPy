@@ -603,7 +603,7 @@ class BatchReactor(_BaseReactor):
         while computing the variable. Functions are of the form
         f(time) = state_value
     h_conv : float (optional, default = 1000)
-        Heat transfer coefficient TODO: [<-- ??]
+        Convective heat transfer coefficient for the liquid phase in the reactor (W m\ :sup:`-2` K\ :sup:`-1`). 
     ht_mode : str (optional, default = 'jacket')
         What method is used for heat transfer. Options: ['jacket',
         'coil', 'bath']
@@ -913,50 +913,51 @@ class BatchReactor(_BaseReactor):
 
 
 class CSTR(_BaseReactor):
+    """
+    Inherited constructor for the continuous stirred-tank reactor (CSTR) class.
+    
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : str (optional, default = 'concentration')
+        Basis used for material units in the reactor.
+    temp_ref : float (optional, default = 298.15)
+        Reference temperature for enthalpy calculations.
+    isothermal : bool (optional, default = True)
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional, default = None)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    h_conv : float (optional, default = 1000)
+        Convective heat transfer coefficient for the liquid phase in the reactor (W m\ :sup:`-2` K\ :sup:`-1`). 
+    ht_mode : str (optional, default = 'jacket')
+        What method is used for heat transfer. Options: ['jacket',
+        'coil', 'bath']
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    """
+
     def __init__(self, mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
                  state_events=None):
-        """
-        Inherited constructor for the continuous stirred-tank
-        reactor (CSTR) class.
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : str (optional, default = 'concentration')
-            Basis used for material units in the reactor.
-        temp_ref : float (optional, default = 298.15)
-            Reference temperature for enthalpy calculations.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional, default = None)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        h_conv : float (optional, default = 1000)
-            Heat transfer coefficient TODO: [<-- ??]
-        ht_mode : str (optional, default = 'jacket')
-            What method is used for heat transfer. Options: ['jacket',
-            'coil', 'bath']
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        """
-
+        
         super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
                          reset_states, controls,
@@ -1209,53 +1210,55 @@ class CSTR(_BaseReactor):
 
 
 class SemibatchReactor(CSTR):
+    """
+    Inherited constructor for the semibatch stirred-tank reactor class. This method inherits from the CSTR constructor.
+    
+    Parameters
+    ----------
+    partic_species : list of str
+        Names of the species participating in the reaction. Names
+        correspond to species names in the physical properties
+        .json file.
+    vol_tank : float
+        Volume of the vessel in m**3. Required to ensure that the
+        vessel does not overflow
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : str (optional, default = 'concentration')
+        Basis used for material units in the reactor.
+    temp_ref : float (optional, default = 298.15)
+        Reference temperature for enthalpy calculations.
+    isothermal : bool (optional, default = True)
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional, default = None)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    h_conv : float (optional, default = 1000)
+        Convective heat transfer coefficient for the liquid phase in the reactor (W m\ :sup:`-2` K\ :sup:`-1`). 
+    ht_mode : str (optional, default = 'jacket')
+        What method is used for heat transfer. Options: ['jacket',
+        'coil', 'bath']
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    """
+    
     def __init__(self, vol_tank,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
                  isothermal=True, reset_states=False, controls=None,
                  h_conv=1000, ht_mode='jacket', return_sens=True,
                  state_events=None):
-        """
-        Inherited constructor for the semibatch stirred-tank
-        reactor class. This method inherits from the CSTR constructor.
-        Parameters
-        ----------
-        partic_species : list of str
-            Names of the species participating in the reaction. Names
-            correspond to species names in the physical properties
-            .json file.
-        vol_tank : float
-            Volume of the vessel in m**3. Required to ensure that the
-            vessel does not overflow
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : str (optional, default = 'concentration')
-            Basis used for material units in the reactor.
-        temp_ref : float (optional, default = 298.15)
-            Reference temperature for enthalpy calculations.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional, default = None)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        h_conv : float (optional, default = 1000)
-            Heat transfer coefficient TODO: [<-- ??]
-        ht_mode : str (optional, default = 'jacket')
-            What method is used for heat transfer. Options: ['jacket',
-            'coil', 'bath']
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        """
+        
 
         super().__init__(mask_params,
                          base_units, temp_ref,
@@ -1415,6 +1418,49 @@ class SemibatchReactor(CSTR):
 
 
 class PlugFlowReactor(_BaseReactor):
+    """
+    Inherited constructor for the plug-flow (PFR) reactor class.
+    
+    Parameters
+    ----------
+    diam_in : float
+        Diameter of the tubular reactor in meters.
+    num_discr : int
+        number of finite volumes to use to discretize the volume coordinate
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations.
+    base_units : str (optional, default = 'concentration')
+        Basis used for material units in the reactor.
+    temp_ref : float (optional, default = 298.15)
+        Reference temperature for enthalpy calculations.
+    isothermal : bool (optional, default = True)
+        Boolean value indicating whether the energy balance is
+        considered. (i.e. dT/dt = 0 when isothermal is True)
+    adiabatic : bool (optional, default = False)
+        Boolean value indication whether the reactor is considered
+        to be adiabatic. Temperature change will not be zero but
+        heat transfer will be zero in this case.
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation.
+    controls : dict of functions (optional, default = None)
+        Dictionary with keys representing the state which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    h_conv : float (optional, default = 1000)
+        Convective heat transfer coefficient for the liquid phase in the reactor (W m\ :sup:`-2` K\ :sup:`-1`). 
+    ht_mode : str (optional, default = 'bath')
+        What method is used for heat transfer. Options: ['jacket',
+        'coil', 'bath']
+    return_sens : bool (optional, default = True)
+        whether or not the paramest_wrapper method should return
+        the sensitivity system along with the concentratio profiles.
+        Use False if you want the parameter estimation platform to
+        estimate the sensitivity system using finite differences
+    """
+    
     def __init__(self, diam_in, num_discr,
                  mask_params=None,
                  base_units='concentration', temp_ref=298.15,
@@ -1422,48 +1468,7 @@ class PlugFlowReactor(_BaseReactor):
                  reset_states=False, controls=None,
                  h_conv=1000, ht_mode='bath', return_sens=True,
                  state_events=None):
-        """
-        Inherited constructor for the plug-flow (PFR) reactor
-        class.
-        Parameters
-        ----------
-        diam_in : float
-            Diameter of the tubular reactor in meters.
-        num_discr : int
-            number of finite volumes to use to discretize the volume coordinate
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations.
-        base_units : str (optional, default = 'concentration')
-            Basis used for material units in the reactor.
-        temp_ref : float (optional, default = 298.15)
-            Reference temperature for enthalpy calculations.
-        isothermal : bool (optional, default = True)
-            Boolean value indicating whether the energy balance is
-            considered. (i.e. dT/dt = 0 when isothermal is True)
-        adiabatic : bool (optional, default = False)
-            Boolean value indication whether the reactor is considered
-            to be adiabatic. Temperature change will not be zero but
-            heat transfer will be zero in this case.
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation.
-        controls : dict of functions (optional, default = None)
-            Dictionary with keys representing the state which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        h_conv : float (optional, default = 1000)
-            Heat transfer coefficient TODO: [<-- ??]
-        ht_mode : str (optional, default = 'bath')
-            What method is used for heat transfer. Options: ['jacket',
-            'coil', 'bath']
-        return_sens : bool (optional, default = True)
-            whether or not the paramest_wrapper method should return
-            the sensitivity system along with the concentratio profiles.
-            Use False if you want the parameter estimation platform to
-            estimate the sensitivity system using finite differences
-        """
+        
 
         super().__init__(mask_params,
                          base_units, temp_ref, isothermal,
