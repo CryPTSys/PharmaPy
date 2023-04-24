@@ -47,17 +47,13 @@ How to cite us:
    :caption: Contents:
 
    installation
-
-   unit_operations
-
-   kinetics
-
-   phases
-
+   docstrings/index
+   examples/index
    state_events
 
-   examples/PFR_Batch_solved
+..   examples/PFR_Batch_solved
 
+..   installations.rst
 ..   general_features.rst
 ..   unit_operations.rst
 ..   simulation_executive.rst

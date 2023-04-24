@@ -128,18 +128,18 @@ def get_stoich(di_rxn, partic_species):
 
 class RxnKinetics:
     """
-    Create a reaction kinetics object. Reaction rate (r_i) is assumed to
-    have the following functional form:
-        r_i = f_1(T) * f_2(C_1, ..., C_{n_comp})
+    Create a reaction kinetics object. Reaction rate r\ :sub:`i` is assumed to
+    have the following functional form: 
+        r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`) 
+        
+    with the temperature-dependent term f\ :sub:`1` given by:
+        f\ :sub:`1` = k\ :sub:`i` * exp(- Ea\ :sub:`i`/R/T)
 
-    with the temperature-dependent term f_1 given by:
-        f_1 = k_i * exp(-Ea_i/R/T)
+    Composition-dependent term f\ :sub:`2` can be passed as a user-defined
+    function. If not given, f\ :sub:`2` is assumed to be of the form:
+        f\ :sub:`2` = prod\ :sub:`j in reactants for rxn i` C\ :sub:`j` (alpha\ :sub:`{i,j}`)
 
-    Composition-dependent term f_2 can be passed as a user-defined
-    function. If not given, f_2 is assumed to be of the form:
-        f_2 = prod_{j in reactants for rxn i} C_j (alpha_{i,j})
-
-    where alpha_{i,j} values are determined automatically by PharmaPy from
+    where alpha\ :sub:`{i,j}` values are determined automatically by PharmaPy from
     the stoichiometric matrix of the reaction system. Custom reaction
     orders can also be passed through the 'params_f' argument
 
@@ -148,11 +148,10 @@ class RxnKinetics:
     path : str
         path to the pure-component json file database
     k_params : list or tuple
-        pre-exponential factor value(s) for the temperature-dependent term
-        f_1.
+        pre-exponential factor value(s) for the temperature-dependent term f\ :sub:`1`.
     ea_params : list or tuple
         activation energy [J/mol] value(s) for the temperature-dependent
-        term f_1.
+        term f\ :sub:`1`.
     rxn_list: list of str, optional.
         list containing reactions represented by strings, where the
         pattern '+' separates reactants or products from one another, and
@@ -161,9 +160,10 @@ class RxnKinetics:
 
             'A + B --> C'
             '2A --> B'
-            '2H2O --> 2H2 + O2',
-            'H2O --> H2 + 1/2O2',
-            'H2O --> H2 + 0.5O2'
+            '2 H\ :sub:`2` O --> 2 H\ :sub:`2` + O\ :sub:`2`',
+            'H\ :sub:`2` O --> H\ :sub:`2` + 0.5 O\ :sub:`2`,
+            'H\ :sub:`2` O --> H\ :sub:`2` + 0.5 O\ :sub:`2`'
+         
 
         Note that integer, float and fractional stoichiometric coefficients
         are supported.
@@ -184,7 +184,7 @@ class RxnKinetics:
     keq_params : TYPE, optional
         DESCRIPTION. The default is None.
     params_f : numpy array, optional
-        parameters for the concentration-dependent term f_2.
+        parameters for the concentration-dependent term f\ :sub:`2`.
         If no custom model is provided through the 'kinetic_model'
         argument, then 'params_f' values are interpreted as the reaction
         orders of the built-in elementary reaction kinetic model.
@@ -195,11 +195,11 @@ class RxnKinetics:
         reference temperature [K]. If not passed, it will be set to np.inf.
         The default is None.
     reformulate_kin : bool, optional
-        if True, f_1(T) will be reformulated as:
+        if True, f\ :sub:`1` (T) will be reformulated as:
 
-            f_1(T) = exp[phi_1 + exp(phi_2) * (1/T_ref - 1/T)]
+            f\ :sub:`1` (T) = exp[phi\ :sub:`1` + exp(phi\ :sub:`2`) * (1/T_ref - 1/T)]
 
-        where phi_1 = ln(k_i) - Ea/R/T_ref and phi_2 = ln(Ea/R)
+        where phi\ :sub:`1` = ln(ki\ :sub:`i`) - Ea/R/T_ref and phi\ :sub:`2` = ln(Ea/R)
         We recommend to use this reparametrization when performing
         parameter estimation with datasets at different temperatures.
         The default is False.
@@ -209,7 +209,7 @@ class RxnKinetics:
         DESCRIPTION. The default is 298.15.
 
     kinetic_model : callable, optional  # TODO: make it f(T, C)
-        kinetic model to be used to compute f_2. It must have
+        kinetic model to be used to compute f\ :sub:`2`. It must have
         the signature:
 
             >>> kin_model(conc, params, *args). The default is None.
