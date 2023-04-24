@@ -17,3 +17,11 @@ Crystallizers
    :members:
    :undoc-members:
    :show-inheritance:
+
+Evaporators
+==============
+
+.. automodule:: PharmaPy.Evaporators
+   :members:
+   :undoc-members:
+   :show-inheritance:
