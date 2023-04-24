@@ -46,17 +46,9 @@ How to cite us:
    :maxdepth: 2
    :caption: Contents:
 
-   installation
-
-   unit_operations
-
-   kinetics
-
-   phases
-
-   state_events
-
+   docstrings/index
    examples/index
+   state_events
 
 ..   examples/PFR_Batch_solved
 
