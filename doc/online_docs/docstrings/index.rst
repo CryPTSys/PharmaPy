@@ -1,5 +1,5 @@
 =========================
-Library documentation
+Documentation
 =========================
 .. toctree::
    :maxdepth: 1
