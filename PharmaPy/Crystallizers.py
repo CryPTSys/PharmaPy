@@ -56,69 +56,69 @@ gas_ct = 8.314  # J/mol/K
 
 
 class _BaseCryst:
+    """ Construct a Crystallizer Object
+
+    Parameters
+    ----------
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computations
+    method : str
+        Choice of the numerical method. Options are: 'moments', '1D-FVM'
+    target_comp : str, list of strings
+        Name of the crystallizing compound(s) from .json file.
+    scale : float
+        Scaling factor by which crystal size distribution will be
+        multiplied.
+    vol_tank : TODO - Remove, it comes from Phases module.
+    controls : dict of dicts(funcs) (optional, default = None)
+        Dictionary with keys representing the state(e.g.'Temp') which is
+        controlled and the value indicating the function to use
+        while computing the variable. Functions are of the form
+        f(time) = state_value
+    adiabatic : bool (optional, default=True)
+        Boolean value indicating whether the heat transfer of
+        the crystallization is considered.
+    rad_zero : float (optional, default=TODO)
+        TODO Size of the first bin of the CSD discretization [m]
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be reset
+        before simulation
+    h_conv : float (optional, default = TODO) (maybe remove?)
+        TODO
+    vol_ht : float (optional, default = TODO)
+        TODO Volume of the cooling jacket [m^3]
+    basis : str (optional, default = T0DO)
+        TODO Options :'massfrac', 'massconc'
+    jac_type : str
+        TODO Options: 'AD'
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
+    param_wrapper : callable (optional, default = None)
+        function with the signature
+
+            param_wrapper(states, sens)
+
+        Useful when the parameter estimation problem is a function of the
+        states y -h(y)- rather than y itself.
+
+        'states' is a DynamicResult object and 'sens' is a dictionary
+        that contains N_y number of sensitivity arrays, representing
+        time-depending sensitivities. Each array in sens has dimensions
+        num_times x num_params. 'param_wrapper' has to return two outputs,
+        one array containing h(y) and list of arrays containing
+        sens(h(y))
+    """
     np = np
     # @decor_states
-
+    
     def __init__(self, mask_params,
                  method, target_comp, scale, vol_tank, controls,
                  adiabatic, rad_zero,
                  reset_states,
                  h_conv, vol_ht, basis, jac_type,
                  state_events, param_wrapper):
-
-        """ Construct a Crystallizer Object
-
-        Parameters
-        ----------
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computations
-        method : str
-            Choice of the numerical method. Options are: 'moments', '1D-FVM'
-        target_comp : str, list of strings
-            Name of the crystallizing compound(s) from .json file.
-        scale : float
-            Scaling factor by which crystal size distribution will be
-            multiplied.
-        vol_tank : TODO - Remove, it comes from Phases module.
-        controls : dict of dicts(funcs) (optional, default = None)
-            Dictionary with keys representing the state(e.g.'Temp') which is
-            controlled and the value indicating the function to use
-            while computing the variable. Functions are of the form
-            f(time) = state_value
-        adiabatic : bool (optional, default=True)
-            Boolean value indicating whether the heat transfer of
-            the crystallization is considered.
-        rad_zero : float (optional, default=TODO)
-            TODO Size of the first bin of the CSD discretization [m]
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be reset
-            before simulation
-        h_conv : float (optional, default = TODO) (maybe remove?)
-            TODO
-        vol_ht : float (optional, default = TODO)
-            TODO Volume of the cooling jacket [m^3]
-        basis : str (optional, default = T0DO)
-            TODO Options :'massfrac', 'massconc'
-        jac_type : str
-            TODO Options: 'AD'
-        state_events : list of dicts
-            TODO
-        param_wrapper : callable (optional, default = None)
-            function with the signature
-
-                param_wrapper(states, sens)
-
-            Useful when the parameter estimation problem is a function of the
-            states y -h(y)- rather than y itself.
-
-            'states' is a DynamicResult object and 'sens' is a dictionary
-            that contains N_y number of sensitivity arrays, representing
-            time-depending sensitivities. Each array in sens has dimensions
-            num_times x num_params. 'param_wrapper' has to return two outputs,
-            one array containing h(y) and list of arrays containing
-            sens(h(y))
-        """
 
         if jac_type == 'AD':
             try:
@@ -1259,9 +1259,8 @@ class _BaseCryst:
 
 
 class BatchCryst(_BaseCryst):
-    """ 
-    --------
-    Construct a Batch Crystallizer object
+    """Construct a Batch Crystallizer object
+    
     Parameters
     ----------
     target_comp : str, list of strings
@@ -1299,8 +1298,9 @@ class BatchCryst(_BaseCryst):
         Options : 'massfrac', 'massconc'
     jac_type : str
         TODO options:'AD'
-    state_events : dict of dicts
-        TODO
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
     """
 
     def __init__(self, target_comp, mask_params=None,
@@ -1686,6 +1686,51 @@ class BatchCryst(_BaseCryst):
 
 
 class MSMPR(_BaseCryst):
+    """ Construct a MSMPR object.
+    
+    Parameters
+    ----------
+    target_comp : str, list of strings
+        Name of the crystallizing compound(s) from .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computation
+    method : str
+        Choice of the numerical method. Options are: 'moments', '1D-FVM'
+    scale : float
+        Scaling factor by which crystal size distribution will be
+        multiplied.
+    vol_tank : TODO - Remove, it comes from Phases module.
+    controls : dict of dicts (funcs) (optional, default = None)
+        Dictionary with keys representing the state (e.g.'Temp')
+        which is controlled and the value indicating the function
+        to use while computing the varible. Functions are of the form
+        f(time) = state_value
+    params_control :
+        TODO
+    cfun_solub: callable
+        User defined function for the solubility function :
+        func(conc)
+    adiabatic : bool (optional, default =True)
+        Boolean value indicating whether the heat transfer of
+        the crystallization is considered.
+    rad_zero : float (optional, default = TODO)
+        TODO size of the first bin of the CSD discretization [m]
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation
+    h_conv : float (optional, default = 1000)maybe remove?
+        TODO
+    vol_ht : float/bool? (optional, default = )
+        TODO
+    basis : str (optional, default = 'mass_conc')
+        Options : 'massfrac', 'massconc'
+    jac_type : str
+        TODO options:'AD'
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
+    """
     def __init__(self, target_comp,
                  mask_params=None,
                  method='1D-FVM', scale=1, vol_tank=None,
@@ -1699,50 +1744,6 @@ class MSMPR(_BaseCryst):
                          controls, adiabatic, rad_zero,
                          reset_states, h_conv, vol_ht,
                          basis, jac_type, state_events, param_wrapper)
-
-        """ Construct a MSMPR object
-        Parameters
-        ----------
-        target_comp : str, list of strings
-            Name of the crystallizing compound(s) from .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computation
-        method : str
-            Choice of the numerical method. Options are: 'moments', '1D-FVM'
-        scale : float
-            Scaling factor by which crystal size distribution will be
-            multiplied.
-        vol_tank : TODO - Remove, it comes from Phases module.
-        controls : dict of dicts (funcs) (optional, default = None)
-            Dictionary with keys representing the state (e.g.'Temp')
-            which is controlled and the value indicating the function
-            to use while computing the varible. Functions are of the form
-            f(time) = state_value
-        params_control :
-            TODO
-        cfun_solub: callable
-            User defined function for the solubility function :
-            func(conc)
-        adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of
-            the crystallization is considered.
-        rad_zero : float (optional, default = TODO)
-            TODO size of the first bin of the CSD discretization [m]
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation
-        h_conv : float (optional, default = 1000)maybe remove?
-            TODO
-        vol_ht : float/bool? (optional, default = )
-            TODO
-        basis : str (optional, default = 'mass_conc')
-            Options : 'massfrac', 'massconc'
-        jac_type : str
-            TODO options:'AD'
-        state_events : dict of dicts
-            TODO
-        """
 
         # self.states_uo.append('conc_j')
         self.is_continuous = True
@@ -2070,52 +2071,54 @@ class MSMPR(_BaseCryst):
 
 
 class SemibatchCryst(MSMPR):
+    """ Construct a Semi-batch Crystallizer object
+    
+    Parameters
+    ----------
+    target_comp : str, list of strings
+        Name of the crystallizing compound(s) from .json file.
+    mask_params : list of bool (optional, default = None)
+        Binary list of which parameters to exclude from the kinetics
+        computation
+    method : str
+        Choice of the numerical method. Options are: 'moments', '1D-FVM'
+    scale : float
+        Scaling factor by which crystal size distribution will be
+        multiplied.
+    vol_tank : TODO - Remove, it comes from Phases module.
+    controls : dict of dicts (funcs) (optional, default = None)
+        Dictionary with keys representing the state (e.g.'Temp')
+        which is controlled and the value indicating the function
+        to use while computing the varible. Functions are of the form
+        f(time) = state_value
+    params_control :
+        TODO
+    adiabatic : bool (optional, default =True)
+        Boolean value indicating whether the heat transfer of
+        the crystallization is considered.
+    rad_zero : float (optional, default = TODO)
+        TODO size of the first bin of the CSD discretization [m]
+    reset_states : bool (optional, default = False)
+        Boolean value indicating whether the states should be
+        reset before simulation
+    h_conv : float (optional, default = 1000)maybe remove?
+        TODO
+    vol_ht : float/bool? (optional, default = )
+        TODO
+    basis : str (optional, default = 'mass_conc')
+        Options : 'massfrac', 'massconc'
+    jac_type : str
+        TODO options:'AD'
+    state_events : lsit of dict(s)
+        list of dictionaries, each one containing the specification of a
+        state event
+    """
     def __init__(self, target_comp, vol_tank=None, mask_params=None,
                  method='1D-FVM', scale=1, controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False, h_conv=1000, vol_ht=None,
                  basis='mass_conc', jac_type=None, num_interp_points=3,
                  state_events=None, param_wrapper=None):
 
-        """ Construct a Semi-batch Crystallizer object
-        Parameters
-        ----------
-        target_comp : str, list of strings
-            Name of the crystallizing compound(s) from .json file.
-        mask_params : list of bool (optional, default = None)
-            Binary list of which parameters to exclude from the kinetics
-            computation
-        method : str
-            Choice of the numerical method. Options are: 'moments', '1D-FVM'
-        scale : float
-            Scaling factor by which crystal size distribution will be
-            multiplied.
-        vol_tank : TODO - Remove, it comes from Phases module.
-        controls : dict of dicts (funcs) (optional, default = None)
-            Dictionary with keys representing the state (e.g.'Temp')
-            which is controlled and the value indicating the function
-            to use while computing the varible. Functions are of the form
-            f(time) = state_value
-        params_control :
-            TODO
-        adiabatic : bool (optional, default =True)
-            Boolean value indicating whether the heat transfer of
-            the crystallization is considered.
-        rad_zero : float (optional, default = TODO)
-            TODO size of the first bin of the CSD discretization [m]
-        reset_states : bool (optional, default = False)
-            Boolean value indicating whether the states should be
-            reset before simulation
-        h_conv : float (optional, default = 1000)maybe remove?
-            TODO
-        vol_ht : float/bool? (optional, default = )
-            TODO
-        basis : str (optional, default = 'mass_conc')
-            Options : 'massfrac', 'massconc'
-        jac_type : str
-            TODO options:'AD'
-        state_events : dict of dicts
-            TODO
-        """
         super().__init__(target_comp, mask_params,
                          method, scale, vol_tank,
                          controls, adiabatic, rad_zero,
