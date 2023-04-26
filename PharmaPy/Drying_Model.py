@@ -614,7 +614,7 @@ class Drying:
 
         dp['time'] = time
         dp['z'] = self.z_centers
-
+        
         self.result = DynamicResult(self.states_di, self.fstates_di, **dp)
 
         self.CakePhase.z_external = self.z_centers
