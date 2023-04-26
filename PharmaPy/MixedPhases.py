@@ -50,10 +50,33 @@ def energy_balance(inst, mass_str):
 
 
 class Slurry:
+    """ Create Slurry object.
+    
+    Parameters
+    ----------
+    vol : float, optional
+        Volume of the Slurry [m**3]. The default is 0.
+    moments : array, optional
+        Array of size N, containing the distribution moments in um**n, 
+        for n = 0,...,N - 1. The default is None.
+    # mass_slurry : TYPE, optional
+        DESCRIPTION. The default is 0.
+    x_distrib : array, optional
+        Array of size N, containing the internal grid
+        size coordinate of the solids [um]. The default is None
+    distrib : array, optional
+        Array of size N, constaining the initial distribution of crystals
+        [#/m**3/um]. The default is None.
 
+    Returns
+    -------
+    None.
+
+    """
     def __init__(self, vol=0, moments=None,
                  # mass_slurry=0,
                  x_distrib=None, distrib=None):
+       
         self._Phases = None
 
         self.vol = vol
@@ -321,8 +344,29 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    def __init__(self, vol_flow=0, moments=None, x_distrib=None, distrib=None):
+    """ Create a slurry stream object.
+    
+    Parameters
+    ----------
+    vol_flow : float, optional
+        Volumetric flow rate in which the slurry is transfered [m**3/s]. 
+        The default is 0.
+    moments : array, optional
+        Array of size N, containing the distribution moments in um**n, 
+        for n = 0,...,N - 1. The default is None.
+    x_distrib : array, optional
+        Array of size N, containing the internal grid
+        size coordinate of the solids [um]. The default is None
+    distrib : array, optional
+        Array of size N, constaining the initial distribution of crystals
+        [#/m**3/um]. The default is None.
 
+    Returns
+    -------
+    None.
+
+    """
+    def __init__(self, vol_flow=0, moments=None, x_distrib=None, distrib=None):
         super().__init__(vol_flow, moments, x_distrib, distrib)
 
         self.mass_flow = self.mass_slurry  # TODO (this doesn't seem fine)
@@ -476,6 +520,26 @@ class SlurryStream(Slurry):
 
 class Cake:
     def __init__(self, z_external=None, num_discr=50, saturation=None):
+        """ Create a cake object.
+
+        Parameters
+        ----------
+        z_external : array, optional
+            Array of size N, containing the internal spatial grid
+            of length coordinate of the cakes [m]. The default is None
+        num_discr : integer, optional
+            The number which the cake length coordiante is discretized in. 
+            The default is 50.
+        saturation : array, optional
+            Array of size N (N = num_discr). Volumetric liquid uptake 
+            in each spatial node of the cake. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
+    
 
         if z_external is None:
             self.z_external = np.linspace(0, 1, num_discr)

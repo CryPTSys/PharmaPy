@@ -86,6 +86,19 @@ def getPropsPhaseMix(phases, basis='mass'):
 
 
 class LiquidPhase(ThermoPhysicalManager):
+    """ Creates a LiquidPhase object.
+    
+    Parameters
+    ----------
+    mass_frac : array-like (optional)
+        mass fractions of the constituents of the phase.
+    mole_conc : array-like (optional)
+        molar mole_concations of the constituents of the phase, excluding
+        the solvent
+    ind_solv : int
+        index of solvent components in the liquid phase. It must be
+        only specified if 'mass_frac' or 'mole_frac' are not given.
+    """
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None,
@@ -93,19 +106,6 @@ class LiquidPhase(ThermoPhysicalManager):
                  name_solv=None, verbose=True, check_input=True):
 
         super().__init__(path_thermo)
-
-        """ Creates a LiquidPhase object
-        Parameters
-        ----------
-        mass_frac : array-like (optional)
-            mass fractions of the constituents of the phase.
-        mole_conc : array-like (optional)
-            molar mole_concations of the constituents of the phase, excluding
-            the solvent
-        ind_solv : int
-            index of solvent components in the liquid phase. It must be
-            only specified if 'mass_frac' or 'mole_frac' are not given.
-        """
 
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
@@ -204,9 +204,9 @@ class LiquidPhase(ThermoPhysicalManager):
         if (mass + vol + moles) == 0:
             if check_input:
                 warnings.simplefilter("always")
-                warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
-                              "Model may not perform as intended.",
-                              RuntimeWarning)
+                # warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
+                #               "Model may not perform as intended.",
+                #               RuntimeWarning)
 
                 warnings.simplefilter("ignore")
 
@@ -661,9 +661,8 @@ class VaporPhase(ThermoPhysicalManager):
 
     def getEnthalpy(self, temp=None, temp_ref=298.15, mass_frac=None,
                     mole_frac=None, total_h=True, basis='mass'):
-        """
-        Calculate vapor phase enthalpy. It assumes that the reference state
-        is a liquid at t_ref
+        """ Calculate vapor phase enthalpy. It assumes that the reference state
+        is a liquid at t_ref.
 
         Parameters
         ----------
@@ -811,60 +810,59 @@ class VaporPhase(ThermoPhysicalManager):
 
 
 class SolidPhase(ThermoPhysicalManager):
+    """    
+
+    Parameters
+    ----------
+    path_thermo : TYPE
+        DESCRIPTION.
+    temp : TYPE, optional
+        DESCRIPTION. The default is 298.15.
+    temp_ref : TYPE, optional
+        DESCRIPTION. The default is 298.15.
+    pres : TYPE, optional
+        DESCRIPTION. The default is 101325.
+    mass : TYPE, optional
+        DESCRIPTION. The default is 0.
+    mass_frac : TYPE, optional
+        DESCRIPTION. The default is None.
+    moments : array, optional
+        Array of size N, containing the distribution moments in um**n, 
+        for n = 0,...,N - 1. The default is None.
+    num_mom : TYPE, optional
+        DESCRIPTION. The default is 4.
+    distrib : TYPE, optional
+        DESCRIPTION. The default is None.
+    x_distrib : TYPE, optional
+        DESCRIPTION. The default is None.
+    distrib_type : TYPE, optional
+        DESCRIPTION. The default is 'vol_perc'.
+    moisture : TYPE, optional
+        DESCRIPTION. The default is 0.
+    porosity : TYPE, optional
+        DESCRIPTION. The default is 0.
+    mole_conc : TYPE, optional
+        DESCRIPTION. The default is None.
+    kv : TYPE, optional
+        DESCRIPTION. The default is 1.
+
+    Raises
+    ------
+    RuntimeError
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    """
+    
     def __init__(self, path_thermo, temp=298.15, temp_ref=298.15, pres=101325,
                  mass=0, mass_frac=None,
                  moments=None, num_mom=4,
                  distrib=None, x_distrib=None, distrib_type='vol_perc',
                  moisture=0, porosity=0,
                  mole_conc=None, kv=1):
-        """
-        
-
-        Parameters
-        ----------
-        path_thermo : TYPE
-            DESCRIPTION.
-        temp : TYPE, optional
-            DESCRIPTION. The default is 298.15.
-        temp_ref : TYPE, optional
-            DESCRIPTION. The default is 298.15.
-        pres : TYPE, optional
-            DESCRIPTION. The default is 101325.
-        mass : TYPE, optional
-            DESCRIPTION. The default is 0.
-        mass_frac : TYPE, optional
-            DESCRIPTION. The default is None.
-        moments : array, optional
-            Array of size N, containing the distribution moments in um**n, 
-            for n = 0,...,N - 1. The default is None.
-        num_mom : TYPE, optional
-            DESCRIPTION. The default is 4.
-        distrib : TYPE, optional
-            DESCRIPTION. The default is None.
-        x_distrib : TYPE, optional
-            DESCRIPTION. The default is None.
-        distrib_type : TYPE, optional
-            DESCRIPTION. The default is 'vol_perc'.
-        moisture : TYPE, optional
-            DESCRIPTION. The default is 0.
-        porosity : TYPE, optional
-            DESCRIPTION. The default is 0.
-        mole_conc : TYPE, optional
-            DESCRIPTION. The default is None.
-        kv : TYPE, optional
-            DESCRIPTION. The default is 1.
-
-        Raises
-        ------
-        RuntimeError
-            DESCRIPTION.
-
-        Returns
-        -------
-        None.
-
-        """
-        
         
         super().__init__(path_thermo)
         self.kv = kv
