@@ -93,7 +93,7 @@ class LiquidPhase(ThermoPhysicalManager):
     mass_frac : array-like (optional)
         mass fractions of the constituents of the phase.
     mole_conc : array-like (optional)
-        molar mole_concations of the constituents of the phase, excluding
+        molar concentrations of the constituents of the phase, excluding
         the solvent
     ind_solv : int
         index of solvent components in the liquid phase. It must be
@@ -204,9 +204,9 @@ class LiquidPhase(ThermoPhysicalManager):
         if (mass + vol + moles) == 0:
             if check_input:
                 warnings.simplefilter("always")
-                # warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
-                #               "Model may not perform as intended.",
-                #               RuntimeWarning)
+                warnings.warn("'mass', 'moles' and 'vol' are all set to zero. "
+                              "Model may not perform as intended.",
+                              RuntimeWarning)
 
                 warnings.simplefilter("ignore")
 
@@ -667,13 +667,13 @@ class VaporPhase(ThermoPhysicalManager):
         Parameters
         ----------
         temp : float or array-like
-            DESCRIPTION.
+            Temperature for enthalpy calculation in K.   
         temp_ref : float, optional
-            DESCRIPTION. The default is 298.15.
+            Reference temperature for enthalpy calculation. The default is 298.15.
         mass_frac : array-like, optional
-            DESCRIPTION. The default is None.
+            Fraction of the species participating in the vapor phase in mass. The default is None.
         mole_frac : array-like, optional
-            DESCRIPTION. The default is None.
+            Fraction of the species participating in the vapor phase in mole. The default is None.
         total_h : bool, optional
             If True, the total enthalpy is returned. If False, an array
             of individual enthalpy for each species is returned.
@@ -814,37 +814,41 @@ class SolidPhase(ThermoPhysicalManager):
 
     Parameters
     ----------
-    path_thermo : TYPE
-        DESCRIPTION.
-    temp : TYPE, optional
-        DESCRIPTION. The default is 298.15.
-    temp_ref : TYPE, optional
-        DESCRIPTION. The default is 298.15.
-    pres : TYPE, optional
-        DESCRIPTION. The default is 101325.
-    mass : TYPE, optional
-        DESCRIPTION. The default is 0.
-    mass_frac : TYPE, optional
-        DESCRIPTION. The default is None.
+    path_thermo : string
+        Directory of the physical properties .json file
+    temp : float or array-like
+        Temperature for enthalpy calculation in K.   
+    temp_ref : float, optional
+        Reference temperature for enthalpy calculation. The default is 298.15.
+    pres : float, optional
+        Pressure in atmosphere of the system in pascals. The default is 101325.
+    mass : float, optional
+        Mass of solids in kg. The default is 0.
+    mass_frac : array-like, optional
+        Fraction of the species participating in the solid phase in mass basis.
+        The default is None.
     moments : array, optional
         Array of size N, containing the distribution moments in um**n, 
         for n = 0,...,N - 1. The default is None.
-    num_mom : TYPE, optional
-        DESCRIPTION. The default is 4.
-    distrib : TYPE, optional
-        DESCRIPTION. The default is None.
-    x_distrib : TYPE, optional
-        DESCRIPTION. The default is None.
-    distrib_type : TYPE, optional
-        DESCRIPTION. The default is 'vol_perc'.
-    moisture : TYPE, optional
-        DESCRIPTION. The default is 0.
-    porosity : TYPE, optional
-        DESCRIPTION. The default is 0.
-    mole_conc : TYPE, optional
-        DESCRIPTION. The default is None.
-    kv : TYPE, optional
-        DESCRIPTION. The default is 1.
+    num_mom : integer, optional
+        Maximum order of moments describing solid phase. The default is 4.
+    x_distrib : array, optional
+        Array of size N, containing the internal grid
+        size coordinate of the solids [um]. The default is None
+    distrib : array, optional
+        Array of size N, constaining the initial distribution of crystals
+        [#/m**3/um]. The default is None.
+    distrib_type : string, optional
+        Type of distribution of crystals. The option is 'mass_frac' 
+        or 'vol_perc'. The default is 'vol_perc'.
+    moisture : float, optional
+        Initial moisture content of the solids. The default is 0.
+    porosity : float, optional
+        Volume-based pore fraction out of the packed solid beds. The default is 0.
+    mole_conc : array-like, optional
+        Concentration of the species participating in the solid phase in mole basis. The default is None.
+    kv : float, optional
+        Volumetric shape factor of the solids. The default is 1.
 
     Raises
     ------
