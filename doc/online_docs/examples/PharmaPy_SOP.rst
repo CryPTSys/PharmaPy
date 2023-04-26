@@ -91,7 +91,7 @@ In the example above, it is noted that chemical A reacts with chemical B to crea
 	
 	.. math::
 	
-		r_{i} = \mathbf{k}_{\mathbf{i}}\exp\left( - \frac{Ea_{i}}{RT} \right)
+		r_{i} = k_i \exp\left( - \frac{E_{i}}{RT} \right)
 
 	* Input the activation energy value(s) for the temperature dependent terms for the products.
 	
@@ -103,7 +103,7 @@ In the example above, it is noted that chemical A reacts with chemical B to crea
 	
 	.. math::
 	
-		r_{i} = k_{i}\exp\left( - \frac{\mathbf{E}\mathbf{a}_{\mathbf{i}}}{RT} \right)
+		r_{i} = k_{i}\exp\left( - \frac{E_i}{RT} \right)
 
 6. Finally, input the specified parameters into the RxnKinetics() function.
 
@@ -293,7 +293,7 @@ In the above example, the first input denotes the solubility constants of the pr
 
 .. testcode::
 
-	sim. CR01.Utility = CoolingWater(mass_flow=1, temp_in=283.15)
+	sim.CR01.Utility = CoolingWater(mass_flow=1, temp_in=283.15)
 
 In the above example, the first input denotes the rate of flow for the temperature regulation of the crystallizer. The second input denotes the temperature at which the flowing water is at.
 
