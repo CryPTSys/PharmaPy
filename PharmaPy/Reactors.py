@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Apr 27 14:23:01 2020
 
-@author: dcasasor
-"""
 
 from assimulo.solvers import CVode, LSODAR
 from assimulo.problem import Explicit_Problem
@@ -747,8 +743,7 @@ class BatchReactor(_BaseReactor):
         eval_sens : bool (optional, default = False)
             Boolean value indicating whether the parametric
             sensitivity system will be included during simulation.
-            Must be true to access sensitivity information.
-        params_control : TODO: [unsure about this one]
+            Must be true to access sensitivity information.     
         verbose : bool (optional, default = True)
             Boolean value indicating whether the simulator will
             output run statistics after simulation is complete.
@@ -1294,16 +1289,7 @@ class SemibatchReactor(CSTR):
 
     def solve_unit(self, runtime=None, time_grid=None, eval_sens=False,
                    params_control=None, verbose=True, sundials_opts=None):
-        """
-        ToDo: Populate this methods comments
-        :param runtime:
-        :param time_grid:
-        :param eval_sens:
-        :param params_control:
-        :param verbose:
-        :param sundials_opts:
-        :return:
-        """
+
 
         check_modeling_objects(self)
 
@@ -1774,15 +1760,7 @@ class PlugFlowReactor(_BaseReactor):
 
     def solve_unit(self, runtime=None, time_grid=None, verbose=True,
                    any_event=True, sundials_opts=None):
-        """
-        ToDo: Fill out this method's docstring comments
-        :param runtime:
-        :param num_discr:
-        :param verbose:
-        :param any_event:
-        :param sundials_opts:
-        :return:
-        """
+
 
         check_modeling_objects(self)
 

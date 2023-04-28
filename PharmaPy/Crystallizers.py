@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Jan 14 19:31:56 2020
-@author: dcasasor
-"""
+
 
 # import autograd.numpy as np
 
@@ -1273,7 +1270,6 @@ class BatchCryst(_BaseCryst):
     scale : float
         Scaling factor by which crystal size distribution will be
         multiplied.
-    vol_tank : TODO - Remove, it comes from Phases module.
     controls : dict of dicts (funcs) (optional, default = None)
         Dictionary with keys representing the state (e.g.'Temp')
         which is controlled and the value indicating the function
@@ -1285,19 +1281,13 @@ class BatchCryst(_BaseCryst):
     adiabatic : bool (optional, default =True)
         Boolean value indicating whether the heat transfer of
         the crystallization is considered.
-    rad_zero : float (optional, default = TODO)
-        TODO size of the first bin of the CSD discretization [m]
+    rad_zero : float (optional)
+        size of the first bin of the CSD discretization [m]
     reset_states : bool (optional, default = False)
         Boolean value indicating whether the states should be
         reset before simulation
-    h_conv : float (optional, default = 1000)maybe remove?
-        TODO
-    vol_ht : float/bool? (optional, default = )
-        TODO
     basis : str (optional, default = 'mass_conc')
         Options : 'massfrac', 'massconc'
-    jac_type : str
-        TODO options:'AD'
     state_events : lsit of dict(s)
         list of dictionaries, each one containing the specification of a
         state event
@@ -1700,33 +1690,22 @@ class MSMPR(_BaseCryst):
     scale : float
         Scaling factor by which crystal size distribution will be
         multiplied.
-    vol_tank : TODO - Remove, it comes from Phases module.
     controls : dict of dicts (funcs) (optional, default = None)
         Dictionary with keys representing the state (e.g.'Temp')
         which is controlled and the value indicating the function
         to use while computing the varible. Functions are of the form
         f(time) = state_value
-    params_control :
-        TODO
     cfun_solub: callable
         User defined function for the solubility function :
         func(conc)
     adiabatic : bool (optional, default =True)
         Boolean value indicating whether the heat transfer of
         the crystallization is considered.
-    rad_zero : float (optional, default = TODO)
-        TODO size of the first bin of the CSD discretization [m]
     reset_states : bool (optional, default = False)
         Boolean value indicating whether the states should be
         reset before simulation
-    h_conv : float (optional, default = 1000)maybe remove?
-        TODO
-    vol_ht : float/bool? (optional, default = )
-        TODO
     basis : str (optional, default = 'mass_conc')
         Options : 'massfrac', 'massconc'
-    jac_type : str
-        TODO options:'AD'
     state_events : lsit of dict(s)
         list of dictionaries, each one containing the specification of a
         state event
@@ -2085,30 +2064,19 @@ class SemibatchCryst(MSMPR):
     scale : float
         Scaling factor by which crystal size distribution will be
         multiplied.
-    vol_tank : TODO - Remove, it comes from Phases module.
     controls : dict of dicts (funcs) (optional, default = None)
         Dictionary with keys representing the state (e.g.'Temp')
         which is controlled and the value indicating the function
         to use while computing the varible. Functions are of the form
         f(time) = state_value
-    params_control :
-        TODO
     adiabatic : bool (optional, default =True)
         Boolean value indicating whether the heat transfer of
         the crystallization is considered.
-    rad_zero : float (optional, default = TODO)
-        TODO size of the first bin of the CSD discretization [m]
     reset_states : bool (optional, default = False)
         Boolean value indicating whether the states should be
         reset before simulation
-    h_conv : float (optional, default = 1000)maybe remove?
-        TODO
-    vol_ht : float/bool? (optional, default = )
-        TODO
     basis : str (optional, default = 'mass_conc')
         Options : 'massfrac', 'massconc'
-    jac_type : str
-        TODO options:'AD'
     state_events : lsit of dict(s)
         list of dictionaries, each one containing the specification of a
         state event

@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 30 17:55:49 2020
 
-@author: dcasasor
-"""
 
 # import numpy as np
 # from autograd import numpy as np
@@ -681,10 +677,8 @@ class VaporPhase(ThermoPhysicalManager):
 
         Returns
         -------
-        hvapMass : TYPE
-            DESCRIPTION.
-        hvapMole : TYPE
-            DESCRIPTION.
+        hvapMass : J/kg
+        hvapMole : J/mol
 
         """
         if mass_frac is None and mole_frac is None:
@@ -850,10 +844,7 @@ class SolidPhase(ThermoPhysicalManager):
     kv : float, optional
         Volumetric shape factor of the solids. The default is 1.
 
-    Raises
-    ------
-    RuntimeError
-        DESCRIPTION.
+
 
     Returns
     -------

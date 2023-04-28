@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Oct 21 11:56:33 2019
 
-@author: casas100
-"""
 
 
 import numpy as np
@@ -208,7 +204,7 @@ class RxnKinetics:
     tref_hrxn : float, optional
         DESCRIPTION. The default is 298.15.
 
-    kinetic_model : callable, optional  # TODO: make it f(T, C)
+    kinetic_model : callable, optional  
         kinetic model to be used to compute f\ :sub:`2`. It must have
         the signature:
 
@@ -668,7 +664,6 @@ class CrystKinetics:
                 S = c- c_sat.
             where c is instantaneous concentration and c_sat is saturated concentration [kg/m3]
         custom_mechanisms: dict of callables
-            TODO
         mu_sec_nucl : string
             if 'area', mu_2 will be used on the size-dependent term of Bs, else
             if 'volume', mu_3 will be used, for secondary nucleation written as:
