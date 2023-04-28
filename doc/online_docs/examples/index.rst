@@ -7,4 +7,4 @@ Examples
 
    param_estimation_solved
    PFR_Batch_solved
-   PharmaPy_SOP
+   PharmaPy_guide
