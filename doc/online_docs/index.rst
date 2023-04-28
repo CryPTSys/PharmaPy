@@ -41,6 +41,15 @@ How to cite us:
           year = {2021}
         }
 
+Support
+=======
+PharmaPy has been made with the collaboration and support from the following institutions:
+
+* The `CryPTSys Lab`_ at Purdue University
+* The U.S. Food and Drug Administrations (FDA)
+
+.. _`CryPTSys Lab`: https://engineering.purdue.edu/CryPTSys/index.html
+
 
 .. toctree::
    :maxdepth: 2
@@ -61,8 +70,6 @@ How to cite us:
 ..   advanced_features.rst
 ..   phases.rst
 ..   kinetics.rst
-
-
 
 
 Indices and tables
