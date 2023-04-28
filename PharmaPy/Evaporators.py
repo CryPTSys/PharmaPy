@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue May 26 16:37:29 2020
 
-@author: dcasasor
-"""
 
 import numpy as np
 # from autograd import numpy as np
@@ -224,12 +220,10 @@ class AdiabaticFlash:
     gamma_method : str, optional
         one of 'ideal', 'UNIFAC' or 'UNIQUAC'. If 'UNIFAC' or 'UNIQUAC' is
         passed, the pure-component .json property file must have required
-        parameters for the activity coefficient model. For an example of
-        this, see <webpage>  # TODO: entry on the webpage is necessary
-        The default is 'ideal'.
-    mult_midfun : TYPE, optional  # TODO: should we remove this?
+        parameters for the activity coefficient model. 
+    mult_midfun : TYPE, optional  
         DESCRIPTION. The default is 1.
-    seed_basedon_input : TYPE, optional  # TODO: should we remove this?
+    seed_basedon_input : TYPE, optional  
         DESCRIPTION. The default is False.
 
     Returns
@@ -431,8 +425,6 @@ class Evaporator:
     k_vap : float, optional
         constant for vapor flow proportional control. Vapor flow is
         calculated as F_v = k_vap * (P_model - P) + F_in. The default is 1.
-    cv_gas : float, optional TODO: It think this should be removed
-        Yet another vapor controller constant. The default is 0.8.
     h_conv : float, optional
         convective heat transfer coefficient for the liquid phase
         [W/m**2/K]. The default is 1000.
@@ -1001,9 +993,7 @@ class Evaporator:
             list of time steps taken by the numerical integrator.
         states : numpy array
             array containing the solution of the model.
-            For a list of available states with their labels, see
-            # TODO: we need to define how to tell the users how to know which
-            names to use to retrieve the states of the system
+
 
         """
 
@@ -1240,8 +1230,6 @@ class ContinuousEvaporator:
         proportional control constant for pressure, which
         actual pressure (P) by changing output vapor molar flow (F_V), with
         F_V = k_vap * f(pressure - P). The default is 1.
-    cv_gas : TYPE, optional  TODO: we should probably remove this
-        DESCRIPTION. The default is 0.8.
     h_conv : float, optional
         convective heat transfer coefficient for the liquid phase
         [W/m**2/K]. The default is 1000.
