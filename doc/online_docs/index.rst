@@ -25,7 +25,7 @@ Some of its features are:
 
 How to cite us:
 
-* Casas-Orozco D, Laky D, Wang V, et al. PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets. Comput Chem Eng. 2021;153:107408::
+* Casas-Orozco D, Laky D, Wang V, Abdi M, Feng X,  Wood E,  Laird C, Reklaitis, G V, Nagy, Z K. *PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets.* Computers & Chemical Engineering. 2021;153:107408::
 
         @article{Casas-Orozco2020,
           author = {Casas-Orozco, Daniel and Laky, Daniel and Wang, Vivian and Abdi, Mesfin and Feng, X. and Wood, E. and Laird, Carl and Reklaitis, Gintaras V. and Nagy, Zoltan K.},
@@ -49,7 +49,8 @@ How to cite us:
    installation
    docstrings/index
    examples/index
-   state_events
+   publications
+   advanced_usage
 
 ..   examples/PFR_Batch_solved
 
