@@ -66,5 +66,30 @@ and :math:`\ell^{(ord)}` are Lagrange interpolation polynomials given by:
 
 where :math:`ord` represents the order of the interpolation (1 for piecewise constant, 2 for piecewise linear, etc).
 
-In practical terms, a PharmaPy lagrange interpolator can be created as:
+For example, if a given flowrate wants to be specified as a piecewise constant function, a PharmaPy interpolator can be specified as: 
+
+.. testcode::
+
+   from PharmaPy.Interpolation import PiecewiseLagrange
+
+   time_hor = 3600  # total time [s]
+   flowrates = [0.1, 0.2, 0.1, 0.6]  # kg/s
+   interpolator = PiecewiseLagrange(time_hor, flowrates, order=1)
+
+In this particular case, the horizon time will be split into equally sized, 15-min (900 s) bins with their corresponding four specified flows as specified in the :code:`flowrates` variable. User-defined time marks can also be passed as a list or NumPy array by using the :code:`time_k` argument of the :code:`PiecewiseLagrange` interpolator, which needs to be of size :code:`n_y + 1`, where :code:`n_y` is the vector of interpolated values (:code:`flowrates` in this example).
+
+Piecewise linear interpolators can also be used. In this case, the passed known values must be arranged into a numpy 2-D array, and the interpolation order will be 2. For example, a linear piecewise temperature profile would be constructed as:
+
+.. testcode::
+
+   from PharmaPy.Interpolation import PiecewiseLagrange
+
+   time_hor = 3600  # total time [s]
+   temperatures = np.array([[360, 345],
+                            [345, 330],
+                            [330, 318],
+                            [318, 295]])  # K
+   interpolator = PiecewiseLagrange(time_hor, temperatures, order=2)
+
+Note that the values on the second column always match the value of the first column in the next raw, for continuity purposes. Higher orders will follow the same structure, where each row will represent a subinterval and the number of columns will dictate the interpolation order, which must be passed using the :code:`order` argument.
 

@@ -32,7 +32,6 @@ How to cite us:
         @article{Casas-Orozco2020,
           author = {Casas-Orozco, Daniel and Laky, Daniel and Wang, Vivian and Abdi, Mesfin and Feng, X. and Wood, E. and Laird, Carl and Reklaitis, Gintaras V. and Nagy, Zoltan K.},
           doi = {10.1016/j.compchemeng.2021.107408},
-          file = {:C\:/Users/dcasasor/OneDrive - purdue.edu/postdoc/academic/bib/our_publications/2021-Casas_et_al_PharmaPy.pdf:pdf},
           issn = {00981354},
           journal = {Comput. Chem. Eng.},
           month = {oct},
