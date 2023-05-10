@@ -52,6 +52,7 @@ exclude_patterns = []
 # a list of builtin themes.
 #
 html_theme = 'sphinx_rtd_theme'
+html_logo = 'images/PharmaPy_logo.jpeg'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -62,12 +63,13 @@ html_context = {
         "row1": [
             {
                 "alt": "Purdue University Logo",
-                "src": "Purdue_footer_logo.png",
+                # "src": "Purdue_footer_logo.png",
+                "src": "purdue_logo.png",
                 "href": "https://www.purdue.edu/",
             },
             {
                 "alt": "U.S. Food and Drug Administration Logo",
-                "src": "FDA_footer_logo.png",
+                "src": "fda_logo.png",
                 "href": "https://www.fda.gov/",
             },
         ],

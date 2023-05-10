@@ -6,15 +6,9 @@
 Welcome to PharmaPy's documentation!
 ====================================
 
-.. image:: logo.jpeg
-    :scale: 70 %
-    :align: center
+PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. Some of its features are:
 
-PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. WE WILL NEED TO BETTER DESCRIBE THE PLATFORM 
-
-Some of its features are:
-
-* Fully dynamic modeling (ODEs and DAEs)
+* Fully dynamic models (ODEs and DAEs) of commonly found unit operations on the drug substance side of pharmaceutical manufacturing  
 * Start-up modeling, disturbance analysis
 * Fully sequential-modular approach: each unit is simulated individually in a pre-defined sequence
 * Allows decoupling of continuous/discontinuous sections of a flowsheet
@@ -30,7 +24,6 @@ How to cite us:
         @article{Casas-Orozco2020,
           author = {Casas-Orozco, Daniel and Laky, Daniel and Wang, Vivian and Abdi, Mesfin and Feng, X. and Wood, E. and Laird, Carl and Reklaitis, Gintaras V. and Nagy, Zoltan K.},
           doi = {10.1016/j.compchemeng.2021.107408},
-          file = {:C\:/Users/dcasasor/OneDrive - purdue.edu/postdoc/academic/bib/our_publications/2021-Casas_et_al_PharmaPy.pdf:pdf},
           issn = {00981354},
           journal = {Comput. Chem. Eng.},
           month = {oct},
@@ -41,12 +34,34 @@ How to cite us:
           year = {2021}
         }
 
+Our team
+==========
+
+Developers
+++++++++++
+
+* `Daniel Casas-Orozco`_
+* Daniel J. Laky
+* Inyoung Hur
+* Varun Sundarkumar
+* Yash Barhate
+* Jung Soo Rhim
+* PharmaPy logo by Montgomery Smith
+
+Purdue University Staff
++++++++++++++++++++++++
+
+* Prof. Zoltan Nagy (PI)
+* Prof. Gintaras V. Reklaitis (coPI)
+
+.. _`Daniel Casas-Orozco`: https://github.com/dcasasor-purdue
+
 Support
 =======
 PharmaPy has been made with the collaboration and support from the following institutions:
 
 * The `CryPTSys Lab`_ at Purdue University
-* The U.S. Food and Drug Administrations (FDA)
+* The U.S. Food and Drug Administration (FDA)
 
 .. _`CryPTSys Lab`: https://engineering.purdue.edu/CryPTSys/index.html
 
@@ -78,3 +93,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
