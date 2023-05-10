@@ -6,10 +6,6 @@
 Welcome to PharmaPy's documentation!
 ====================================
 
-.. image:: logo.jpeg
-    :scale: 70 %
-    :align: center
-
 PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. Some of its features are:
 
 * Fully dynamic models (ODEs and DAEs) of commonly found unit operations on the drug substance side of pharmaceutical manufacturing  
@@ -50,6 +46,7 @@ Developers
 * Varun Sundarkumar
 * Yash Barhate
 * Jung Soo Rhim
+* PharmaPy logo by Montgomery Smith
 
 Purdue University Staff
 +++++++++++++++++++++++
