@@ -62,12 +62,13 @@ html_context = {
         "row1": [
             {
                 "alt": "Purdue University Logo",
-                "src": "Purdue_footer_logo.png",
+                # "src": "Purdue_footer_logo.png",
+                "src": "purdue_logo.png",
                 "href": "https://www.purdue.edu/",
             },
             {
                 "alt": "U.S. Food and Drug Administration Logo",
-                "src": "FDA_footer_logo.png",
+                "src": "fda_logo.png",
                 "href": "https://www.fda.gov/",
             },
         ],

@@ -38,14 +38,24 @@ How to cite us:
           year = {2021}
         }
 
-Developers
+Our team
 ==========
+
+Developers
+++++++++++
 
 * `Daniel Casas-Orozco`_
 * Daniel J. Laky
 * Inyoung Hur
 * Varun Sundarkumar
 * Yash Barhate
+* Jung Soo Rhim
+
+Purdue University Staff
++++++++++++++++++++++++
+
+* Prof. Zoltan Nagy (PI)
+* Prof. Gintaras V. Reklaitis (coPI)
 
 .. _`Daniel Casas-Orozco`: https://github.com/dcasasor-purdue
 
@@ -54,7 +64,7 @@ Support
 PharmaPy has been made with the collaboration and support from the following institutions:
 
 * The `CryPTSys Lab`_ at Purdue University
-* The U.S. Food and Drug Administrations (FDA)
+* The U.S. Food and Drug Administration (FDA)
 
 .. _`CryPTSys Lab`: https://engineering.purdue.edu/CryPTSys/index.html
 
