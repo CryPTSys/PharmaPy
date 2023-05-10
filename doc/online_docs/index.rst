@@ -10,7 +10,9 @@ Welcome to PharmaPy's documentation!
     :scale: 70 %
     :align: center
 
-PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. WE WILL NEED TO BETTER DESCRIBE THE PLATFORM 
+PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems.
+
+.. WE WILL NEED TO BETTER DESCRIBE THE PLATFORM 
 
 Some of its features are:
 

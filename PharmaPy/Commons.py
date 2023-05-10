@@ -267,10 +267,14 @@ def eval_state_events(time, states, switches,
                                             **kwargs_callable)
             else:
                 state_name = di['state_name']
-                state_idx = di['state_idx']
                 ref_value = di['value']
 
-                checked_value = dict_states[state_name][state_idx]
+                state_idx = di.get('state_idx', None)
+
+                if state_idx is None:
+                    checked_value = dict_states[state_name]
+                else:
+                    checked_value = dict_states[state_name][state_idx]
 
                 event_flag = ref_value - checked_value
 
