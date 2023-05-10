@@ -10,13 +10,9 @@ Welcome to PharmaPy's documentation!
     :scale: 70 %
     :align: center
 
-PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems.
+PharmaPy is an open-source library for the analysis of pharmaceutical manufacturing systems. Some of its features are:
 
-.. WE WILL NEED TO BETTER DESCRIBE THE PLATFORM 
-
-Some of its features are:
-
-* Fully dynamic modeling (ODEs and DAEs)
+* Fully dynamic models (ODEs and DAEs) of commonly found unit operations on the drug substance side of pharmaceutical manufacturing  
 * Start-up modeling, disturbance analysis
 * Fully sequential-modular approach: each unit is simulated individually in a pre-defined sequence
 * Allows decoupling of continuous/discontinuous sections of a flowsheet
@@ -41,6 +37,17 @@ How to cite us:
           volume = {153},
           year = {2021}
         }
+
+Developers
+==========
+
+* `Daniel Casas-Orozco`_
+* Daniel J. Laky
+* Inyoung Hur
+* Varun Sundarkumar
+* Yash Barhate
+
+.. _`Daniel Casas-Orozco`: https://github.com/dcasasor-purdue
 
 Support
 =======
