@@ -1,0 +1,13 @@
+{"inlet":
+	{"mole_conc": [0.15, 0.15, 0, 0], "temp": 298.15, "tau": 1800, "name_solv": "solv"},
+ "phase":
+	{"mole_conc": [0.0, 0.0, 0, 0], "temp": 298.15, "vol": 0.002, "name_solv": "solv"},
+ "kinetics":
+	{"stoich_matrix": [-1, -1, 1], "k_params": 40, "ea_params": 2e3, "partic_species": ["A", "B", "C"]},
+ "utility":
+	{"temp_in": 300, "mass_flow": 0.1},
+ "reactor":
+	{"num_discr": 50, "diam_in": 0.0254, "isothermal": false},
+ "solve_unit":
+	{"verbose": false}
+}

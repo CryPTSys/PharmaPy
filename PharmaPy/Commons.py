@@ -18,15 +18,109 @@ linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
 
 
-def unravel_states(states, num_states, name_states, discretized=False,
-                   state_map=None):
+def get_permutation_indexes(ref_list, short_list):
+    """
+    Permutate indexes of short list with respect to the order in which they
+    appear in the reference list
+
+    Parameters
+    ----------
+    ref_list : list
+        reference list.
+    short_list : list
+        analyzed list. It must be a subset of ref_list.
+
+    Returns
+    -------
+    indexes : list
+        list of permutation indexes.
+
+    """
+    indexes = [short_list.index(val) for val in ref_list if val in short_list]
+
+    return indexes
+
+
+def flatten_states(state_list):
+    name_states = list(state_list[0].keys())
+
+    if len(state_list) == 1:
+        return state_list[0]
+    else:
+        out = {}
+        for name in name_states:
+            ar = [di[name] if ind == 0 else di[name][1:]
+                  for ind, di in enumerate(state_list)]
+            if ar[0].ndim == 1:
+                out[name] = np.concatenate(ar)
+            else:
+                out[name] = np.vstack(ar)
+
+        return out
+
+
+def unpack_discretized(states, num_states, name_states, indexes=None,
+                       state_map=None, inputs=None):
+
     acum_len = np.cumsum(num_states)[:-1]
 
-    if discretized:
+    if states.ndim == 1:
         states_reord = states.reshape(-1, sum(num_states))
+
         states_split = np.split(states_reord, acum_len, axis=1)
-    else:
+        states_split = [a[:, 0] if a.shape[1] == 1 else a
+                        for a in states_split]
+
+    elif states.ndim > 1:
+        dim_tot = sum(num_states)
+        num_fv = states.shape[1] // dim_tot
+        num_times = states.shape[0]
+
+        nums = list(num_states) * num_fv
+        acum_len = np.cumsum(nums)[:-1]
+
+        states_fv = np.split(states, acum_len, axis=1)
+
+        count_states = len(name_states)
+        states_split = []
+        for idx_state, name in enumerate(name_states):
+            state = np.vstack(states_fv[idx_state::count_states])
+
+            di_key = indexes[name]
+
+            if di_key is None:
+                state_data = state.reshape(-1, num_times).T
+
+                if inputs is not None and name in inputs:
+                    state_data = np.column_stack((inputs[name], state_data))
+            else:
+                state_data = {}
+                for idx_col in range(state.shape[1]):
+                    di_data = state[:, idx_col].reshape(-1, num_times).T
+
+                    if inputs is not None and name in inputs:
+                        inpt = inputs[name]
+                        di_data = np.column_stack((inpt[:, idx_col], di_data))
+
+                    state_data[di_key[idx_col]] = di_data
+
+            states_split.append(state_data)
+
+    dict_states = dict(zip(name_states, states_split))
+
+    return dict_states
+
+
+def unpack_states(states, num_states, name_states, state_map=None):
+    acum_len = np.cumsum(num_states)[:-1]
+
+    if states.ndim == 1:
         states_split = np.split(states, acum_len)
+        states_split = [a[0] if len(a) == 1 else a for a in states_split]
+    elif states.ndim > 1:
+        states_split = np.split(states, acum_len, axis=1)
+        states_split = [a[:, 0] if a.shape[1] == 1 else a
+                        for a in states_split]
 
     if state_map is not None:
         states_split = [array for ind, array in enumerate(states_split)
@@ -40,17 +134,97 @@ def unravel_states(states, num_states, name_states, discretized=False,
     return dict_states
 
 
+def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
+                        idx_time=None, idx_vol=None):
+
+    if isinstance(data, dict):
+        di = data
+    elif data.__class__.__name__ == 'DynamicResult':
+        di = data.__dict__
+
+    out = {}
+
+    if idx_time is None:
+        if time is None:
+            idx_time = np.arange(len(di['time']))
+        elif isinstance(time, (list, tuple, np.ndarray)):
+            # TODO: Should we interpolate instead?
+            idx_time = [np.argmin(abs(t - di['time'])) for t in time]
+        else:
+            idx_time = np.argmin(abs(time - di['time']))
+            out['time'] = di['time'][idx_time]
+
+    if idx_vol is None:
+        if x is None:
+            idx_vol = np.arange(len(di[x_name]))
+        elif isinstance(x, (list, tuple, np.ndarray)):
+            idx_vol = [np.argmin(abs(val - di[x_name])) for val in x]
+            out[x_name] = di[x_name][idx_vol]
+        else:
+            idx_vol = np.argmin(abs(x - di[x_name]))
+            out[x_name] = di[x_name][idx_vol]
+
+    di_filtered = {key: di[key] for key in di if key != 'time' and key != x_name}
+
+    if states is None:
+        states = list(di_filtered.keys())
+
+    for key in states:
+        val = di_filtered[key]
+        if isinstance(val, dict):
+            out[key] = retrieve_pde_result(val, x_name, idx_time=idx_time,
+                                           idx_vol=idx_vol)
+        elif isinstance(val, np.ndarray):
+            # if x_name in di['di_states'][key]['depends_on']:
+            out[key] = val[idx_time][:, idx_vol]
+
+    return out
+
+
+def complete_dict_states(time, di, target_keys, phase, controls,
+                         u_inputs=None, num_discr=1):
+    for key in target_keys:
+        if key not in di:
+            if key in controls.keys():
+                control = controls[key]
+                di[key] = control['fun'](time,
+                                         *control['args'],
+                                         **control['kwargs'])
+            else:
+                val = getattr(phase, key, None)
+
+                time_flag = isinstance(time, (list, np.ndarray)) and len(time) > 1
+
+                if num_discr > 1:
+                    if time_flag:
+                        val = val * np.ones((len(time), num_discr))
+                    else:
+                        val = val * np.ones(num_discr)
+
+                elif time_flag:
+                    val = val * np.ones_like(time)
+
+                di[key] = val
+
+        if u_inputs is not None:
+            if di[key].ndim == 1:
+                di[key] = np.hstack((u_inputs[key], di[key]))
+            else:
+                di[key] = np.vstack((u_inputs[key], di[key]))
+
+    return di
+
+
 def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
                        threshold=1e-5, norm_type=None):
 
     if not isinstance(threshold, (tuple, list)):
         threshold = [threshold] * len(sdot)
 
-    sdot = sdot.values()
     sdot_flags = []
 
     norms = []
-    for val in sdot:
+    for val in sdot.values():
         norms.append(np.linalg.norm(val, ord=norm_type))
 
     if time_stop is None:
@@ -65,7 +239,7 @@ def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
 
     flag = not all(flags)
 
-    return flag
+    return float(flag)
 
 
 def eval_state_events(time, states, switches,
@@ -73,26 +247,34 @@ def eval_state_events(time, states, switches,
                       sdot=None, discretized_model=False, state_map=None):
     events = []
 
-    dict_states = unravel_states(states, states_dim, name_states,
-                                 discretized=discretized_model)
+    if discretized_model:
+        unpack_fn = globals()['unpack_discretized']
+    else:
+        unpack_fn = globals()['unpack_states']
+
+    dict_states = unpack_fn(states, states_dim, name_states)
 
     if sdot is not None:
-        dict_sdot = unravel_states(sdot, states_dim, name_states,
-                                   discretized=discretized_model,
-                                   state_map=state_map)
+        dict_sdot = unpack_fn(sdot, states_dim, name_states,
+                              state_map=state_map)
 
     if any(switches):
 
         for di in state_event_list:
             if 'callable' in di.keys():
+                kwargs_callable = di.get('kwargs', {})
                 event_flag = di['callable'](time, dict_states, dict_sdot,
-                                            **di['kwargs'])
+                                            **kwargs_callable)
             else:
                 state_name = di['state_name']
-                state_idx = di['state_idx']
                 ref_value = di['value']
 
-                checked_value = dict_states[state_name][state_idx]
+                state_idx = di.get('state_idx', None)
+
+                if state_idx is None:
+                    checked_value = dict_states[state_name]
+                else:
+                    checked_value = dict_states[state_name][state_idx]
 
                 event_flag = ref_value - checked_value
 
@@ -406,7 +588,7 @@ def integration(states, time):
     return integral
 
 
-def reorder_sens(sens, separate_sens=False):
+def reorder_sens(sens, separate_sens=False, num_rows=None):
     """
     Reorder sensitivities into submatrices according to the following pattern,
     for ns states, np parameters and nt time samples:
@@ -458,13 +640,18 @@ def reorder_sens(sens, separate_sens=False):
 
     """
 
-    num_times, num_states = sens[0].shape
+    if isinstance(sens, (tuple, list)):
+        num_rows = sens[0].shape[0]
+    elif isinstance(sens, np.ndarray):
+        if num_rows is None:
+            raise ValueError("'num_times' argument has to be passed if 'sens' "
+                             "is a numpy array")
 
     big_sens = np.vstack(sens)
 
     ordered_sens = []
     for col in big_sens.T:
-        reordered = col.reshape(-1, num_times).T
+        reordered = col.reshape(-1, num_rows).T
         ordered_sens.append(reordered)
 
     if separate_sens:

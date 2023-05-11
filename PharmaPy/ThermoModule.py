@@ -8,11 +8,11 @@ Created on Sun Apr  5 17:28:24 2020
 import json
 import numpy as np
 import pandas as pd
-import os
+import pathlib
 
 
 def ParseDatabase(path_datafile, to_arrays=True):
-    if isinstance(path_datafile, list) or isinstance(path_datafile, tuple):
+    if isinstance(path_datafile, (list, tuple)):
         with open(path_datafile[0]) as file:
             original_data = json.load(file)
 
@@ -35,9 +35,28 @@ def ParseDatabase(path_datafile, to_arrays=True):
 
     # Collect data with the same key
     entries = set().union(*entries)
-    dd = {k: [d.get(k) for d in original_data.values()] for k in entries}
 
-    # Convert to arrays
+    dd = {}
+
+    for entry in entries:
+        vals = []
+        tref_hvap = []
+        for val in original_data.values():
+            item = val.get(entry)
+            if isinstance(item, dict):
+                item = item['value']
+
+                if entry == 'delta_hvap':
+                    tref_hvap.append(val.get(entry)['temp_ref'])
+
+            vals.append(item)
+
+        dd[entry] = vals
+
+        if len(tref_hvap) > 0:
+            dd['tref_hvap'] = tref_hvap
+
+    # Convert to arrays  # TODO: improve this
     if to_arrays:
         dd_arrays = {}
         for key, vals in dd.items():
@@ -59,7 +78,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
             else:
                 props = vals
             try:
-                props = np.array(props, dtype=np.float)
+                props = np.array(props, dtype=float)
             except:
                 pass
 
@@ -71,6 +90,10 @@ def ParseDatabase(path_datafile, to_arrays=True):
             # Convert interaction parameters
             interac['amk'] = np.array(interac.get('amk', None))
             interac['vk'] = np.array(interac.get('vk', None))
+
+            if 'unifac_groups' in interac:  # Avoid pandas xs warning
+                interac['unifac_groups'] = [
+                    tuple(pair) for pair in interac['unifac_groups']]
 
             dd_arrays.update(interac)
         return dd_arrays
@@ -217,7 +240,8 @@ class ThermoPhysicalManager:
                 else:
                     mole_fr = mole_frac[:, idx]
 
-                enthalpyOut = np.dot(integral, mole_fr.T)
+                # enthalpyOut = np.dot(integral, mole_fr.T)
+                enthalpyOut = (integral * mole_fr).sum(axis=1)
 
             if len(enthalpyOut) == 1:
                 enthalpyOut = enthalpyOut[0]
@@ -288,6 +312,16 @@ class ThermoPhysicalManager:
             rhoMix = 1 / np.dot(mole_frac, 1 / rhoMole)
 
         return rhoMix
+
+    def getMolWeight(self, mole_frac=None, mass_frac=None):
+        if mass_frac is None and mole_frac is None:
+            mole_frac = self.mole_frac
+        elif mass_frac is not None:
+            mole_frac = self.frac_to_frac(mass_frac=mass_frac)
+
+        mw_av = np.dot(self.mw, mole_frac.T)
+
+        return mw_av
 
     def getViscosityPure(self, phase='liquid', temp=None):
         if temp is None:
@@ -504,11 +538,18 @@ class ThermoPhysicalManager:
         if x_liq is None:
             x_liq = self.mole_frac
 
-        supercrit = temp > self.t_crit
-
-        p_vap = self.AntoineEquation(temp)
-        if any(supercrit):
-            p_vap[supercrit] = self.henry_constant[supercrit]
+        crit = isinstance(temp, np.ndarray) and temp.ndim == 1
+        if crit:
+            p_vap = self.AntoineEquation(temp)
+            supercrit = np.ones_like(p_vap) * temp[:, np.newaxis] > self.t_crit
+            if np.any(supercrit):
+                for row in supercrit:
+                    p_vap[:, row] = self.henry_constant[row]
+        else:
+            supercrit = temp > self.t_crit
+            p_vap = self.AntoineEquation(temp)
+            if any(supercrit):
+                p_vap[supercrit] = self.henry_constant[supercrit]
 
         if gamma_model == 'ideal':
             gamma = np.ones_like(x_liq)
@@ -702,16 +743,13 @@ class ThermoPhysicalManager:
         group_idx = np.array(self.unifac_groups)
 
         # Import data
-        interac_path = os.path.abspath(
-                os.path.join(
-                    __file__, '../data/thermodynamics/unifac_interaction_params.csv'))
+        root = str(pathlib.Path(__file__).parents[1]) + '/data/thermodynamics/'
+        interac_path = root + 'unifac_interaction_params.csv'
 
         interac_data = pd.read_csv(interac_path, index_col=(0, 1))
 
-        rq_path = os.path.abspath(
-                os.path.join(__file__,
-                             '../data/thermodynamics/unifac_rk_qk.csv'))
-        rk_qk = pd.read_csv(rq_path, index_col=(0, 1))
+        rq_path = root + 'unifac_rk_qk.csv'
+        rk_qk = pd.read_csv(rq_path, index_col=(2, 0))
 
         # Create empty arrays
         num_groups = len(group_idx)

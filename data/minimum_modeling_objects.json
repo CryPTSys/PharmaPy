@@ -1,0 +1,7 @@
+{"special": {"Mixer": ["Inlets"], "DynamicCollector": ["Inlet"]},
+ "Continuous": ["Phases", "Inlet"],
+ "Semibatch": ["Phases", "Inlet"],
+ "Batch": ["Phases"],
+ "has_kinetics": {"modules": ["Reactors", "Crystallizers"], "classes": []},
+ "has_utility": {"modules": ["Reactors"], "classes": ["MSMPR", "Evaporator", "ContinuousEvaporator"]}
+}
