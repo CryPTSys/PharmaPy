@@ -1,6 +1,6 @@
 # PharmaPy
 
-<img align="left" src="./doc/online_docs/images/PharmaPy_logo.jpeg" alt="PharmaPy_logo" height="220">
+<img align="left" src="./doc/online_docs/images/PharmaPy_logo.jpeg" alt="PharmaPy_logo" height="280">
 
 <!-- BEGIN Status badges -->
 ![GitHub all releases](https://img.shields.io/github/downloads/CryPTSys/PharmaPy/total)
