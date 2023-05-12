@@ -9,7 +9,7 @@
 
 PharmaPy is a pythonic library for the analysis of pharmaceutical manufacturing systems.
 
-It allows to simulate the dynamics of standalone, drug substance unit operations in a variety of operating modes (batch, continuous, semibatch). Also, PharmaPy facilitates setting up and simulating pharmaceutical **flowsheets**, i.e., interconnected unit operations in a variety of operation modes, ranging from end-to-end batch, end-to-end continuous, and hybrid operation (combination of batch and/or continuous and semicontinuous unit operations).
+It allows to simulate the dynamics of standalone, drug substance unit operations in a variety of operating modes (batch, continuous, semibatch). Also, PharmaPy facilitates setting up and simulating pharmaceutical **flowsheets**, i.e., interconnected unit operations running in one or more operation modes, offering flexibility to simulate end-to-end batch, end-to-end continuous, and hybrid operation schemes (combination of batch and/or continuous and semicontinuous unit operations).
 
 <br clear="left"/>
 
