@@ -1,6 +1,6 @@
 version: 2
 formats: all
-python: "3.10"
+python:
   version: 3
   install:
     - requirements: doc/requirements.txt
