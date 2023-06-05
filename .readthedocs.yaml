@@ -5,10 +5,10 @@
 # Required
 version: 2
 
-python:
-  install:
-    - requirements: requirements.txt
-  system_packages: true
+#python:
+#  install:
+#    - requirements: requirements.txt
+#  system_packages: true
 # Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
