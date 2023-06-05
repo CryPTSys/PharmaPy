@@ -3,6 +3,5 @@ scipy
 matplotlib
 pandas
 autograd
-cython
 assimulo
 cyipopt
