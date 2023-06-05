@@ -4,4 +4,5 @@ matplotlib
 pandas
 autograd
 assimulo
+cython>=0.18
 cyipopt
