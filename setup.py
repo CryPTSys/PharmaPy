@@ -6,8 +6,7 @@ setuptools_kwargs = {
                          'coverage',
                          'numpy',
                          'scipy',
-                         'pandas',
-                         'assimulo'],
+                         'pandas'],
     'scripts': [],
     'include_package_data': True
 }
