@@ -5,3 +5,5 @@ pandas
 autograd
 assimulo
 cyipopt
+ipykernel
+nbsphinx
