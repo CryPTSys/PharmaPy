@@ -5,15 +5,17 @@
 # Required
 version: 2
 
+formats: all
+python:
+  version: 3
+  install:
+    - requirements: requirements.txt
+  system_packages: true
 # Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
-    python:
-      version: "3.10"
-      install:
-        - requirements: requirements.txt
-      system_packages: true
+    python: "3.10"
     # You can also specify other tool versions:
     # nodejs: "19"
     # rust: "1.64"
