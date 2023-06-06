@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 
 #import mock
 
-autodoc_mock_imports["numpy", "scipy", "matplotlib", "pandas", "autograd", "assimulo", "cyipopt"]
+autodoc_mock_imports = ["numpy", "scipy", "matplotlib", "pandas", "autograd", "assimulo", "cyipopt"]
  
 #MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo']
 #for mod_name in MOCK_MODULES:
