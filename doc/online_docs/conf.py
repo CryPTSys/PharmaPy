@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 
 import mock
  
-MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo', 'nbsphinx']
+MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo', 'sphinx.ext.doctest', 'sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'nbsphinx', 'sphinxcontrib.bibtex']
 for mod_name in MOCK_MODULES:
  sys.modules[mod_name] = mock.Mock()
 
