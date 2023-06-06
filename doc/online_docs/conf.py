@@ -19,11 +19,11 @@ sys.path.insert(0, os.path.abspath('../../'))
 
 # Setup of mock libraries to override the build fails for C based libraries
 
-import mock
+#import mock
  
-MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo']
-for mod_name in MOCK_MODULES:
- sys.modules[mod_name] = mock.Mock()
+#MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo']
+#for mod_name in MOCK_MODULES:
+# sys.modules[mod_name] = mock.Mock()
 
 
 # -- Project information -----------------------------------------------------
