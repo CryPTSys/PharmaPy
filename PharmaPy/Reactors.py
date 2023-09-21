@@ -19,7 +19,7 @@ from PharmaPy.Results import DynamicResult
 from PharmaPy.CheckModule import check_modeling_objects
 
 import numpy as np
-from numpy.core.umath_tests import inner1d
+# from numpy.core.umath_tests import inner1d
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib.animation import FuncAnimation
@@ -688,7 +688,10 @@ class BatchReactor(_BaseReactor):
                                             delta_hrxn=deltah_rxn)
 
         # Balance terms (W)
-        source_term = -inner1d(deltah_rxn, rates) * vol*1000  # vol in L
+        #source_term = -inner1d(deltah_rxn, rates) * vol * 1000  # vol in L
+        # TODO: Check if this is correct
+        # source_term = -np.dot(deltah_rxn, rates) * vol * 1000  # vol in L
+        source_term = (deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
 
         if heat_prof:
             if 'temp' in self.controls.keys():
@@ -1045,7 +1048,10 @@ class CSTR(_BaseReactor):
         flow_term = inlet_flow * (h_in - h_temp)  # W
 
         # Balance terms (W) - convert vol to L
-        source_term = -inner1d(deltah_rxn, rates) * vol * 1000
+        # source_term = -inner1d(deltah_rxn, rates) * vol * 1000
+        # TODO: Check if this is correct
+        # source_term = -np.dot(deltah_rxn, rates) * vol * 1000  # vol in L
+        source_term = (deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
 
         if heat_prof:
             if self.isothermal:
@@ -1550,7 +1556,10 @@ class PlugFlowReactor(_BaseReactor):
                                             delta_hrxn=deltah_rxn)
 
         # ---------- Balance terms (W)
-        source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
+        # source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
+        # TODO: Check if this is correct
+        # source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
+        source_term = (deltah_rxn * rates).sum(axis=1) * 1000  # W / m**3
 
         if self.adiabatic:
             heat_transfer = 0
@@ -1645,7 +1654,11 @@ class PlugFlowReactor(_BaseReactor):
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         # Volumetric heat capacity
-        cp_vol = inner1d(cp_j, mole_conc) * 1000  # J/m**3/K
+        # cp_vol = inner1d(cp_j, mole_conc) * 1000  # J/m**3/K
+        # TODO: Check if this is correct
+        # cp_vol = -np.dot(cp_j, mole_conc) * 1000  # J/m**3/K
+        cp_vol = (cp_j * mole_conc).sum(axis=1) * 1000  # vol in L
+
 
         # Heat of reaction
         delta_href = self.Kinetics.delta_hrxn
@@ -1656,7 +1669,10 @@ class PlugFlowReactor(_BaseReactor):
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
         # ---------- Balance terms (W)
-        source_term = -inner1d(deltah_rxn, rate_i * 1000)  # W/m**3
+        # source_term = -inner1d(deltah_rxn, rate_i * 1000)  # W/m**3
+        # TODO: Check if this is correct
+        # source_term = -np.dot(deltah_rxn, rate_i * 1000)  # W/m**3
+        source_term = (deltah_rxn * rate_i * 1000).sum(axis=1)  # W/m**3
 
         temp_diff = np.diff(temp)
         flow_term = -flow_in * temp_diff / vol_diff  # K/s
