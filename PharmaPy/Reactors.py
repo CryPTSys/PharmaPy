@@ -690,8 +690,8 @@ class BatchReactor(_BaseReactor):
         # Balance terms (W)
         #source_term = -inner1d(deltah_rxn, rates) * vol * 1000  # vol in L
         # TODO: Check if this is correct
-        # source_term = -np.dot(deltah_rxn, rates) * vol * 1000  # vol in L
-        source_term = (deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
+        # source_term = -np.inner(deltah_rxn, rates) * vol * 1000  # vol in L
+        source_term = -(deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
 
         if heat_prof:
             if 'temp' in self.controls.keys():
@@ -1051,7 +1051,7 @@ class CSTR(_BaseReactor):
         # source_term = -inner1d(deltah_rxn, rates) * vol * 1000
         # TODO: Check if this is correct
         # source_term = -np.dot(deltah_rxn, rates) * vol * 1000  # vol in L
-        source_term = (deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
+        source_term = -(deltah_rxn * rates).sum(axis=1) * vol * 1000  # vol in L
 
         if heat_prof:
             if self.isothermal:
@@ -1559,7 +1559,7 @@ class PlugFlowReactor(_BaseReactor):
         # source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
         # TODO: Check if this is correct
         # source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
-        source_term = (deltah_rxn * rates).sum(axis=1) * 1000  # W / m**3
+        source_term = -(deltah_rxn * rates).sum(axis=1) * 1000  # W / m**3
 
         if self.adiabatic:
             heat_transfer = 0
@@ -1672,7 +1672,7 @@ class PlugFlowReactor(_BaseReactor):
         # source_term = -inner1d(deltah_rxn, rate_i * 1000)  # W/m**3
         # TODO: Check if this is correct
         # source_term = -np.dot(deltah_rxn, rate_i * 1000)  # W/m**3
-        source_term = (deltah_rxn * rate_i * 1000).sum(axis=1)  # W/m**3
+        source_term = -(deltah_rxn * rate_i * 1000).sum(axis=1)  # W/m**3
 
         temp_diff = np.diff(temp)
         flow_term = -flow_in * temp_diff / vol_diff  # K/s
