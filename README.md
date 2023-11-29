@@ -14,7 +14,7 @@ It allows to simulate the dynamics of standalone, drug substance unit operations
 <br clear="left"/>
 
 ## Getting started
-To install PharmaPy, download and unzip the code from the release section, and then follow the instructions on the `install_instructions.txt` file.
+To install PharmaPy, download and unzip the code from the release section in the develop branch, and then follow the instructions on the `install_instructions.txt` file.
 
 Read our [link to documentation page] for more information on how to install and how to use PharmaPy.
 
