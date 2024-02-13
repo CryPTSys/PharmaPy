@@ -10,8 +10,9 @@ Step 2 (WINDOWS only): Copy (CTRL+C) the path to the installation files (where t
 Step 3 (WINDOWS only): Introduce the following command in the powershell: cd '<path_in_step_2>' and hit Enter. Do not include the <> characters, but do include the quotes. Replace text in between the <> characters with the path you copied in Step 2. Use CTRL+V to avoid transcription errors
 
 Step 4: After this step, both PharmaPy dependencies and PharmaPy itself should be installed
-	WINDOWS: Do .\InstallOnWindows.bat and hit Enter. Follow the instructions on screen
-	LINUX/MAC: To give permissions to the installation file, do chmod +x InstallOnMac.sh. Then, execute it with ./InstallOnMac.sh. Follow the instructions on screen
+	WINDOWS: 	Do .\InstallOnWindows.bat and hit Enter. Follow the instructions on screen
+	LINUX/MAC: 	To give permissions to the installation file, do chmod +x InstallOnMac.sh. 
+				Then, execute it with source InstallOnMac.sh. Follow the instructions on screen
 
 Step 5: Activate the new environment by doing: conda activate <name_of_environment> (exclude <>)
 

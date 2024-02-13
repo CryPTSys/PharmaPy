@@ -5,9 +5,13 @@ echo --------------------------------------------------
 echo Enter environment name:
 read env_name 
 echo ------------------------------
-echo Creating pandas environment...
+echo Creating conda environment...
 echo ------------------------------
 conda create -n $env_name python=3.9 --file requirements.txt -c conda-forge
+echo ------------------------------
+echo Activating conda environment...
+echo ------------------------------
+conda init
 conda activate $env_name
 echo ----------------------
 echo Installing PharmaPy...
