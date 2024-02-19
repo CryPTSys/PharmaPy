@@ -1923,8 +1923,6 @@ class MSMPR(_BaseCryst):
         dp['solubility'] = sat_conc
         dp['supersat'] = supersat
 
-        vol_slurry = self.Slurry.vol
-
         if self.method == '1D-FVM':
             dp['distrib'] *= 1 / self.scale
             moms = self.Solid_1.getMoments(distrib=dp['distrib'])
@@ -1933,7 +1931,9 @@ class MSMPR(_BaseCryst):
             dp['vol_distrib'] = self.Solid_1.convert_distribution(
                 num_distr=dp['distrib'])
 
-            self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
+            if type(self) == MSMPR:
+                vol_slurry = self.Slurry.vol
+                self.Solid_1.updatePhase(distrib=dp['distrib'][-1] * vol_slurry)
 
         if self.method == 'moments':
             dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
@@ -1970,15 +1970,18 @@ class MSMPR(_BaseCryst):
 
         else:
             vol_liq = dp['vol'][-1]
-
+            self.Liquid_1.updatePhase(mass_conc=dp['mass_conc'][-1],
+                                  vol=dp['vol'][-1])
+            
             rho_solid = self.Solid_1.getDensity()
-            vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv * rho_solid
+            vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv
 
             vol_slurry = vol_solid + vol_liq
 
             if self.method == '1D-FVM':
                 distrib_tilde = dp['total_distrib'][-1]
-                self.Solid_1.updatePhase(distrib=distrib_tilde)
+                self.Solid_1.updatePhase(distrib=distrib_tilde,
+                                         mass= mass_solid))
 
                 self.Slurry = Slurry()
 
