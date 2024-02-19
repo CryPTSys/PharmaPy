@@ -1,4 +1,14 @@
+<<<<<<< HEAD
 sphinx>=1.4
 ipykernel
 nbsphinx
 sphinxcontrib.bibtex
+=======
+numpy
+cython < 3
+scipy
+matplotlib
+pandas
+autograd
+assimulo
+>>>>>>> 679d367790c9d7aa86129c3653d2691ca2850f2d
