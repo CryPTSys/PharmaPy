@@ -12,6 +12,22 @@ from scipy.interpolate import CubicSpline
 from scipy.special import comb
 
 
+def local_newton_interpolation(time, t_data, y_data, num_points=3):
+    idx_time = np.argmin(abs(time - t_data))
+
+    idx_lower = max(0, idx_time - 1)
+    idx_upper = min(len(t_data) - 1, idx_lower + num_points)
+
+    t_interp = t_data[idx_lower:idx_upper]
+    y_interp = y_data[idx_lower:idx_upper]
+
+    # Newton interpolation
+    interp = NewtonInterpolation(t_interp, y_interp)
+    y_target = interp.evalPolynomial(time)
+
+    return y_target
+
+
 class NewtonInterpolation:
     def __init__(self, x_data, y_data):
 
@@ -78,16 +94,16 @@ def smoothstep(x, x_min=0, x_max=1, N=1):
     return result
 
 
-class SplineInterpolation:
-    def __init__(self, x_data, y_data):
+# class SplineInterpolation:
+#     def __init__(self, x_data, y_data):
 
-        self.Spline = CubicSpline(x_data, y_data)
+#         self.Spline = CubicSpline(x_data, y_data)
 
-    def evalSpline(self, x):
+#     def evalSpline(self, x):
 
-        y_interp = self.Spline(x)
+#         y_interp = self.Spline(x)
 
-        return y_interp
+#         return y_interp
 
 
 class PiecewiseLagrange:
@@ -158,7 +174,6 @@ class PiecewiseLagrange:
         if y_init is not None:
             self.y_vals[0, 0] = y_init
 
-        time_eval = np.atleast_1d(time_eval)
         time_k = self.time_k
 
         if self.equal_dt:
@@ -167,6 +182,8 @@ class PiecewiseLagrange:
         else:
             k = np.searchsorted(self.time_k, time_eval, side='right')
             k = np.minimum(self.num_interv, k)
+
+        k = np.clip(k, 1, self.num_interv)
 
         # ---------- Time normalization
         tau_k = (time_eval - time_k[k - 1]) / (time_k[k] - time_k[k - 1])
@@ -177,25 +194,36 @@ class PiecewiseLagrange:
         colloc = np.linspace(0, 1, self.order)
 
         # Lagrange polynomials for k = 1, ..., K (all intervals)
-        poly = np.zeros((len(time_eval), self.order))
+        i_set = set(range(self.order))
 
-        i_set = np.arange(self.order)
+        if isinstance(time_eval, np.ndarray):
+            ntimes = len(time_eval)
 
-        for i in i_set:
-            i_pr = np.setdiff1d(i_set, i)  # i prime
-            poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+            poly = np.zeros((ntimes, self.order))
 
-            poly[:, i] = poly_indiv.prod(axis=1)
+            for i in i_set:
+                i_pr = list(i_set.difference([i]))
+                poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
 
-        u_time = np.zeros_like(time_eval, dtype=float)
+                poly[:, i] = poly_indiv.prod(axis=1)
 
-        for ind in np.unique(k):
-            row_map = k == ind
-            poly_k = poly[row_map]
-            u_time[row_map] = np.dot(poly_k, self.y_vals[ind - 1]).flatten()
+            u_time = np.zeros_like(time_eval, dtype=float)
 
-        if len(u_time) == 1:
-            u_time = u_time[0]
+            for ind in np.unique(k):
+                row_map = k == ind
+                poly_k = poly[row_map]
+                u_time[row_map] = np.dot(poly_k,
+                                         self.y_vals[ind - 1]).flatten()
+
+        else:
+            poly = np.zeros(self.order)
+            for i in i_set:
+                i_pr = list(i_set.difference([i]))
+                poly_indiv = (tau_k - colloc[i_pr]) / (colloc[i] - colloc[i_pr])
+
+                poly[i] = poly_indiv.prod()
+
+            u_time = np.dot(poly, self.y_vals[k - 1])
 
         return u_time
 

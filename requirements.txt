@@ -1,4 +1,5 @@
 numpy
+cython < 3
 scipy
 matplotlib
 pandas

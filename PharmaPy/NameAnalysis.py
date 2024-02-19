@@ -10,6 +10,61 @@ import numpy as np
 from PharmaPy.Gaussians import gaussian
 
 
+def getBipartiteNames(first, second):
+    """
+    Create bipartite graph for matching phases. It only matches phase names.
+    It should rely on some thermodynamic criterion to decide compatible phases.
+
+    Parameters
+    ----------
+    first : dict
+        name dict of the upstream UO.
+    second : dict
+        name dict of the downstream UO.
+
+    Returns
+    -------
+    graph : dict
+        bipartite graph.
+
+    """
+    graph = {}
+    for two in second:
+        for one in first:
+            if one == second:
+                graph[two] = one
+                break
+
+    return graph
+
+
+def getBipartiteMultiPhase(first, second):
+    """
+    Creates bipartite graph for input dictionaries specifying phases and states
+
+    Parameters
+    ----------
+    first : dict
+        DESCRIPTION.
+    second : dict
+        DESCRIPTION.
+
+    Returns
+    -------
+    graph : dict
+
+    """
+
+    upper_graph = getBipartiteNames(first, second)
+
+    graph = {}
+    for phase_down, phase_up in upper_graph.items():
+        key = '/'.join(phase_down, phase_up)
+        graph[key] = getBipartite(first[phase_up], second[phase_down])
+
+    return graph
+
+
 def getBipartite(first, second):
     graph = {}
     types = {}
@@ -19,7 +74,11 @@ def getBipartite(first, second):
     num_first = len(first)
     for two in second:
         for count, one in enumerate(first):
-            if any(word in one for word in comp_names) and any(word in two for word in comp_names):
+            if 'distr' in one and 'solid_conc' in two:
+                graph[two] = one
+                types['distrib'] = (one, two)
+                break
+            elif any(word in one for word in comp_names) and any(word in two for word in comp_names):
                 graph[two] = one
                 types['composition'] = (one, two)
                 break
@@ -85,7 +144,7 @@ def get_dict_states(names, num_species, num_distr, states):
             dict_states[name] = states.T[idx_composition].T
 
             count += num_species
-        elif 'distrib' in name:
+        elif 'distrib' in name or 'mu_n' in name:
             idx_distrib = range(count, count + num_distr)
             dict_states[name] = states.T[idx_distrib].T
 
@@ -135,73 +194,54 @@ class NameAnalyzer:
         return idx_composition, idx_flow, idx_amount, idx_distrib
 
     def convertUnits(self, matter_transf):
-        y_upstr = matter_transf.y_upstream
+        # if matter_transf.__module__ == 'PharmaPy.MixedPhases':  # TODO: not general
+        #     matter_transf = matter_transf.Liquid_1
 
-        conversion_keys = self.conv_types.keys()
-        dict_states = get_dict_states(self.names_up, self.num_species,
-                                      self.num_distr, y_upstr)
+        dict_in = matter_transf.y_upstream
 
-        y_inlet = y_upstr.copy()
+        dict_out = {}
 
-        comp_idx, flow_idx, amount_idx, distrib_idx = self.get_idx()
+        for target, source in self.bipartite.items():
+            if source is not None:
 
-        # Composition
-        comp = self.conv_types['composition']
-        if comp[0] != comp[1]:
-            state_comp = self.__convertComposition(*comp, dict_states[comp[0]],
-                                                   matter_transf)
+                if target != source:
+                    y_j = dict_in[source]
+                    
+                    if 'distrib' in target or 'solid_conc' in target:
+                        converted_state = self.__convert_distrib(
+                            source, target, y_j, matter_transf)
 
-            dict_states[comp[1]] = state_comp
+                    elif 'conc' in target or 'frac' in target:
+                        converted_state = self.__convertComposition(
+                            source, target, y_j, matter_transf)
 
-            y_inlet[:, comp_idx] = state_comp
+                    elif 'flow' in target:
+                        comp = self.conv_types['composition']
+                        
+                        converted_state = self.__convertFlow(
+                            source, target, y_j, matter_transf,
+                            dict_in[comp[0]], comp[0])
 
-        if 'flow' in conversion_keys:
-            flow = self.conv_types['flow']
-            if flow[0] != flow[1]:
-                state_flow = self.__convertFlow(*flow, dict_states[flow[0]],
-                                                matter_transf,
-                                                dict_states[comp[0]],
-                                                comp[0])
+                    dict_out[target] = converted_state
 
-                dict_states[flow[1]] = state_flow
+                else:
+                    dict_out[target] = dict_in[source]
 
-                y_inlet[:, flow_idx] = state_flow
-
-        elif 'amount' in conversion_keys:
-            amount = self.conv_types['amount']
-            if amount[0] != amount[1]:
-                state_amount = self.__convertFlow(*amount,
-                                                  dict_states[amount[0]],
-                                                  matter_transf)
-
-                dict_states[amount[1]] = state_amount
-
-                y_inlet[:, amount_idx] = state_amount
-
-        if 'distrib' in conversion_keys:
-            distr = self.conv_types['distrib']
-            if distr[0] != distr[1]:
-                distrib_conv = self.__convert_distrib(*distr,
-                                                      dict_states[distr[0]],
-                                                      matter_transf)
-
-        matter_transf.y_inlet = y_inlet
-
-        return dict_states
+        return dict_out
 
     def __convertComposition(self, prefix_up, prefix_down, composition,
                              matter_object):
         up, down = prefix_up, prefix_down
 
         if 'frac' in up and 'frac' in down:
-            method = getattr(matter_object, 'frac_to_frac')
+            method_name = 'frac_to_frac'
             if 'mole' in up:
                 fun_kwargs = {'mole_frac': composition}
             elif 'mass' in up:
                 fun_kwargs = {'mass_frac': composition}
 
         elif 'frac' in up and 'conc' in down:
-            method = getattr(matter_object, 'frac_to_conc')
+            method_name = 'frac_to_conc'
 
             if 'mole' in up:
                 fun_kwargs = {'mole_frac': composition}
@@ -212,26 +252,36 @@ class NameAnalyzer:
                 fun_kwargs['basis'] = 'mass'
 
         elif 'mole_conc' in up and 'frac' in down:
-            method = getattr(matter_object, 'conc_to_frac')
+            method_name = 'conc_to_frac'
             fun_kwargs = {'conc': composition}
 
             if 'mass' in down:
                 fun_kwargs['basis'] = 'mass'
+            else:
+                fun_kwargs['basis'] = 'mole'
 
         elif 'mass_conc' in up and 'frac' in down:
-            method = getattr(matter_object, 'mass_conc_to_frac')
+            method_name = 'mass_conc_to_frac'
             fun_kwargs = {'conc': composition}
 
             if 'mole' in down:
                 fun_kwargs['basis'] = 'mole'
 
         elif 'conc' in up and 'conc' in down:
-            method = getattr(matter_object, 'conc_to_conc')
+            method_name = 'conc_to_conc'
 
             if 'mole' in up:
                 fun_kwargs = {'mole_conc': composition}
             else:
                 fun_kwargs = {'mass_conc': composition}
+
+        method = getattr(matter_object, method_name, None)
+        if method is None:
+            for phase in matter_object.Phases:
+                if hasattr(phase, method_name):
+                    method = getattr(phase, method_name)
+
+                    break
 
         output_composition = method(**fun_kwargs)
 
@@ -286,11 +336,14 @@ class NameAnalyzer:
         up, down = prefix_up, prefix_down
 
         if 'distrib' in up and 'total' in down:
-            distrib_out = distrib
+            out = distrib
         elif 'num' in up and 'vol' in down:
             pass
+        elif up == 'distrib' and down == 'solid_conc':
+            out = matter_object.getSolidsConcentr(distrib=distrib,
+                                                  basis='mass')
 
-        return distrib_out
+        return out
 
 
 if __name__ == '__main__':

@@ -255,18 +255,19 @@ class MetaModelingClass:
 
 
 if __name__ == '__main__':
-    name_file = 'test.py'
-    name_class = 'GenericUO'
-    states = ['temp', 'x_liq', 'y_gas', 'pres']
+    name_file = 'DynamicExtraction.py'
+    name_class = 'DynamicExtractor'
+    states = ['mol_i', 'x_liq', 'y_liq', 'holdup_R', 'holdup_E',
+              'R_flow', 'E_flow', 'u_int', 'temp']
 
     meta_object = MetaModelingClass(name_file, name_class, name_states=states,
-                                    model_type='ODE')
+                                    model_type='DAE')
     meta_object.CreatePharmaPyTemplate()
 
-    name_file = 'test_pde.py'
-    name_class = 'DistillationColumn'
-    states = ['x_liq', 'liq_holdup', 'temp', 'vap_flows']
+    # name_file = 'test_pde.py'
+    # name_class = 'DistillationColumn'
+    # states = ['x_liq', 'liq_holdup', 'temp', 'vap_flows']
 
-    meta_object = MetaModelingClass(name_file, name_class, name_states=states,
-                                    model_type='PDE', oper_mode='continuous')
-    meta_object.CreatePharmaPyTemplate()
+    # meta_object = MetaModelingClass(name_file, name_class, name_states=states,
+    #                                 model_type='PDE', oper_mode='continuous')
+    # meta_object.CreatePharmaPyTemplate()
