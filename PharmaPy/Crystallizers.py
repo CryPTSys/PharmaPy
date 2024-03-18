@@ -1975,13 +1975,15 @@ class MSMPR(_BaseCryst):
             
             rho_solid = self.Solid_1.getDensity()
             vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv
+            mass_solid = rho_solid*vol_solid
+
 
             vol_slurry = vol_solid + vol_liq
 
             if self.method == '1D-FVM':
                 distrib_tilde = dp['total_distrib'][-1]
                 self.Solid_1.updatePhase(distrib=distrib_tilde,
-                                         mass= mass_solid))
+                                         mass= mass_solid)
 
                 self.Slurry = Slurry()
 
