@@ -498,16 +498,16 @@ class _BaseCryst:
 
         # Flux source terms
         f_diff = np.diff(f_aug)
-        f_diff[f_diff == 0] = eps  # avoid division by zero for theta
+        # f_diff[f_diff == 0] = eps  # avoid division by zero for theta
 
         if growth > 0:
-            # theta = f_diff[:-1] / (f_diff[1:] + eps*10)
+            theta = f_diff[:-1] / (f_diff[1:] + eps*10)
             # theta = f_diff[:-1] / (f_diff[1:] + eps)
-            theta = f_diff[:-1] / f_diff[1:]
+            # theta = f_diff[:-1] / f_diff[1:]
         else:
-            # theta = f_diff[1:] / (f_diff[:-1] + eps*10)
+            theta = f_diff[1:] / (f_diff[:-1] + eps*10)
             # theta = f_diff[:-1] / (f_diff[1:] + eps)
-            theta = f_diff[:-1] / f_diff[1:]
+            # theta = f_diff[:-1] / f_diff[1:]
         # Van-Leer limiter
         limiter = np.zeros_like(f_diff)
         limiter[:-1] = (np.abs(theta) + theta) / (1 + np.abs(theta))
