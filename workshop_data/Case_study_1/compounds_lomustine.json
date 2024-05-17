@@ -1,0 +1,655 @@
+{
+    "ISO": {
+        "Formula": "C3H5NO",
+        "CAS": "109-90-0",
+        "mw": 71.0779,
+        "p_vap": {
+            "value": null,
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": null,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": null,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": null,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "CHA": {
+        "Formula": "C6H13N",
+        "CAS": "108-91-8",
+        "mw": 99.1741,
+        "p_vap": {
+            "value": [
+                9.074566612413731,
+                1380.225,
+                -67.285
+            ],
+            "temp_ref": "333.87 - 401.52",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 614.6,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": null,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                40700.0
+            ],
+            "temp_ref": 343.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "interm": {
+        "Formula": "C12H26",
+        "CAS": "112-40-3",
+        "mw": 170.3348,
+        "p_vap": {
+            "value": [
+                9.111206612413731,
+                1625.928,
+                -92.839
+            ],
+            "temp_ref": "399.53 - 490.49",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 658.2,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 1823850.0,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                376.0
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                57400.0
+            ],
+            "temp_ref": 344.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "TBN": {
+        "Formula": "C4H9NO2",
+        "CAS": "540-80-7",
+        "mw": 103.1198,
+        "p_vap": {
+            "value": null,
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": null,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": null,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                30800.0
+            ],
+            "temp_ref": 282.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "lom": {
+        "Formula": "C12H26",
+        "CAS": "112-40-3",
+        "mw": 170.3348,
+        "p_vap": {
+            "value": [
+                9.111206612413731,
+                1625.928,
+                -92.839
+            ],
+            "temp_ref": "399.53 - 490.49",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 658.2,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 1823850.0,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                376.0
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                57400.0
+            ],
+            "temp_ref": 344.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "TBA": {
+        "Formula": "C4H10O",
+        "CAS": "75-65-0",
+        "mw": 74.1216,
+        "p_vap": {
+            "value": [
+                9.503456612413732,
+                1174.869,
+                -93.92
+            ],
+            "temp_ref": "312.66 - 355.56",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 506.2,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 4022602.5000000005,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                215.37
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": [
+                114.18
+            ],
+            "temp_ref": 300.0,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                41000.0
+            ],
+            "temp_ref": 343.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "SUB1": {
+        "Formula": "C12H26",
+        "CAS": "112-40-3",
+        "mw": 170.3348,
+        "p_vap": {
+            "value": [
+                9.111206612413731,
+                1625.928,
+                -92.839
+            ],
+            "temp_ref": "399.53 - 490.49",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 658.2,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 1823850.0,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                376.0
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                57400.0
+            ],
+            "temp_ref": 344.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "THF": {
+        "Formula": "C4H8O",
+        "CAS": "109-99-9",
+        "mw": 72.1057,
+        "p_vap": {
+            "value": [
+                9.12689661241373,
+                1202.942,
+                -46.818
+            ],
+            "temp_ref": "296.29 - 372.8",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 540.2,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 5258767.5,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                124.1
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": [
+                77.18
+            ],
+            "temp_ref": 300.0,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                29810.0
+            ],
+            "temp_ref": 339.1,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    },
+    "C7": {
+        "Formula": "C7H16",
+        "CAS": "142-82-5",
+        "mw": 100.2019,
+        "p_vap": {
+            "value": [
+                9.03403661241373,
+                1268.636,
+                -56.199
+            ],
+            "temp_ref": "299.07 - 372.43",
+            "units": "T in K, P in Pa"
+        },
+        "temp_crit": {
+            "value": 540.0,
+            "units": "K"
+        },
+        "p_crit": {
+            "value": 2776305.0,
+            "units": "Pa"
+        },
+        "rho_liq": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_vap": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "rho_solid": {
+            "value": null,
+            "units": "kg/m^3"
+        },
+        "cp_liq": {
+            "value": [
+                224.64
+            ],
+            "temp_ref": 298.15,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_vap": {
+            "value": [
+                165.98
+            ],
+            "temp_ref": 300.0,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "cp_solid": {
+            "value": null,
+            "units": "J/mol/K",
+            "model": "A + B*T + C*T^2 + ...",
+            "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"
+        },
+        "delta_hvap": {
+            "value": [
+                35200.0
+            ],
+            "temp_ref": 343.0,
+            "units": "J/mol",
+            "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"
+        },
+        "visc_liq": {
+            "value": null,
+            "units": "cP",
+            "model": "ln10(visc) = A + B/T + C*T**2",
+            "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.",
+            "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"
+        },
+        "surf_tension": {
+            "value": null,
+            "units": "N/m"
+        }
+    }
+}

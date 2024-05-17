@@ -1,0 +1,17 @@
+{
+	"Formula": {"name": "Formula"},
+	"CAS": {"name": "CAS Registry Number"},
+	"mw": {"name": "Molecular weight"},
+	"p_vap": {"name": "Antoine Equation Parameters", "cols": ["A", "B", "C"], "ref": "Phase change data", "temp_ref": 343.15, "metadata": {"units": "T in K, P in Pa", "model": "log10(P) = A - B / (T + C)"}},
+	"temp_crit": {"name": "One dimensional data", "index": "Tc", "ref": "Phase change data", "cols": "Value", "metadata": {"units": "K"}},
+	"p_crit": {"name": "One dimensional data", "index": "Pc", "ref": "Phase change data", "cols": "Value", "metadata": {"units": "Pa"}},
+	"rho_liq": {"name": "dens_liq", "metadata": {"units": "kg/m^3"}},
+	"rho_vap": {"name": "dens_vap", "metadata": {"units": "kg/m^3"}},
+	"rho_solid": {"name": "dens_solid", "metadata": {"units": "kg/m^3"}},
+	"cp_liq": {"name": "Constant pressure heat capacity of liquid", "ref": "Condensed phase thermochemistry data", "cols": ["Cp,liquid (J/mol*K)"], "temp_ref": 298.15, "metadata": {"units": "J/mol/K", "model": "A + B*T + C*T^2 + ...", "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"}},
+	"cp_vap": {"name": "Constant pressure heat capacity of gas", "ref": "Gas phase thermochemistry data", "cols": ["Cp,gas (J/mol*K)"], "temp_ref": 343.15, "metadata": {"units": "J/mol/K", "model": "A + B*T + C*T^2 + ...", "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"}},
+	"cp_solid": {"name": "cp_solid", "metadata": {"units": "J/mol/K", "model": "A + B*T + C*T^2 + ...", "comments": "Pass a list [A, B, C, ..] in the \"value\" field of this dictionary"}},
+	"delta_hvap": {"name": "Enthalpy of vaporization", "ref": "Phase change data", "cols": ["vapH (kJ/mol)"], "temp_ref": 343.15, "metadata": {"units": "J/mol", "model": "deltaH_vap(T) = [(T_c - T)/(T_c - T_ref)]**0.38 * deltaH_vap(T_ref)"}},
+	"visc_liq": {"name": "visc_liq", "metadata": {"units": "cP", "model": "ln10(visc) = A + B/T + C*T**2", "comments": "Pass a list [A, B, C] for Andrade Equation in the \"value\" field of this dictionary. For constant viscosity, pass log10(visc) as A in a list.", "bibliography": "Poling et al. The properties of Gases and Liquids. 5th Edition"}},
+	"surf_tension": {"name": "surf_tension", "metadata": {"units": "N/m"}}
+}
