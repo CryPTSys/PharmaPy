@@ -239,6 +239,8 @@ class RxnKinetics:
             stoich_matrix = get_stoich(di, partic_species)
         else:
             stoich_matrix = np.atleast_2d(stoich_matrix)
+            if partic_species is None:
+                raise PharmaPyTypeError('Please provide a participating species list when using a stoichiometric matrix.')
 
         perm_idx = get_permutation_indexes(name_species, partic_species)
         stoich_matrix = stoich_matrix[:, perm_idx]

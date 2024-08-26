@@ -1,0 +1,34 @@
+{
+  "solute":
+    {"cas":      "109-99-9",
+     "formula":  "C4H8O",
+     "mw":       72.1057,
+     "t_crit":   540.2,
+     "p_crit":   5190,
+     "cp_liq":   [63.393, 0.40257, -0.0012686, 0.0000018275, 0],
+     "cp_solid": [2000],
+     "kv_solid": 0.5236,
+     "rho_solid": 1600,
+     "rho_liq": 1000,
+     "p_vap":    [4.12118, 1202.942, -46.818],
+     "mol_vol":  0.0811,
+	 "visc_liq": 1,
+     "surface_tension": 1e-3,
+     "normal_state": "liquid"
+    },
+ "solvent":
+    {"cas":     "108-91-8",
+     "formula": "C6H13N",
+     "mw":       99.1741,
+     "t_crit":   614.6,
+     "cp_liq":   [122.21339975625, 0.488130740171043, -1.26377033159788E-03, 1.71423738891454E-06, 0],
+     "p_vap":    [4.06885, 1380.225, -67.285],
+     "mol_vol":  0.11465,
+     "rho_liq": 1000,
+     "rho_solid": 1600,
+     "cp_solid": [2000],
+	 "visc_liq": 1,
+     "surface_tension": 1e-3,
+     "normal_state": "liquid"
+    }
+}

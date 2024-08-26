@@ -30,6 +30,7 @@ gas_ct = 8.314
 
 
 class Drying:
+
     def __init__(self, number_nodes, supercrit_names, diam_unit=0.01,
                  resist_medium=2.22e9, eta_fun=None, mass_eta=False,
                  state_events=None):
@@ -78,7 +79,7 @@ class Drying:
 
         # Limiting factor
         if eta_fun is None:
-            eta_fun = lambda sat, mass_frac: 1
+            eta_fun = lambda sat, mass_frac: np.ones_like(sat)
 
         self.eta_fun = eta_fun
         self.mass_eta = mass_eta
@@ -259,7 +260,7 @@ class Drying:
             sat_eta = satur
             w_eta = x_liq
 
-        limiter_factor = self.eta_fun(sat_eta)#, w_eta)
+        limiter_factor = self.eta_fun(sat_eta, w_eta)
 
         # Dry rate
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,

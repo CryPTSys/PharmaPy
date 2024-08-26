@@ -22,7 +22,11 @@ from PharmaPy import Gaussians as gs
 from PharmaPy.LevMarq import levenberg_marquardt
 from PharmaPy.Commons import plot_sens, reorder_sens
 
-from cyipopt import minimize_ipopt
+try:
+    from cyipopt import minimize_ipopt
+    have_cyipopt = True
+except ImportError:
+    have_cyipopt = False
 
 linestyles = cycle(['-', '--', '-.', ':'])
 
@@ -615,6 +619,8 @@ class ParameterEstimation:
                 **optim_options)
 
         elif method == 'IPOPT':
+            if not have_cyipopt:
+                raise ImportError('cyipopt is an optional import. Please install cyipopt to use IPOPT as a solver for parameter estimation. conda install -c conda-forge cyipopt')
             if optim_options is None:
                 optim_options = {'print_level': int(verbose) * 5}
             else:

@@ -639,7 +639,8 @@ class VaporPhase(ThermoPhysicalManager):
         tref = self.tref_hvap[idx]
 
         watson = ((self.t_crit[idx] - temp) / (self.t_crit[idx] - tref))**0.38
-
+        if np.isnan(watson.flatten()).any():
+            raise ValueError("(self.t_crit[idx] - temp) / (self.t_crit[idx] - tref) was negative. Check property values")
         deltahvap = np.zeros(delta_shape)
 
         if num_temp > 1:

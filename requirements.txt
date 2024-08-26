@@ -1,4 +1,8 @@
-sphinx>=1.4
-ipykernel
-nbsphinx
-sphinxcontrib.bibtex
+numpy
+cython < 3
+scipy
+matplotlib
+pandas
+autograd
+assimulo
+
