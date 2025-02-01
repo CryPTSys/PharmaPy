@@ -19,7 +19,12 @@ PharmaPy is an open-source library for the analysis of pharmaceutical manufactur
 
 How to cite us:
 
-* Casas-Orozco D, Laky D, Wang V, Abdi M, Feng X,  Wood E,  Laird C, Reklaitis, G V, Nagy, Z K. *PharmaPy: An object-oriented tool for the development of hybrid pharmaceutical flowsheets.* Computers & Chemical Engineering. 2021;153:107408::
+.. bibliography::
+   :list: bullet
+
+   Casas-Orozco2020
+
+Bibtex entry::
 
         @article{Casas-Orozco2020,
           author = {Casas-Orozco, Daniel and Laky, Daniel and Wang, Vivian and Abdi, Mesfin and Feng, X. and Wood, E. and Laird, Carl and Reklaitis, Gintaras V. and Nagy, Zoltan K.},
@@ -75,17 +80,6 @@ PharmaPy has been made with the collaboration and support from the following ins
    examples/index
    publications
    advanced_usage
-
-..   examples/PFR_Batch_solved
-
-..   installations.rst
-..   general_features.rst
-..   unit_operations.rst
-..   simulation_executive.rst
-..   advanced_features.rst
-..   phases.rst
-..   kinetics.rst
-
 
 Indices and tables
 ==================

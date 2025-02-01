@@ -4,5 +4,3 @@ scipy
 assimulo==3.4.3
 matplotlib
 pandas
-
-

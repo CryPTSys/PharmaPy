@@ -17,6 +17,17 @@ sys.path.insert(0, os.path.abspath('../../'))
 # sys.path.insert(0, os.path.abspath('sphinxext'))
 
 
+# Setup of mock libraries to override the build fails for C based libraries
+
+#import mock
+
+autodoc_mock_imports = ["numpy", "scipy", "matplotlib", "pandas", "autograd", "assimulo", "cyipopt"]
+ 
+#MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.pyplot', 'scipy.interpolate', 'assimulo']
+#for mod_name in MOCK_MODULES:
+# sys.modules[mod_name] = mock.Mock()
+
+
 # -- Project information -----------------------------------------------------
 
 project = 'PharmaPy'
@@ -57,7 +68,7 @@ html_logo = 'images/PharmaPy_logo.jpeg'
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+html_static_path = ['static','images']
 html_context = {
     "footer_logos": {
         "row1": [
