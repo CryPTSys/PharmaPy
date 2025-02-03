@@ -1,8 +1,6 @@
-numpy
-cython < 3
+numpy<2
+cython<3
 scipy
+assimulo==3.4.3
 matplotlib
 pandas
-autograd
-assimulo
-
