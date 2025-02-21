@@ -32,7 +32,7 @@ def classify_phases(instance, names=None):
                 solid_count += 1
 
             elif 'Vapor' in phase.__class__.__name__:
-                phase_name = 'Vapor_{}'.format(solid_count)
+                phase_name = 'Vapor_{}'.format(vapor_count)
                 vapor_count += 1
 
             setattr(phase, 'name', phase_name)
