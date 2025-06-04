@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]            # PEP 621 section
+name        = "PharmaPy"
+version     = "0.0.1"
+authors     = [{name = "Daniel Casas-Orozco", email = "dcasasor@purdue.edu"}]
+description = "Tool for pharmaceutical process modelling"
+readme      = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "numpy<2",
+    "cython<3",
+    "scipy<1.14",
+    "assimulo==3.4.3",
+    "matplotlib",
+    "pandas"
+]
