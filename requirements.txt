@@ -1,4 +1,4 @@
-numpy<1.23
+numpy<2
 cython<3
 scipy<1.12
 assimulo==3.4.3
