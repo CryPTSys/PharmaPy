@@ -16,7 +16,9 @@ Step 4: After this step, both PharmaPy dependencies and PharmaPy itself should b
 
 Step 5: Activate the new environment by doing: conda activate <name_of_environment> (exclude <>)
 
-Step 6: Test PharmaPy by moving to the tests/ directory (cd tests) and then running: python reactor_tests.py
+Step 6: Test PharmaPy by moving to the integration test directory and running:
+	cd tests/integration
+	python reactor_tests.py
 
 # ---------- Manual installation ----------
 Step 1: Create a conda environment named <env_name> (optional)
@@ -49,13 +51,17 @@ conda create --prefix <Directory address + /<env_name>>
 
 Step 2: Install the package requirements in requirements.txt
 
-conda install -c conda-forge --file requirements.txt
+conda install -c conda-forge --file requirements.txt -y
 
 Step 3: Install PharmaPy; navigate to the source directory
 
-python setup.py develop
+pip install -e .
 
-Step 4: Check to see if the package is working by running a test in tests/
+Step 4: Check to see if the package is working
+
+python -c "import PharmaPy; print('PharmaPy import OK')"
+cd tests/integration
+python reactor_tests.py
 
 
 

@@ -10,6 +10,9 @@ target/
 # pyenv
 *.python-version
 *.pyc
+__pycache__/
+*.pyo
+*.pyd
 
 # celery beat schedule file
 celerybeat-schedule
@@ -21,6 +24,8 @@ celerybeat-schedule
 .venv/
 venv/
 ENV/
+.conda/
+conda-meta/
 
 # Spyder project settings
 .spyderproject
@@ -80,5 +85,12 @@ ENV/
 *.zip
 *.tar.gz
 *.rar
+
+# Packaging artifacts
+*.egg-info/
+*.eggs/
+build/
+dist/
+pip-wheel-metadata/
 
 source/crystallization/
