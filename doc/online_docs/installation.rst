@@ -25,7 +25,7 @@ Installation
 
 For installation, we recommend the use of conda environments to control packages dependencies and PharmaPy. A lighweight version of conda (`miniconda`_) is probably a good option for new users of the management system.
 
-For PharmaPy installation, you must use the source code, which is available in our `Github repository`_. Once the source code is downloaded to the desired location, navigate (:code:`cd`) to the directory which contains the setup.py file. Then, follow the instructions on the :code:`installation_guide.txt`, to setup fresh conda environment and install PharmaPy and its dependencies.
+For PharmaPy installation, you must use the source code, which is available in our `Github repository`_. Once the source code is downloaded to the desired location, navigate (:code:`cd`) to the directory which contains the setup.py file. Then, follow the instructions on the :code:`instal_instructions.txt`, to setup fresh conda environment and install PharmaPy and its dependencies.
 
 ..
         make sure your conda environment is appropriately installed and activated, then input the following commands for PharmaPy installation:
