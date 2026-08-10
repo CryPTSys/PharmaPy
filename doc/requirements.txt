@@ -1,0 +1,9 @@
+# Documentation build dependencies (see .readthedocs.yaml).
+# Runtime packages (numpy, scipy, assimulo, ...) are intentionally not
+# installed: doc/online_docs/conf.py mocks them via autodoc_mock_imports,
+# and assimulo cannot be installed from PyPI without a SUNDIALS toolchain.
+# Versions pinned to the set verified to build this documentation.
+sphinx==9.1.0
+sphinx-rtd-theme==3.1.0
+nbsphinx==0.9.8
+sphinxcontrib-bibtex==2.7.0

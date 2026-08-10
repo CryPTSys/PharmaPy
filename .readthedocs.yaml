@@ -5,19 +5,20 @@
 # Required
 version: 2
 
-# Set the version of Python and other tools you might need
 build:
   os: ubuntu-22.04
   tools:
-    python: "3.10"
-    # You can also specify other tool versions:
-    # nodejs: "19"
-    # rust: "1.64"
-    # golang: "1.19"
+    # Documentation-only build: runtime imports are mocked in conf.py
+    # (autodoc_mock_imports), so this Python only needs to satisfy the
+    # Sphinx toolchain in doc/requirements.txt (Sphinx 9 requires >= 3.12).
+    python: "3.13"
+  apt_packages:
+    # Required by nbsphinx to convert the example notebooks
+    - pandoc
 
 python:
   install:
-    - requirements: requirements.txt
+    - requirements: doc/requirements.txt
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
