@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages
 
 # Read the content of requirements.txt into a list
 with open("requirements.txt", "r") as f:
@@ -11,5 +11,4 @@ setup(name='PharmaPy',
       author_email='dcasasor@purdue.edu',
       license='',
       url='',
-      py_modules=["PharmaPy"],
       install_requires=requirements)
